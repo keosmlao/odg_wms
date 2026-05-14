@@ -1,0 +1,32 @@
+{
+  "name": "ODG WMS",
+  "short_name": "ODG WMS",
+  "description": "ລະບົບຄຸ້ມຄອງຄັງສິນຄ້າ ODG",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fafafa",
+  "theme_color": "#18181b",
+  "lang": "lo",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "ກວດນັບສິນຄ້າ",
+      "short_name": "ກວດນັບ",
+      "url": "/stocktake",
+      "description": "ຮອບກວດນັບ"
+    },
+    {
+      "name": "ຄົງເຫຼືອ",
+      "short_name": "ຄົງເຫຼືອ",
+      "url": "/movements/balance"
+    }
+  ]
+}
