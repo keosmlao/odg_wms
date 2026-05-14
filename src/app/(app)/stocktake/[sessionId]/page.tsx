@@ -3,6 +3,16 @@ import { redirect, notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import StocktakeLayout from "../_components/StocktakeLayout";
+import {
+  stEyebrow,
+  stMuted,
+  stNavLink,
+  stPanel,
+  stPanelInset,
+  stPanelPad,
+  stTitleLg,
+} from "../_components/stocktake-theme";
 import SessionActions from "./SessionActions";
 import LabelBulkCreate from "./LabelBulkCreate";
 import LabelFromLocation from "./LabelFromLocation";
@@ -166,187 +176,151 @@ export default async function SessionDetailPage({
   const isPending = detail.status === "pending_approval";
   const isClosed = detail.status === "closed";
 
-  // First uncounted label — target for "continue counting" action
   const nextLabel = labels.find((l) => l.line_count === 0);
   const canApprove =
     userSession.role === "manager" || userSession.role === "supervisor";
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-5 pb-12">
-      {/* Hero with gradient background */}
-      <header className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 p-6 shadow-lg shadow-indigo-500/20 sm:p-7">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-white/10 blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-fuchsia-300/15 blur-3xl"
-        />
-        <Link
-          href="/stocktake"
-          className="relative inline-flex items-center gap-1 text-xs font-medium text-white/80 hover:text-white"
-        >
-          ← ກວດນັບສິນຄ້າ
+    <StocktakeLayout>
+      <nav className={`mb-5 flex flex-wrap items-center gap-2 ${stMuted}`}>
+        <Link href="/stocktake" className={stNavLink}>
+          ກວດນັບສິນຄ້າ
         </Link>
-        <div className="relative mt-3 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow-sm sm:text-4xl">
-              {detail.name ?? "ຮອບກວດນັບ"}
-            </h1>
-            <p className="mt-1.5 font-mono text-xs text-white/80">
-              {detail.session_code} · {detail.wh_code}
-              {detail.wh_name ? ` · ${detail.wh_name}` : ""} ·{" "}
-              {detail.count_date}
-            </p>
-          </div>
-          <StatusPill status={detail.status} blind={detail.blind} />
-        </div>
-      </header>
+        <span className="text-slate-300 dark:text-slate-600">/</span>
+        <span className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-100">
+          {detail.session_code}
+        </span>
+      </nav>
 
-      {/* Progress card with vibrant fill */}
-      <section className="overflow-hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-              ຄວາມຄືບໜ້າ
+      <div className="space-y-5">
+      <div className={`${stPanel} overflow-hidden`}>
+        <div className={stPanelPad}>
+          <p className={stEyebrow}>ຮອບກວດນັບ</p>
+          <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className={stTitleLg}>{detail.name ?? "ຮອບກວດນັບ"}</h1>
+                <StatusBadge status={detail.status} blind={detail.blind} />
+              </div>
+              <div className={`mt-2 flex flex-wrap items-center gap-2 ${stMuted}`}>
+                <span className="font-mono">{detail.session_code}</span>
+                <span className="text-slate-300 dark:text-slate-600">·</span>
+                <span>
+                  {detail.wh_code}{detail.wh_name ? ` (${detail.wh_name})` : ""}
+                </span>
+                <span className="text-slate-300 dark:text-slate-600">·</span>
+                <span>{detail.count_date}</span>
+              </div>
             </div>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 bg-clip-text font-mono text-4xl font-bold tabular-nums text-transparent">
-                {summary.counted}
-              </span>
-              <span className="text-base text-zinc-500">
-                / {summary.labels} ປ້າຍ
-              </span>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-              ນັບໄດ້ລວມ
-            </div>
-            <div className="mt-1 font-mono text-2xl font-bold tabular-nums text-zinc-900 dark:text-zinc-50">
-              {formatQty(summary.qty)}
-            </div>
-            <div className="text-[10px] text-zinc-500">
-              {summary.lines.toLocaleString("en-US")} ລາຍການ
+            <div className="flex items-center gap-2">
+              {detail.blind && (
+                <span className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                  Blind
+                </span>
+              )}
             </div>
           </div>
         </div>
-        <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+        <div className={stPanelInset}>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        <StatCard label="ປ້າຍທັງໝົດ" value={summary.labels} color="slate" />
+        <StatCard label="ນັບແລ້ວ" value={summary.counted} color="emerald" />
+        <StatCard label="ຍັງບໍ່ໄດ້ນັບ" value={summary.pending} color="amber" />
+        <StatCard label="ຈຳນວນລວມ" value={formatQty(summary.qty)} color="indigo" />
+          </div>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className={`${stPanel} ${stPanelPad}`}>
+        <div className="flex items-baseline justify-between mb-2">
+          <h3 className="text-sm font-medium text-slate-500">ຄວາມຄືບໜ້າ</h3>
+          <span className="text-sm font-bold text-slate-900 dark:text-white">
+            {progress.toFixed(0)}%
+          </span>
+        </div>
+        <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500 shadow-sm shadow-emerald-500/40 transition-all duration-500"
+            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-all duration-500"
             style={{ width: `${progress}%` }}
           />
         </div>
-        <div className="mt-1.5 flex justify-between text-xs text-zinc-500">
-          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-            {progress.toFixed(0)}% ສຳເລັດ
-          </span>
-          <span>ຍັງເຫຼືອ {summary.pending} ປ້າຍ</span>
+        <div className="mt-2 text-xs text-slate-500">
+          {summary.counted} / {summary.labels} ປ້າຍ · {summary.lines} ລາຍການ
         </div>
-      </section>
+      </div>
 
-      {/* Primary action — context-sensitive */}
-      <PrimaryAction
-        status={detail.status}
-        canApprove={canApprove}
-        sessionId={detail.session_id}
-        nextLabelId={nextLabel?.label_id}
-        nextLabelCode={nextLabel?.label_code}
-        labelCount={summary.labels}
-        countedCount={summary.counted}
-      />
+      {/* Primary action */}
+      <div className={`${stPanel} p-1`}>
+        <PrimaryAction
+          status={detail.status}
+          canApprove={canApprove}
+          sessionId={detail.session_id}
+          nextLabelId={nextLabel?.label_id}
+          nextLabelCode={nextLabel?.label_code}
+          labelCount={summary.labels}
+          countedCount={summary.counted}
+        />
+      </div>
 
-      {/* Workflow actions (state transitions) */}
-      <SessionActions
-        sessionId={detail.session_id}
-        status={detail.status}
-        blind={detail.blind}
-        role={userSession.role}
-      />
+      {/* Workflow actions */}
+      <div className={`${stPanel} p-1`}>
+        <SessionActions
+          sessionId={detail.session_id}
+          status={detail.status}
+          blind={detail.blind}
+          role={userSession.role}
+        />
+      </div>
 
-      {/* Secondary actions — colorful icon cards */}
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* Secondary actions */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {summary.lines > 0 && (
-          <SecondaryAction
-            href={`/stocktake/${detail.session_id}/summary`}
-            label="ສະຫຼຸບ"
-            icon="📊"
-            gradient="from-violet-100 to-purple-100 dark:from-violet-950/40 dark:to-purple-950/40"
-            iconBg="bg-violet-500"
-          />
+          <SecondaryActionLink href={`/stocktake/${detail.session_id}/summary`} label="ສະຫຼຸບ" />
         )}
         {summary.lines > 0 && (
-          <SecondaryAction
-            href={`/stocktake/${detail.session_id}/report`}
-            label="ປຽບທຽບ SML"
-            icon="⚖️"
-            gradient="from-blue-100 to-cyan-100 dark:from-blue-950/40 dark:to-cyan-950/40"
-            iconBg="bg-blue-500"
-          />
+          <SecondaryActionLink href={`/stocktake/${detail.session_id}/report`} label="ປຽບທຽບ SML" />
         )}
         {summary.lines > 0 && (
-          <SecondaryAction
-            href={`/stocktake/${detail.session_id}/details`}
-            label="ລາຍລະອຽດ"
-            icon="📋"
-            gradient="from-emerald-100 to-teal-100 dark:from-emerald-950/40 dark:to-teal-950/40"
-            iconBg="bg-emerald-500"
-          />
+          <SecondaryActionLink href={`/stocktake/${detail.session_id}/details`} label="ລາຍລະອຽດ" />
         )}
         {summary.labels > 0 && (
-          <SecondaryAction
-            href={`/stocktake/${detail.session_id}/print`}
-            label="ພິມປ້າຍ"
-            icon="🖨️"
-            gradient="from-amber-100 to-orange-100 dark:from-amber-950/40 dark:to-orange-950/40"
-            iconBg="bg-amber-500"
-          />
+          <SecondaryActionLink href={`/stocktake/${detail.session_id}/print`} label="ພິມປ້າຍ" />
         )}
-      </section>
+      </div>
 
-      {/* Note */}
+      {/* Note / Approval note */}
       {detail.note && (
-        <div className="rounded-2xl bg-zinc-50 p-4 dark:bg-zinc-800/40">
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-            ບັນທຶກ
-          </div>
-          <div className="mt-1 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+        <div className={`${stPanel} ${stPanelPad} bg-slate-50/80 dark:bg-slate-800/30`}>
+          <h3 className="text-sm font-medium text-slate-500">ບັນທຶກ</h3>
+          <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
             {detail.note}
-          </div>
+          </p>
         </div>
       )}
-
-      {/* Approval note (if rejected/approved) */}
       {detail.approval_note && (
-        <div className="rounded-2xl bg-amber-50/60 p-4 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:ring-amber-900/50">
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-amber-700 dark:text-amber-300">
-            ບັນທຶກອະນຸມັດ
-          </div>
-          <div className="mt-1 whitespace-pre-wrap text-sm text-amber-900 dark:text-amber-200">
+        <div className={`${stPanel} ${stPanelPad} border-amber-200/80 bg-amber-50/90 dark:border-amber-900/40 dark:bg-amber-950/25`}>
+          <h3 className="text-sm font-medium text-amber-700 dark:text-amber-300">ບັນທຶກອະນຸມັດ</h3>
+          <p className="mt-1 text-sm text-amber-900 dark:text-amber-200 whitespace-pre-wrap">
             {detail.approval_note}
-          </div>
+          </p>
         </div>
       )}
 
       {/* Labels section */}
-      <section>
-        <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+      <section className={`${stPanel} ${stPanelPad}`}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
             ປ້າຍກວດນັບ
           </h2>
-          <span className="text-xs text-zinc-500">
-            {summary.counted} / {summary.labels} ນັບແລ້ວ
+          <span className="text-sm text-slate-500">
+            {summary.counted}/{summary.labels} ນັບແລ້ວ
           </span>
         </div>
         {labels.length === 0 ? (
-          <div className="rounded-2xl border-2 border-dashed border-zinc-200 bg-white px-6 py-12 text-center dark:border-zinc-800 dark:bg-zinc-900">
-            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-              ຍັງບໍ່ມີປ້າຍ
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">
-              ສ້າງປ້າຍດ້ານລຸ່ມເພື່ອເລີ່ມຕົ້ນ
-            </p>
+          <div className="py-12 text-center text-slate-500">
+            <p>ຍັງບໍ່ມີປ້າຍ</p>
+            {isOpen && <p className="text-xs mt-1">ສ້າງປ້າຍດ້ານລຸ່ມ</p>}
           </div>
         ) : (
           <LabelGrid
@@ -357,29 +331,29 @@ export default async function SessionDetailPage({
         )}
       </section>
 
-      {/* Create labels — only when open */}
+      {/* Create labels (open only) */}
       {isOpen && (
         <details
-          className="rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800"
+          className={`${stPanel} group overflow-hidden`}
           open={summary.labels === 0}
         >
-          <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400">
             + ສ້າງປ້າຍກວດນັບ
             {locationCount > 0 && (
-              <span className="ml-2 text-xs font-normal text-zinc-500">
-                ({locationCount} location ໃນ master)
+              <span className="ml-2 text-xs text-slate-500">
+                ({locationCount} locations)
               </span>
             )}
           </summary>
-          <div className="border-t border-zinc-100 p-5 dark:border-zinc-800">
+          <div className="border-t border-slate-100 dark:border-slate-800 px-5 pb-5 pt-4">
             {locationCount > 0 ? (
               <>
                 <LabelFromLocation
                   sessionId={detail.session_id}
                   locationCount={locationCount}
                 />
-                <details className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                  <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
+                <details className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+                  <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
                     ຫຼື ສ້າງດ້ວຍ prefix + ຊ່ວງເລກ
                   </summary>
                   <div className="mt-3">
@@ -389,7 +363,7 @@ export default async function SessionDetailPage({
               </>
             ) : (
               <>
-                <div className="mb-3 rounded-lg bg-amber-50/60 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-200">
+                <div className="mb-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
                   ສາງນີ້ບໍ່ມີ location ໃນ master.
                 </div>
                 <LabelBulkCreate sessionId={detail.session_id} />
@@ -399,13 +373,13 @@ export default async function SessionDetailPage({
         </details>
       )}
 
-      {/* Audit trail (collapsed) */}
-      <details className="rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+      {/* Audit trail */}
+      <details className={`${stPanel} group overflow-hidden`}>
+        <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400">
           ປະຫວັດ ແລະ ການອະນຸມັດ
         </summary>
-        <div className="border-t border-zinc-100 px-5 py-4 dark:border-zinc-800">
-          <ol className="relative space-y-4 border-l-2 border-zinc-100 pl-5 dark:border-zinc-800">
+        <div className="border-t border-slate-100 dark:border-slate-800 px-5 pb-5 pt-4">
+          <ol className="relative space-y-6 border-l-2 border-slate-100 dark:border-slate-800 pl-6">
             <AuditStep
               label="ສ້າງຮອບ"
               employee={detail.created_employee}
@@ -424,9 +398,7 @@ export default async function SessionDetailPage({
             {(isClosed || isPending) && (
               <AuditStep
                 label="ອະນຸມັດ ແລະ ປິດ"
-                employee={
-                  detail.approved_employee ?? detail.closed_employee
-                }
+                employee={detail.approved_employee ?? detail.closed_employee}
                 at={detail.closed_at}
                 done={isClosed}
                 pending={isPending}
@@ -435,6 +407,73 @@ export default async function SessionDetailPage({
           </ol>
         </div>
       </details>
+      </div>
+    </StocktakeLayout>
+  );
+}
+
+/* ---------- Sub-components (redesigned) ---------- */
+
+function StatusBadge({
+  status,
+  blind,
+}: {
+  status: "open" | "pending_approval" | "closed";
+  blind: boolean;
+}) {
+  const config = {
+    open: {
+      bg: "bg-emerald-50 dark:bg-emerald-950",
+      text: "text-emerald-700 dark:text-emerald-300",
+      ring: "ring-emerald-200 dark:ring-emerald-900",
+      label: "ກຳລັງດຳເນີນ",
+    },
+    pending_approval: {
+      bg: "bg-amber-50 dark:bg-amber-950",
+      text: "text-amber-700 dark:text-amber-300",
+      ring: "ring-amber-200 dark:ring-amber-900",
+      label: "ລໍຖ້າອະນຸມັດ",
+    },
+    closed: {
+      bg: "bg-slate-100 dark:bg-slate-800",
+      text: "text-slate-600 dark:text-slate-400",
+      ring: "ring-slate-200 dark:ring-slate-700",
+      label: "ປິດແລ້ວ",
+    },
+  }[status];
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ring-1 ${config.bg} ${config.text} ${config.ring}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {config.label}
+      {blind && " · Blind"}
+    </span>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string | number;
+  color: "slate" | "emerald" | "amber" | "indigo";
+}) {
+  const colorMap = {
+    slate: "bg-slate-50 dark:bg-slate-800/50",
+    emerald: "bg-emerald-50 dark:bg-emerald-950/30",
+    amber: "bg-amber-50 dark:bg-amber-950/30",
+    indigo: "bg-indigo-50 dark:bg-indigo-950/30",
+  };
+  return (
+    <div className={`rounded-xl p-4 ${colorMap[color]}`}>
+      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+        {value}
+      </p>
     </div>
   );
 }
@@ -459,8 +498,8 @@ function PrimaryAction({
   if (status === "open") {
     if (labelCount === 0) {
       return (
-        <div className="rounded-2xl border-2 border-dashed border-indigo-200 bg-gradient-to-br from-indigo-50/50 to-violet-50/50 px-5 py-5 text-center text-sm text-indigo-900 dark:border-indigo-900/50 dark:from-indigo-950/30 dark:to-violet-950/30 dark:text-indigo-200">
-          <span className="text-base">✨</span> ສ້າງປ້າຍກວດນັບກ່ອນ ແລ້ວເລີ່ມຕົ້ນ
+        <div className="px-5 py-4 text-center text-sm text-slate-500">
+          ສ້າງປ້າຍກວດນັບກ່ອນ ແລ້ວເລີ່ມຕົ້ນ
         </div>
       );
     }
@@ -468,135 +507,57 @@ function PrimaryAction({
       return (
         <Link
           href={`/stocktake/${sessionId}/count/${nextLabelId}`}
-          className="group relative flex items-center justify-between gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 px-6 py-5 text-white shadow-lg shadow-indigo-500/30 transition hover:shadow-xl hover:shadow-indigo-500/40 active:scale-[0.98]"
+          className="flex items-center justify-between px-5 py-4 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-2xl"
         >
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-white/20 to-transparent opacity-0 transition group-hover:opacity-100"
-          />
-          <div className="relative min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/80">
+          <div>
+            <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
               {countedCount === 0 ? "ເລີ່ມນັບ" : "ສືບຕໍ່ນັບ"}
-            </div>
-            <div className="mt-1 font-mono text-2xl font-bold">
+            </p>
+            <p className="mt-1 font-mono text-lg font-bold text-slate-900 dark:text-white">
               {nextLabelCode}
-            </div>
+            </p>
           </div>
-          <span className="relative text-3xl transition group-hover:translate-x-1">
-            →
-          </span>
+          <span className="text-2xl text-slate-300 transition group-hover:text-indigo-500">→</span>
         </Link>
       );
     }
-    // All labels counted
     return (
-      <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 px-5 py-5 text-center shadow-lg shadow-emerald-500/30">
-        <div className="text-2xl">✨</div>
-        <p className="mt-1 text-sm font-semibold text-white">
-          ນັບຄົບທຸກປ້າຍແລ້ວ
-        </p>
-        <p className="mt-0.5 text-xs text-white/85">
-          ກົດ &quot;ສົ່ງເພື່ອອະນຸມັດ&quot; ດ້ານລຸ່ມ
-        </p>
+      <div className="px-5 py-4 text-center text-sm text-emerald-700 dark:text-emerald-300">
+        ✓ ນັບຄົບທຸກປ້າຍແລ້ວ — ສົ່ງເພື່ອອະນຸມັດ
       </div>
     );
   }
   if (status === "pending_approval") {
     return (
-      <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-amber-400 via-orange-400 to-amber-500 px-5 py-5 text-center shadow-lg shadow-amber-500/30">
-        <div className="text-2xl">⏳</div>
-        <p className="mt-1 text-sm font-semibold text-white">
-          {canApprove
-            ? "ກວດສອບ + ກົດປຸ່ມອະນຸມັດດ້ານລຸ່ມ"
-            : "ລໍຖ້າ supervisor ອະນຸມັດ"}
-        </p>
+      <div className="px-5 py-4 text-center text-sm text-amber-700 dark:text-amber-300">
+        {canApprove
+          ? "ກວດສອບ ແລະ ອະນຸມັດໄດ້ທີ່ປຸ່ມດ້ານລຸ່ມ"
+          : "ລໍຖ້າ supervisor ອະນຸມັດ"}
       </div>
     );
   }
-  // Closed
   return (
     <Link
       href={`/stocktake/${sessionId}/summary`}
-      className="group flex items-center justify-between gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-zinc-700 via-zinc-800 to-zinc-900 px-6 py-5 text-white shadow-lg shadow-zinc-900/30 transition hover:shadow-xl active:scale-[0.98] dark:from-zinc-200 dark:via-zinc-100 dark:to-white dark:text-zinc-900"
+      className="flex items-center justify-between px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-2xl transition"
     >
-      <div className="min-w-0">
-        <div className="text-[10px] font-semibold uppercase tracking-widest opacity-80">
-          ✓ ປິດແລ້ວ
-        </div>
-        <div className="mt-1 text-base font-semibold">ເບິ່ງລາຍງານສະຫຼຸບ</div>
-      </div>
-      <span className="text-3xl transition group-hover:translate-x-1">→</span>
+      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+        ເບິ່ງລາຍງານສະຫຼຸບ
+      </span>
+      <span className="text-xl text-slate-300">→</span>
     </Link>
   );
 }
 
-function SecondaryAction({
-  href,
-  label,
-  icon,
-  gradient,
-  iconBg,
-}: {
-  href: string;
-  label: string;
-  icon: string;
-  gradient: string;
-  iconBg: string;
-}) {
+function SecondaryActionLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className={`group relative flex items-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-br ${gradient} p-4 ring-1 ring-zinc-200/50 transition hover:-translate-y-0.5 hover:shadow-lg dark:ring-zinc-700/50`}
+      className={`flex items-center justify-between rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm backdrop-blur-sm transition hover:border-indigo-200 hover:bg-indigo-50/50 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100 dark:hover:border-indigo-900 dark:hover:bg-indigo-950/30`}
     >
-      <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconBg} text-base shadow-md`}
-      >
-        {icon}
-      </span>
-      <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-        {label}
-      </span>
-      <span className="ml-auto text-zinc-400 opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">
-        →
-      </span>
+      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
+      <span className="text-slate-400">→</span>
     </Link>
-  );
-}
-
-function StatusPill({
-  status,
-  blind,
-}: {
-  status: "open" | "pending_approval" | "closed";
-  blind: boolean;
-}) {
-  const config = {
-    open: {
-      dot: "bg-emerald-400 shadow-emerald-400/60",
-      label: "ກຳລັງດຳເນີນ",
-    },
-    pending_approval: {
-      dot: "bg-amber-300 shadow-amber-300/60 animate-pulse",
-      label: "ລໍຖ້າອະນຸມັດ",
-    },
-    closed: {
-      dot: "bg-white/60",
-      label: "ປິດແລ້ວ",
-    },
-  }[status];
-
-  return (
-    <div className="flex flex-col items-end gap-1.5">
-      <span className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur ring-1 ring-white/30">
-        <span className={`h-2 w-2 rounded-full shadow-md ${config.dot}`} />
-        {config.label}
-      </span>
-      {blind && (
-        <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur">
-          🙈 Blind count
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -616,37 +577,34 @@ function AuditStep({
   return (
     <li className="relative">
       <span
-        className={`absolute -left-[27px] flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-white dark:ring-zinc-900 ${
+        className={`absolute -left-[29px] mt-0.5 flex h-5 w-5 items-center justify-center rounded-full ring-2 ring-white dark:ring-slate-900 ${
           done
-            ? "bg-emerald-500"
+            ? "bg-emerald-500 text-white"
             : pending
-              ? "bg-amber-500"
-              : "bg-zinc-300 dark:bg-zinc-700"
+              ? "bg-amber-500 text-white"
+              : "bg-slate-200 dark:bg-slate-700"
         }`}
       >
         {done && (
           <svg
             viewBox="0 0 24 24"
-            className="h-2.5 w-2.5 text-white"
+            className="h-3 w-3"
             fill="none"
             stroke="currentColor"
-            strokeWidth={3.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            strokeWidth={3}
           >
             <path d="m5 13 4 4L19 7" />
           </svg>
         )}
+        {pending && <span className="text-[8px] font-bold">!</span>}
       </span>
-      <div className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
         {label}
-      </div>
-      <div className="mt-0.5 text-sm text-zinc-900 dark:text-zinc-50">
+      </h4>
+      <p className="mt-0.5 text-sm text-slate-900 dark:text-white">
         {employee ?? (done || pending ? "—" : "ຍັງບໍ່ໄດ້ດຳເນີນ")}
-      </div>
-      {at && (
-        <div className="text-xs text-zinc-500">{at.slice(0, 16)}</div>
-      )}
+      </p>
+      {at && <p className="text-xs text-slate-500">{at.slice(0, 16)}</p>}
     </li>
   );
 }

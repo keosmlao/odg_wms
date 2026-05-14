@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import StocktakeLayout from "../../_components/StocktakeLayout";
 
 type SessionInfo = {
   session_id: number;
@@ -103,7 +104,8 @@ export default async function DetailsPage({
   );
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 pb-12">
+    <StocktakeLayout wide>
+    <div className="mx-auto w-full max-w-5xl space-y-6 pb-8">
       <header>
         <Link
           href={`/stocktake/${sid}`}
@@ -216,6 +218,7 @@ export default async function DetailsPage({
         </div>
       )}
     </div>
+    </StocktakeLayout>
   );
 }
 

@@ -6,6 +6,7 @@ import { accessibleWarehouses } from "@/lib/session-shared";
 import { Notice } from "@/components/ui/Card";
 import { AlertIcon } from "@/components/ui/Icons";
 import PrintButton from "../print/PrintButton";
+import StocktakeLayout from "../../_components/StocktakeLayout";
 
 type SessionInfo = {
   session_id: number;
@@ -205,7 +206,7 @@ export default async function SessionSummaryPage({
     .slice(0, 15);
 
   return (
-    <>
+    <StocktakeLayout wide>
       <style>{`
         @media print {
           aside, body > div > div > header { display: none !important; }
@@ -539,7 +540,7 @@ export default async function SessionSummaryPage({
           ພິມເມື່ອ {new Date().toLocaleString("lo-LA")}
         </footer>
       </div>
-    </>
+    </StocktakeLayout>
   );
 }
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { getSession } from "@/lib/session";
 import { ROLE_LABEL_LO } from "@/lib/session-shared";
@@ -19,6 +20,8 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await getSession();
+  if (!session) redirect("/login");
+
   const displayName =
     session?.nickname?.trim() ||
     session?.fullname_lo?.trim() ||

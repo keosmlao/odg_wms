@@ -10,6 +10,7 @@ import {
   getForLabel,
   remove as removeFromQueue,
 } from "@/lib/offline-queue";
+import { lineConflictsSlot } from "@/lib/stocktake-count-slot";
 import type { CountedLine, LocationOption, RackOption } from "./page";
 
 type ItemHit = {
@@ -32,7 +33,7 @@ export default function Counter({
   sessionId,
   labelId,
   labelCode,
-  labelNote,
+  labelNote: _labelNote,
   labelRackCode,
   labelLocationCode,
   sessionCode,
@@ -253,6 +254,39 @@ export default function Counter({
       location_code: locationCode || null,
     };
 
+    const dupMsg =
+      "ສິນຄ້ານີ້ນັບໃນຕຳແໜ່ງນີ້ແລ້ວ — ແກ້ຈຳນວນຢູ່ລາຍການເກົ່າ ຫຼືລຶບກ່ອນ";
+    const slotLine = (row: CountedLine) => ({
+      item_code: row.item_code,
+      rack_code: row.rack_code,
+      location_code: row.location_code,
+    });
+    if (
+      lines.some((row) =>
+        lineConflictsSlot(slotLine(row), payload.item_code, payload.rack_code, payload.location_code),
+      )
+    ) {
+      showToast("err", dupMsg);
+      return;
+    }
+    for (const q of getForLabel(labelId)) {
+      if (
+        lineConflictsSlot(
+          {
+            item_code: q.payload.item_code,
+            rack_code: q.payload.rack_code,
+            location_code: q.payload.location_code,
+          },
+          payload.item_code,
+          payload.rack_code,
+          payload.location_code,
+        )
+      ) {
+        showToast("err", dupMsg);
+        return;
+      }
+    }
+
     if (!online) {
       const queued = enqueue({ label_id: labelId, session_id: sessionId, payload });
       const localLine: CountedLine = {
@@ -340,72 +374,100 @@ export default function Counter({
 
   const totalQty = useMemo(() => lines.reduce((s, l) => s + (Number.parseFloat(l.qty) || 0), 0), [lines]);
 
+  const sessionStatusLabel =
+    sessionStatus === "open" ? "ເປີດ" : sessionStatus === "pending_approval" ? "ລໍຖ້າ" : "ປິດ";
+
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 font-sans text-slate-900 selection:bg-indigo-100 dark:bg-slate-950 dark:text-slate-100">
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80">
-        <div className="mx-auto flex max-w-2xl items-center gap-4 px-4 py-3">
+    <div className="flex min-h-[100dvh] flex-col rounded-2xl bg-gradient-to-b from-white to-slate-50/95 font-sans text-slate-900 selection:bg-indigo-100 dark:from-slate-900 dark:to-slate-950 dark:text-slate-100 dark:selection:bg-indigo-950 dark:selection:text-indigo-100 lg:min-h-0 lg:rounded-xl">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80 lg:static lg:shrink-0 lg:bg-white dark:lg:bg-slate-900">
+        <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3 sm:gap-4 lg:max-w-none lg:px-8 lg:py-4">
           <Link
             href={`/stocktake/${sessionId}`}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 active:scale-95 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 lg:h-10 lg:w-10"
+            aria-label="ກັບໄປຮອບກວດນັບ"
           >
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
               <path d="m15 18-6-6 6-6" />
             </svg>
           </Link>
-          <div className="flex-1 min-w-0">
-            <h1 className="truncate text-lg font-bold tracking-tight">{labelCode}</h1>
-            <p className="truncate text-[10px] font-medium uppercase tracking-wider text-slate-500">{sessionCode} • {whCode}</p>
-          </div>
-                      <div className="text-right">
-            <div className="text-xl font-black tabular-nums text-indigo-600 dark:text-indigo-400">{formatQty(totalQty)}</div>
-            <div className="text-[10px] font-bold uppercase text-slate-400">{lines.length} Items</div>
-                        </div>
-                        </div>
-
-        <div className="mx-auto max-w-2xl px-4 pb-2 flex items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            {labelPinned && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-400">
-                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                {labelRackCode}{labelLocationCode && ` / ${labelLocationCode}`}
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-lg font-bold tracking-tight lg:text-xl">{labelCode}</h1>
+            <p className="truncate text-[10px] font-medium uppercase tracking-wider text-slate-500 lg:text-xs lg:normal-case lg:tracking-normal">
+              <span className="lg:hidden">{sessionCode} • {whCode}</span>
+              <span className="hidden lg:inline">
+                {sessionName ?? sessionCode}
+                {whName ? ` · ${whCode} (${whName})` : ` · ${whCode}`}
               </span>
-                    )}
-                    <button
+            </p>
+          </div>
+          <span
+            className={`hidden shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 lg:inline-flex ${
+              sessionOpen
+                ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-300 dark:ring-emerald-900"
+                : "bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700"
+            }`}
+          >
+            ● {sessionStatusLabel}
+            {blind && " · Blind"}
+          </span>
+          <div className="shrink-0 text-right">
+            <div className="text-xl font-black tabular-nums text-indigo-600 dark:text-indigo-400 lg:text-2xl">{formatQty(totalQty)}</div>
+            <div className="text-[10px] font-bold uppercase text-slate-400">{lines.length} ລາຍການ</div>
+          </div>
+        </div>
+
+        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 pb-3 lg:max-w-none lg:px-8 lg:pb-4">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            {labelPinned && (
+              <span className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-400">
+                <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={3}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                <span className="truncate">{labelRackCode}{labelLocationCode && ` / ${labelLocationCode}`}</span>
+              </span>
+            )}
+            <button
+              type="button"
               onClick={toggleBlind}
               disabled={!canRevealBalance || !sessionOpen || toggling}
-              className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-400"
-                    >
-              {blind ? "🙈 Blind" : "👁️ Visible"}
-              {canRevealBalance && <span className="text-indigo-500 underline decoration-indigo-500/30">Change</span>}
-                    </button>
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-400 lg:py-1.5"
+            >
+              {blind ? "🙈 Blind" : "👁️ ສະແດງຍອດ"}
+              {canRevealBalance && <span className="text-indigo-500 underline decoration-indigo-500/30">ປ່ຽນ</span>}
+            </button>
           </div>
           {!online && (
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-600 dark:text-rose-400">
+            <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-bold text-rose-600 dark:text-rose-400">
               <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
               OFFLINE
             </div>
-        )}
-            </div>
+          )}
+        </div>
       </header>
 
-      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 pb-32">
-        {showReEntryWarning && sessionOpen && (
-          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+      <main
+        className={
+          sessionOpen
+            ? "mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-5 pb-28 sm:py-6 sm:pb-32 lg:max-w-none lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,400px)] lg:gap-0 lg:px-8 lg:py-6 lg:pb-8 xl:grid-cols-[minmax(0,1fr)_420px]"
+            : "mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-5 pb-10 sm:px-6 sm:py-6 lg:max-w-3xl lg:px-8"
+        }
+      >
+        {sessionOpen && (
+        <div className="min-w-0 lg:border-r lg:border-slate-200 lg:pr-8 dark:lg:border-slate-800">
+        {showReEntryWarning && (
+          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30 lg:mb-6">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3}><path d="M12 9v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 18c-.77 1.333.192 3 1.732 3z"/></svg>
             </div>
             <div className="flex-1 text-xs font-medium text-amber-800 dark:text-amber-200">
               <p className="font-bold">ປ້າຍນີ້ມີຂໍ້ມູນແລ້ວ {initialLines.length} ລາຍການ</p>
-              <p className="mt-0.5 opacity-80">ການນັບໃໝ່ຈະຖືກເພີ່ມຕໍ່ທ້າຍ. ກວດສອບລາຍການເກົ່າຢູ່ດ້ານລຸ່ມ.</p>
+              <p className="mt-0.5 opacity-80">ການນັບໃໝ່ຈະຖືກເພີ່ມຕໍ່ທ້າຍ. ກວດສອບລາຍການເກົ່າຢູ່ດ້ານຂ້າງ.</p>
             </div>
-            <button onClick={() => setShowReEntryWarning(false)} className="text-amber-400 hover:text-amber-600">✕</button>
+            <button type="button" onClick={() => setShowReEntryWarning(false)} className="text-amber-400 hover:text-amber-600">✕</button>
           </div>
         )}
 
-        {sessionOpen && (
-          <div className="space-y-6">
-            <div className="relative group">
-              <div className="pointer-events-none absolute inset-y-0 left-5 flex items-center">
+          <div className="space-y-5 lg:space-y-5">
+            <div className="group relative isolate z-20 mb-1 sm:mb-2">
+              <div className="pointer-events-none absolute inset-y-0 left-4 z-10 flex items-center sm:left-5">
                 <svg viewBox="0 0 24 24" className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500" fill="none" stroke="currentColor" strokeWidth={2.5}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           </div>
               <input
@@ -420,17 +482,19 @@ export default function Counter({
                   }
                 }}
                 placeholder="ຄົ້ນຫາລະຫັດສິນຄ້າ ຫຼື COM..."
-                className="h-16 w-full rounded-3xl border-none bg-white pl-12 pr-20 text-lg font-medium shadow-xl shadow-slate-200/50 ring-1 ring-slate-200 transition-all focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:shadow-none dark:ring-slate-800"
+                className="relative z-0 h-14 w-full rounded-2xl border-none bg-white pl-11 pr-[3.25rem] text-base font-medium shadow-lg shadow-slate-200/40 ring-1 ring-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 sm:h-16 sm:rounded-3xl sm:pl-12 sm:pr-20 sm:text-lg sm:shadow-xl sm:shadow-slate-200/50 dark:bg-slate-900 dark:shadow-none dark:ring-slate-800 lg:h-14 lg:rounded-xl lg:pr-14 lg:text-sm lg:shadow-sm"
               />
               <button
+                type="button"
+                title="ສະແກນບາໂຄດ"
                 onClick={() => setScannerOpen(true)}
-                className="absolute inset-y-2 right-2 flex w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 transition active:scale-95 active:bg-indigo-700"
+                className="absolute inset-y-1.5 right-1.5 z-20 flex w-11 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/25 transition active:scale-95 active:bg-indigo-700 sm:inset-y-2 sm:right-2 sm:w-12 sm:rounded-2xl sm:shadow-lg lg:inset-y-1.5 lg:w-11 lg:rounded-lg"
         >
-                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 7V5a2 2 0 0 1 2-2h2m10 0h2a2 2 0 0 1 2 2v2m0 10v2a2 2 0 0 1-2 2h-2m-10 0H5a2 2 0 0 1-2-2v-2M7 12h10M8 8h.01M16 8h.01M8 16h.01M16 16h.01"/></svg>
+                <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 7V5a2 2 0 0 1 2-2h2m10 0h2a2 2 0 0 1 2 2v2m0 10v2a2 2 0 0 1-2 2h-2m-10 0H5a2 2 0 0 1-2-2v-2M7 12h10M8 8h.01M16 8h.01M8 16h.01M16 16h.01"/></svg>
               </button>
 
               {(hits.length > 0 || searching) && !selected && (
-                <div className="absolute inset-x-0 top-full z-50 mt-2 max-h-80 overflow-auto rounded-3xl bg-white p-2 shadow-2xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+                <div className="absolute inset-x-0 top-[calc(100%+0.375rem)] z-[60] max-h-80 overflow-auto rounded-3xl bg-white p-2 shadow-2xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
                   {searching && <div className="p-4 text-center text-sm font-medium text-slate-400">ກຳລັງຄົ້ນຫາ...</div>}
                   {hits.map((h) => (
                     <button
@@ -455,12 +519,12 @@ export default function Counter({
             </div>
 
             {!labelPinned && (racks.length > 0 || locations.length > 0) && (
-              <div className="flex gap-2">
-                <select value={rackCode} onChange={(e) => setRackCode(e.target.value)} className="flex-1 rounded-2xl bg-white px-4 py-2 text-xs font-bold shadow-sm ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:ring-slate-800">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select value={rackCode} onChange={(e) => setRackCode(e.target.value)} className="min-h-11 flex-1 rounded-xl bg-white px-3 py-2.5 text-xs font-bold shadow-sm ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:ring-slate-800 sm:rounded-2xl sm:py-2 lg:min-h-0">
                   <option value="">RACK: —</option>
                   {racks.map((r) => <option key={r.code} value={r.code}>{r.code}</option>)}
                 </select>
-                <select value={locationCode} onChange={(e) => setLocationCode(e.target.value)} className="flex-1 rounded-2xl bg-white px-4 py-2 text-xs font-bold shadow-sm ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:ring-slate-800">
+                <select value={locationCode} onChange={(e) => setLocationCode(e.target.value)} className="min-h-11 flex-1 rounded-xl bg-white px-3 py-2.5 text-xs font-bold shadow-sm ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:ring-slate-800 sm:rounded-2xl sm:py-2 lg:min-h-0">
                   <option value="">LOC: —</option>
                   {availableLocations.map((l) => <option key={l.code} value={l.code}>{l.code}</option>)}
                 </select>
@@ -468,7 +532,7 @@ export default function Counter({
             )}
 
             {selected && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 rounded-3xl bg-indigo-600 p-6 text-white shadow-xl shadow-indigo-500/20 dark:bg-indigo-500">
+              <div className="animate-in fade-in slide-in-from-bottom-4 rounded-2xl bg-indigo-600 p-5 text-white shadow-xl shadow-indigo-500/20 dark:bg-indigo-500 sm:rounded-3xl sm:p-6 lg:rounded-xl lg:p-5">
                 <div className="flex items-start justify-between">
                   <div className="min-w-0">
                     <h2 className="font-mono text-xs font-bold opacity-80">{selected.item_code}</h2>
@@ -479,7 +543,7 @@ export default function Counter({
                   </button>
                 </div>
 
-                <div className="my-6">
+                <div className="my-4 sm:my-6 lg:my-4">
                   <div className="relative">
                     <input
                       ref={qtyInputRef}
@@ -488,9 +552,9 @@ export default function Counter({
                       value={qty}
                       onChange={(e) => setQty(e.target.value)}
                       placeholder="0.00"
-                      className="w-full bg-transparent text-center font-mono text-7xl font-black tabular-nums tracking-tighter text-white placeholder:text-white/30 focus:outline-none"
+                      className="w-full bg-transparent text-center font-mono text-5xl font-black tabular-nums tracking-tighter text-white placeholder:text-white/30 focus:outline-none sm:text-6xl md:text-7xl lg:text-5xl xl:text-6xl"
                     />
-                    <div className="mt-2 text-center text-xs font-bold uppercase tracking-widest opacity-80">{selected.unit_code ?? "Quantity"}</div>
+                    <div className="mt-2 text-center text-xs font-bold uppercase tracking-widest opacity-80">{selected.unit_code ?? "ຈຳນວນ"}</div>
                   </div>
                 </div>
 
@@ -500,24 +564,43 @@ export default function Counter({
                   </div>
                 )}
 
-                <div className="mt-4">
+                <div className="mt-3 sm:mt-4">
                   <input
                     type="text"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="ບັນທຶກເພີ່ມເຕີມ..."
-                    className="w-full rounded-2xl bg-white/10 px-4 py-3 text-sm font-medium placeholder:text-white/50 focus:bg-white/20 focus:outline-none"
+                    className="w-full rounded-xl bg-white/10 px-4 py-3 text-sm font-medium placeholder:text-white/50 focus:bg-white/20 focus:outline-none sm:rounded-2xl"
                   />
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => addLine()}
+                  disabled={submitting || !qty}
+                  className="mt-5 hidden h-12 w-full items-center justify-center rounded-xl bg-white text-base font-black text-indigo-700 shadow-md transition hover:bg-slate-50 disabled:opacity-50 dark:bg-white dark:text-indigo-800 lg:flex"
+                >
+                  {submitting ? "ກຳລັງບັນທຶກ..." : "ຢືນຢັນການນັບ"}
+                </button>
               </div>
             )}
           </div>
+        </div>
         )}
 
-        <div className="mt-10">
-          <div className="mb-4 flex items-center justify-between px-2">
-            <h2 className="text-xs font-black uppercase tracking-widest text-slate-400">History</h2>
-            {pendingCount > 0 && <span className="text-[10px] font-black text-amber-500 uppercase animate-pulse">Syncing {pendingCount}...</span>}
+        <aside
+          className={
+            sessionOpen
+              ? "mt-8 min-h-0 lg:mt-0 lg:flex lg:flex-col lg:pl-8 lg:pt-0"
+              : "mt-2 min-h-0 w-full lg:mt-0"
+          }
+        >
+          <div className="lg:sticky lg:top-0 lg:max-h-[min(100dvh-10rem,52rem)] lg:overflow-y-auto lg:overscroll-contain lg:pb-4 lg:pt-1">
+          <div className="mb-3 flex items-center justify-between px-1 sm:px-2 lg:px-0">
+            <h2 className="text-xs font-black uppercase tracking-widest text-slate-400">ລາຍການທີ່ນັບແລ້ວ</h2>
+            {pendingCount > 0 && (
+              <span className="text-[10px] font-black uppercase text-amber-500 animate-pulse">ລໍຖ້າ sync {pendingCount}...</span>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -585,11 +668,12 @@ export default function Counter({
               ))
             )}
           </div>
-        </div>
+          </div>
+        </aside>
       </main>
 
       {sessionOpen && selected && (
-        <div className="fixed inset-x-0 bottom-0 z-50 p-4 pb-8 animate-in slide-in-from-bottom-full duration-300">
+        <div className="fixed inset-x-0 bottom-0 z-50 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] animate-in slide-in-from-bottom-full duration-300 lg:hidden">
           <div className="mx-auto max-w-2xl">
             <button
               onClick={() => addLine()}

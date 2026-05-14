@@ -57,10 +57,8 @@ export default function LabelGrid({
               href={`/stocktake/${sessionId}/count/${l.label_id}`}
               className={
                 counted
-                  ? // ━━━ NABBED state ━━━ vibrant emerald gradient + checkmark
-                    "block overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-600 p-4 text-white shadow-lg shadow-emerald-500/30 ring-1 ring-emerald-400/30 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-emerald-500/40"
-                  : // ━━━ PENDING state ━━━ muted white with dashed border
-                    "block overflow-hidden rounded-2xl border-2 border-dashed border-zinc-300 bg-white p-4 transition hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-indigo-500"
+                  ? "block overflow-hidden rounded-2xl border border-indigo-300/40 bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-900 p-4 text-white shadow-lg shadow-indigo-900/25 ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-900/30"
+                  : "block overflow-hidden rounded-2xl border-2 border-dashed border-indigo-200 bg-white/95 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-400 hover:bg-white hover:shadow-md dark:border-indigo-900/50 dark:bg-slate-900/80 dark:hover:border-indigo-500"
               }
             >
               <div className="flex items-start justify-between gap-2">
@@ -70,13 +68,13 @@ export default function LabelGrid({
                       className={
                         counted
                           ? "font-mono text-xl font-bold tracking-tight text-white"
-                          : "font-mono text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50"
+                          : "font-mono text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50"
                       }
                     >
                       {l.label_code}
                     </span>
                     {counted ? (
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/25 ring-1 ring-white/40">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/35">
                         <svg
                           viewBox="0 0 24 24"
                           className="h-3.5 w-3.5"
@@ -97,7 +95,7 @@ export default function LabelGrid({
                       className={
                         counted
                           ? "mt-1 truncate font-mono text-[10px] font-medium text-white/85"
-                          : "mt-1 truncate font-mono text-[10px] font-semibold text-emerald-700 dark:text-emerald-400"
+                          : "mt-1 truncate font-mono text-[10px] font-semibold text-indigo-700 dark:text-indigo-300"
                       }
                     >
                       📍 {l.rack_code ?? "—"}
@@ -109,7 +107,7 @@ export default function LabelGrid({
                       className={
                         counted
                           ? "mt-1 truncate text-xs text-white/75"
-                          : "mt-1 truncate text-xs text-zinc-500"
+                          : "mt-1 truncate text-xs text-slate-500 dark:text-slate-400"
                       }
                     >
                       {l.note}
@@ -133,7 +131,7 @@ export default function LabelGrid({
                 className={
                   counted
                     ? "mt-3 flex items-center justify-between border-t border-white/15 pt-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/80"
-                    : "mt-3 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-zinc-400"
+                    : "mt-3 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400"
                 }
               >
                 <span>{counted ? "✓ ນັບແລ້ວ — ກົດເພື່ອແກ້ໄຂ" : "ຍັງບໍ່ໄດ້ນັບ"}</span>
@@ -149,7 +147,7 @@ export default function LabelGrid({
                 className={`absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full opacity-0 backdrop-blur transition group-hover:opacity-100 ${
                   counted
                     ? "bg-white/15 text-white/80 hover:bg-white/25 hover:text-white"
-                    : "bg-white/80 text-zinc-400 ring-1 ring-zinc-200 hover:bg-red-50 hover:text-red-600 dark:bg-zinc-900/80 dark:text-zinc-500 dark:ring-zinc-700"
+                    : "ring-1 bg-white/90 text-slate-500 ring-slate-200 hover:bg-red-50 hover:text-red-600 dark:bg-slate-900/90 dark:text-slate-400 dark:ring-slate-700"
                 } disabled:opacity-50`}
                 aria-label="ລຶບປ້າຍ"
               >

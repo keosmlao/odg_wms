@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
     "192.168.1.62",
     "localhost",
     "127.0.0.1",
-
+    "10.0.20.164",
     // ถ้ามี domain ภายใน
     "*.odienmall.com",
   ],

@@ -75,6 +75,27 @@ export async function POST(
   const rackCode = trimOrNull(body.rack_code);
   const locationCode = trimOrNull(body.location_code);
 
+  const dup = await query<{ line_id: number }>(
+    `SELECT line_id
+     FROM public.wms_stocktake_line
+     WHERE label_id = $1
+       AND item_code = $2
+       AND rack_code IS NOT DISTINCT FROM $3
+       AND location_code IS NOT DISTINCT FROM $4
+     LIMIT 1`,
+    [labelId, itemCode, rackCode, locationCode],
+  );
+  if (dup.length > 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "ສິນຄ້ານີ້ນັບໃນຕຳແໜ່ງນີ້ແລ້ວ — ແກ້ຈຳນວນຢູ່ລາຍການເກົ່າ ຫຼືລຶບກ່ອນ",
+      },
+      { status: 409 },
+    );
+  }
+
   const rows = await query<LineRow>(
     `INSERT INTO public.wms_stocktake_line
        (session_id, label_id, item_code, item_name, unit_code,

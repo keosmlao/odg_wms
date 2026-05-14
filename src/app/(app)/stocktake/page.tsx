@@ -3,6 +3,15 @@ import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import StocktakeLayout from "./_components/StocktakeLayout";
+import {
+  stBtnPrimary,
+  stEyebrow,
+  stMuted,
+  stPanel,
+  stPanelPad,
+  stTitleLg,
+} from "./_components/stocktake-theme";
 
 type Row = {
   session_id: number;
@@ -33,11 +42,11 @@ function formatQty(value: string | number | null | undefined) {
   });
 }
 
-const STATUS_TABS: Array<{ value: string; label: string }> = [
-  { value: "", label: "ທັງໝົດ" },
-  { value: "open", label: "ກຳລັງດຳເນີນ" },
-  { value: "pending_approval", label: "ລໍຖ້າອະນຸມັດ" },
-  { value: "closed", label: "ປິດແລ້ວ" },
+const STATUS_TABS: Array<{ value: string; label: string; icon: string; color: string }> = [
+  { value: "", label: "ທັງໝົດ", icon: "📋", color: "from-indigo-500 to-blue-600" },
+  { value: "open", label: "ກຳລັງດຳເນີນ", icon: "●", color: "from-emerald-400 to-green-500" },
+  { value: "pending_approval", label: "ລໍຖ້າອະນຸມັດ", icon: "●", color: "from-amber-400 to-orange-500" },
+  { value: "closed", label: "ປິດແລ້ວ", icon: "●", color: "from-slate-400 to-gray-500" },
 ];
 
 export default async function StocktakeListPage({
@@ -123,7 +132,6 @@ export default async function StocktakeListPage({
            WHERE COALESCE(status, 1) = 1
            ORDER BY code`,
         ),
-    // Counts per status for tab badges (ignores wh filter so tabs stay stable)
     query<{ status: string; n: number }>(
       `SELECT s.status, count(*)::int AS n
        FROM public.wms_stocktake_session s
@@ -145,223 +153,229 @@ export default async function StocktakeListPage({
   }
 
   return (
-    <div className="space-y-5 pb-12">
-      {/* Hero with gradient */}
-      <header className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 p-6 shadow-lg shadow-indigo-500/20 sm:p-7">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-white/10 blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-fuchsia-300/15 blur-3xl"
-        />
-        <div className="relative flex flex-wrap items-end justify-between gap-3">
+    <StocktakeLayout wide>
+      <header className={`${stPanel} ${stPanelPad} mb-6`}>
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="text-xs font-medium uppercase tracking-widest text-white/75">
-              📦 ODG WMS
-            </div>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight text-white drop-shadow-sm sm:text-4xl">
-              ກວດນັບສິນຄ້າ
-            </h1>
-            <p className="mt-1.5 text-sm text-white/85">
-              {totalCount.toLocaleString("en-US")} ຮອບກວດນັບທັງໝົດ
+            <p className={stEyebrow}>WMS · ກວດນັບສິນຄ້າ</p>
+            <h1 className={`mt-2 ${stTitleLg}`}>ຮອບກວດນັບສິນຄ້າ</h1>
+            <p className={`mt-1 ${stMuted}`}>
+              ທັງໝົດ {totalCount.toLocaleString("en-US")} ຮອບ · ກອງ ແລະ ເລີ່ມນັບໄດ້ທັນທີ
             </p>
           </div>
-          <Link
-            href="/stocktake/new"
-            className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-indigo-700 shadow-lg shadow-indigo-900/10 transition hover:-translate-y-0.5 hover:shadow-xl active:scale-95"
-          >
-            <span className="text-base leading-none">+</span>
+          <Link href="/stocktake/new" className={stBtnPrimary}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
             ສ້າງຮອບໃໝ່
           </Link>
         </div>
       </header>
 
-      {/* Status tabs — pill style */}
-      <nav className="flex flex-wrap gap-2">
-        {STATUS_TABS.map((t) => {
-          const active = status === t.value;
-          const n =
-            t.value === ""
-              ? totalCount
-              : (countByStatus.get(t.value) ?? 0);
-          const accent = {
-            "": "from-indigo-500 to-violet-600 shadow-indigo-500/30",
-            open: "from-emerald-500 to-teal-600 shadow-emerald-500/30",
-            pending_approval:
-              "from-amber-400 to-orange-500 shadow-amber-500/30",
-            closed: "from-zinc-500 to-zinc-700 shadow-zinc-500/20",
-          }[t.value] ?? "from-zinc-500 to-zinc-700";
-          return (
-            <Link
-              key={t.value || "all"}
-              href={tabHref(t.value)}
-              className={
-                active
-                  ? `inline-flex items-center gap-2 rounded-full bg-gradient-to-r ${accent} px-4 py-2 text-sm font-semibold text-white shadow-md`
-                  : "inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-medium text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 hover:text-zinc-900 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800/50"
-              }
-            >
-              {t.label}
-              <span
-                className={
-                  active
-                    ? "inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/25 px-1.5 text-[10px] font-bold"
-                    : "inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-zinc-100 px-1.5 text-[10px] font-bold text-zinc-500 dark:bg-zinc-800"
-                }
-              >
-                {n}
-              </span>
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Warehouse filter (inline, optional) */}
-      {whOptions.length > 1 && (
-        <form
-          method="get"
-          className="flex items-center gap-2 text-sm"
-          aria-label="ກອງຕາມສາງ"
-        >
-          {status && <input type="hidden" name="status" value={status} />}
-          <span className="text-zinc-500">ສາງ:</span>
-          <select
-            name="wh"
-            defaultValue={wh}
-            className="rounded-lg bg-white px-3 py-1.5 text-sm ring-1 ring-zinc-200 focus:ring-2 focus:ring-zinc-900 dark:bg-zinc-900 dark:ring-zinc-800"
-          >
-            <option value="">ທຸກສາງ</option>
-            {whOptions.map((w) => (
-              <option key={w.code} value={w.code}>
-                {w.code}
-                {w.name ? ` · ${w.name}` : ""}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400"
-          >
-            ໃຊ້
-          </button>
-        </form>
-      )}
-
-      {/* Sessions list */}
-      {rows.length === 0 ? (
-        <div className="rounded-3xl border-2 border-dashed border-indigo-200 bg-gradient-to-br from-indigo-50/50 to-violet-50/30 px-6 py-20 text-center dark:border-indigo-900/40 dark:from-indigo-950/20 dark:to-violet-950/10">
-          <div className="text-4xl">📦</div>
-          <p className="mt-3 text-base font-semibold text-zinc-800 dark:text-zinc-100">
-            ບໍ່ມີຮອບກວດນັບ
-          </p>
-          <p className="mt-1 text-sm text-zinc-500">
-            ກົດ &quot;+ ສ້າງຮອບໃໝ່&quot; ເພື່ອເລີ່ມຕົ້ນ
-          </p>
-        </div>
-      ) : (
-        <ul className="grid gap-3">
-          {rows.map((r) => {
-            const accent = {
-              open: "from-emerald-400 to-teal-500",
-              pending_approval: "from-amber-400 to-orange-500",
-              closed: "from-zinc-400 to-zinc-500",
-            }[r.status];
+      <main>
+        <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+          {STATUS_TABS.filter(t => t.value !== "").map(t => {
+            const n = countByStatus.get(t.value) ?? 0;
             return (
-            <li key={r.session_id}>
               <Link
-                href={`/stocktake/${r.session_id}`}
-                className="group relative grid grid-cols-[1fr_auto] gap-3 overflow-hidden rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-zinc-200 transition hover:-translate-y-0.5 hover:shadow-lg hover:ring-zinc-300 active:translate-y-0 dark:bg-zinc-900 dark:ring-zinc-800 dark:hover:ring-zinc-700 sm:grid-cols-[1fr_160px_120px_auto]"
+                key={t.value}
+                href={tabHref(t.value)}
+                className={`group relative overflow-hidden rounded-2xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${
+                  status === t.value
+                    ? "border-indigo-400 bg-indigo-50/80 shadow-indigo-100 dark:border-indigo-500 dark:bg-indigo-950/40 dark:shadow-none"
+                    : "border-slate-200/80 bg-white/90 dark:border-slate-700 dark:bg-slate-900/80"
+                } backdrop-blur-sm`}
               >
-                <span
-                  aria-hidden
-                  className={`absolute inset-y-0 left-0 w-1 bg-gradient-to-b ${accent}`}
-                />
-                <div className="min-w-0 pl-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="truncate text-base font-semibold text-zinc-900 dark:text-zinc-50">
-                      {r.name ?? r.session_code}
-                    </h3>
-                    <StatusDot status={r.status} />
+                <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${t.color}`} />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-400">{t.label}</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{n}</p>
                   </div>
-                  <div className="mt-1 truncate font-mono text-xs text-zinc-500">
-                    {r.session_code}
-                  </div>
-                  <div className="mt-0.5 truncate text-xs text-zinc-500">
-                    {r.wh_code}
-                    {r.wh_name ? ` · ${r.wh_name}` : ""} · {r.count_date}
-                  </div>
-                </div>
-
-                <div className="hidden text-right sm:block">
-                  <div className="font-mono text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {r.line_count.toLocaleString("en-US")}
-                  </div>
-                  <div className="text-[10px] text-zinc-500">
-                    {r.label_count} ປ້າຍ · {r.line_count} ລາຍການ
-                  </div>
-                </div>
-
-                <div className="hidden text-right sm:block">
-                  <div className="font-mono text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {formatQty(r.total_qty)}
-                  </div>
-                  <div className="text-[10px] text-zinc-500">ຍອດລວມ</div>
-                </div>
-
-                <div className="self-center text-zinc-300 transition group-hover:text-zinc-900 dark:text-zinc-700">
-                  →
+                  <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br ${t.color} text-white text-sm`}>
+                    {t.icon}
+                  </span>
                 </div>
               </Link>
-            </li>
             );
           })}
-        </ul>
-      )}
-    </div>
-  );
-}
+        </div>
 
-function StatusDot({
-  status,
-}: {
-  status: "open" | "pending_approval" | "closed";
-}) {
-  const config = {
-    open: {
-      color: "bg-emerald-500",
-      label: "ດຳເນີນ",
-      pillBg: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-    },
-    pending_approval: {
-      color: "bg-amber-500",
-      label: "ລໍຖ້າອະນຸມັດ",
-      pillBg: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
-    },
-    closed: {
-      color: "bg-zinc-400",
-      label: "ປິດແລ້ວ",
-      pillBg: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
-    },
-  }[status];
+        {/* Toolbar: warehouse filter + view options */}
+        <div
+          className={`${stPanel} mb-6 flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            {STATUS_TABS.map((t) => {
+              const active = status === t.value;
+              const n = t.value === "" ? totalCount : (countByStatus.get(t.value) ?? 0);
+              return (
+                <Link
+                  key={t.value}
+                  href={tabHref(t.value)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition ${
+                    active
+                      ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-900"
+                      : "border border-slate-200/80 bg-white/80 text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/60 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-indigo-900 dark:hover:bg-indigo-950/40"
+                  }`}
+                >
+                  {t.icon} {t.label}
+                  {n > 0 && <span className="opacity-60">{n}</span>}
+                </Link>
+              );
+            })}
+          </div>
 
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${config.pillBg}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${config.color}`} />
-      {config.label}
-    </span>
+          {whOptions.length > 1 && (
+            <form method="get" className="flex flex-wrap items-center gap-2 text-sm">
+              {status && <input type="hidden" name="status" value={status} />}
+              <label htmlFor="wh-select" className="sr-only">
+                ກອງຕາມສາງ
+              </label>
+              <select
+                id="wh-select"
+                name="wh"
+                defaultValue={wh}
+                className="min-w-[10rem] rounded-xl border border-slate-200 bg-white py-2 pl-3 pr-8 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              >
+                <option value="">ທຸກສາງ</option>
+                {whOptions.map((w) => (
+                  <option key={w.code} value={w.code}>
+                    {w.code}
+                    {w.name ? ` · ${w.name}` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+              >
+                ໃຊ້
+              </button>
+            </form>
+          )}
+        </div>
+
+        {/* Session cards grid */}
+        {rows.length === 0 ? (
+          <div
+            className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300/80 bg-white/70 px-6 py-20 text-center backdrop-blur-sm dark:border-slate-600 dark:bg-slate-900/60`}
+          >
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+            </div>
+            <h3 className="text-base font-semibold text-slate-700 dark:text-slate-200">
+              ບໍ່ມີຮອບກວດນັບ
+            </h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              ກົດ &quot;+ ສ້າງຮອບໃໝ່&quot; ເພື່ອເລີ່ມຕົ້ນ
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
+            {rows.map((r) => {
+              const statusConfig = {
+                open: {
+                  border: "border-l-emerald-500",
+                  accent: "from-emerald-500/90 to-teal-600",
+                  dot: "bg-emerald-500",
+                  label: "ດຳເນີນ",
+                  text: "text-emerald-700 dark:text-emerald-300",
+                  chip: "bg-emerald-50 dark:bg-emerald-950/50",
+                },
+                pending_approval: {
+                  border: "border-l-amber-500",
+                  accent: "from-amber-500/90 to-orange-600",
+                  dot: "bg-amber-500",
+                  label: "ລໍຖ້າອະນຸມັດ",
+                  text: "text-amber-800 dark:text-amber-200",
+                  chip: "bg-amber-50 dark:bg-amber-950/40",
+                },
+                closed: {
+                  border: "border-l-slate-400",
+                  accent: "from-slate-500 to-slate-600",
+                  dot: "bg-slate-400",
+                  label: "ປິດແລ້ວ",
+                  text: "text-slate-600 dark:text-slate-400",
+                  chip: "bg-slate-100 dark:bg-slate-800/80",
+                },
+              }[r.status];
+
+              return (
+                <Link
+                  key={r.session_id}
+                  href={`/stocktake/${r.session_id}`}
+                  className={`group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg dark:border-slate-700 dark:bg-slate-900/85 dark:hover:border-indigo-900 ${statusConfig.border} border-l-[5px] backdrop-blur-sm`}
+                >
+                  <div
+                    className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r opacity-90 ${statusConfig.accent}`}
+                    aria-hidden
+                  />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                        {r.name ?? r.session_code}
+                      </h3>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                          {r.session_code}
+                        </span>
+                        <span className="text-slate-300 dark:text-slate-600">·</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {r.wh_code}{r.wh_name ? ` (${r.wh_name})` : ""}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                        {r.count_date}
+                      </p>
+                    </div>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ring-black/5 ${statusConfig.text} ${statusConfig.chip} dark:ring-white/10`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${statusConfig.dot}`} />
+                      {statusConfig.label}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex items-end justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <div className="space-y-0.5">
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-medium text-slate-700 dark:text-slate-300">{r.label_count}</span> ປ້າຍ ·{" "}
+                        <span className="font-medium text-slate-700 dark:text-slate-300">{r.line_count}</span> ລາຍການ
+                      </div>
+                      <div className="text-lg font-bold tabular-nums text-slate-900 dark:text-white">
+                        {formatQty(r.total_qty)}
+                      </div>
+                    </div>
+                    <div className="text-slate-300 transition group-hover:text-indigo-600 dark:text-slate-600 dark:group-hover:text-indigo-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </main>
+    </StocktakeLayout>
   );
 }
 
 function NoticeCard({ text }: { text: string }) {
   return (
-    <div className="mx-auto mt-12 max-w-md rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center dark:border-amber-900/50 dark:bg-amber-950/30">
-      <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
-        {text}
-      </p>
-    </div>
+    <StocktakeLayout>
+      <div className="flex min-h-[70vh] items-center justify-center p-4">
+      <div className="w-full max-w-md rounded-2xl border border-amber-200/90 bg-white/95 p-6 text-center shadow-sm backdrop-blur-md dark:border-amber-900/50 dark:bg-slate-900/90">
+        <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-10 w-10 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+        </svg>
+        <p className="mt-3 text-sm font-medium text-amber-800 dark:text-amber-200">{text}</p>
+      </div>
+      </div>
+    </StocktakeLayout>
   );
 }
