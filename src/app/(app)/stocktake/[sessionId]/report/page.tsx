@@ -21,7 +21,20 @@ type VarianceRow = {
   unit_code: string | null;
   counted_qty: string;
   sml_qty: string;
+  pending_qty: string;
+  reference_qty: string;
   variance: string;
+};
+
+type PendingBillLine = {
+  doc_no: string;
+  trans_flag: number;
+  doc_date: string | null;
+  cust_code: string | null;
+  item_code: string;
+  item_name: string | null;
+  unit_code: string | null;
+  qty: string;
 };
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -43,8 +56,8 @@ function formatQty(value: string | number | null | undefined) {
 const FILTERS: Array<{ value: string; label: string }> = [
   { value: "all", label: "ທັງໝົດ" },
   { value: "variance", label: "ມີສ່ວນຕ່າງ" },
-  { value: "uncounted", label: "ໃນ SML ບໍ່ໄດ້ນັບ" },
-  { value: "extra", label: "ນັບໄດ້ ບໍ່ມີໃນ SML" },
+  { value: "uncounted", label: "ໃນຍອດອ້າງອີງ ບໍ່ໄດ້ນັບ" },
+  { value: "extra", label: "ນັບໄດ້ ບໍ່ມີໃນຍອດອ້າງອີງ" },
 ];
 
 export default async function ReportPage({
@@ -85,6 +98,60 @@ export default async function ReportPage({
   const filter = pick(sp.filter) || "all";
   const q = pick(sp.q).toLowerCase();
 
+  const pendingLines = await query<PendingBillLine>(
+    `SELECT
+       pb.doc_no,
+       pb.trans_flag,
+       t.doc_date::text AS doc_date,
+       t.cust_code,
+       d.item_code,
+       d.item_name,
+       d.unit_code,
+       d.qty::text AS qty
+     FROM public.wms_stocktake_pending_bill pb
+     JOIN public.ic_trans t
+       ON t.doc_no = pb.doc_no AND t.trans_flag = pb.trans_flag
+     JOIN public.ic_trans_detail d
+       ON d.doc_no = pb.doc_no AND d.trans_flag = pb.trans_flag
+     WHERE pb.session_id = $1
+       AND d.wh_code = $2
+       AND (d.status = 0 OR d.status IS NULL)
+       AND d.item_code IS NOT NULL
+       AND d.item_code <> ''
+     ORDER BY t.doc_date DESC, pb.doc_no, d.item_code`,
+    [sid, info.wh_code],
+  );
+
+  const billGroups: Array<{
+    doc_no: string;
+    trans_flag: number;
+    doc_date: string | null;
+    cust_code: string | null;
+    lines: PendingBillLine[];
+    total_qty: number;
+  }> = [];
+  {
+    const idx = new Map<string, (typeof billGroups)[number]>();
+    for (const l of pendingLines) {
+      const key = `${l.doc_no}::${l.trans_flag}`;
+      let g = idx.get(key);
+      if (!g) {
+        g = {
+          doc_no: l.doc_no,
+          trans_flag: l.trans_flag,
+          doc_date: l.doc_date,
+          cust_code: l.cust_code,
+          lines: [],
+          total_qty: 0,
+        };
+        idx.set(key, g);
+        billGroups.push(g);
+      }
+      g.lines.push(l);
+      g.total_qty += Number.parseFloat(l.qty) || 0;
+    }
+  }
+
   const rows = await query<VarianceRow>(
     `WITH counted AS (
        SELECT
@@ -95,29 +162,57 @@ export default async function ReportPage({
        FROM public.wms_stocktake_line
        WHERE session_id = $1
        GROUP BY item_code
+     ),
+     universe AS (
+       SELECT item_code, item_name, unit_code FROM counted
+       UNION
+       SELECT item_code, item_name, unit_code
+       FROM public.wms_stocktake_snapshot
+       WHERE session_id = $1
+       UNION
+       SELECT item_code, item_name, unit_code
+       FROM public.wms_stocktake_pending
+       WHERE session_id = $1
      )
      SELECT
-       COALESCE(c.item_code, ss.item_code)            AS item_code,
-       COALESCE(c.item_name, ss.item_name)            AS item_name,
-       COALESCE(c.unit_code, ss.unit_code)            AS unit_code,
+       u.item_code                                    AS item_code,
+       COALESCE(c.item_name, u.item_name)             AS item_name,
+       COALESCE(c.unit_code, u.unit_code)             AS unit_code,
        COALESCE(c.counted_qty, 0)::text               AS counted_qty,
        COALESCE(ss.snapshot_qty, 0)::text             AS sml_qty,
-       (COALESCE(c.counted_qty, 0) - COALESCE(ss.snapshot_qty, 0))::text AS variance
-     FROM counted c
-     FULL OUTER JOIN public.wms_stocktake_snapshot ss
-       ON ss.item_code = c.item_code AND ss.session_id = $1
-     ORDER BY ABS(COALESCE(c.counted_qty, 0) - COALESCE(ss.snapshot_qty, 0)) DESC,
-              COALESCE(c.item_code, ss.item_code)`,
+       COALESCE(p.pending_qty, 0)::text               AS pending_qty,
+       (COALESCE(ss.snapshot_qty, 0) + COALESCE(p.pending_qty, 0))::text AS reference_qty,
+       (COALESCE(c.counted_qty, 0)
+          - COALESCE(ss.snapshot_qty, 0)
+          - COALESCE(p.pending_qty, 0))::text AS variance
+     FROM (
+       SELECT item_code, MAX(item_name) AS item_name, MAX(unit_code) AS unit_code
+       FROM universe
+       WHERE item_code IS NOT NULL
+       GROUP BY item_code
+     ) u
+     LEFT JOIN counted c
+       ON c.item_code = u.item_code
+     LEFT JOIN public.wms_stocktake_snapshot ss
+       ON ss.item_code = u.item_code AND ss.session_id = $1
+     LEFT JOIN public.wms_stocktake_pending p
+       ON p.item_code = u.item_code AND p.session_id = $1
+     ORDER BY ABS(
+                COALESCE(c.counted_qty, 0)
+                - COALESCE(ss.snapshot_qty, 0)
+                - COALESCE(p.pending_qty, 0)
+              ) DESC,
+              u.item_code`,
     [sid],
   );
 
   const filtered = rows.filter((r) => {
     const counted = Number.parseFloat(r.counted_qty);
-    const sml = Number.parseFloat(r.sml_qty);
-    const variance = counted - sml;
+    const ref = Number.parseFloat(r.reference_qty);
+    const variance = counted - ref;
     if (filter === "variance" && variance === 0) return false;
-    if (filter === "uncounted" && (counted > 0 || sml === 0)) return false;
-    if (filter === "extra" && (counted <= 0 || sml > 0)) return false;
+    if (filter === "uncounted" && (counted > 0 || ref === 0)) return false;
+    if (filter === "extra" && (counted <= 0 || ref > 0)) return false;
     if (q) {
       const text = `${r.item_code} ${r.item_name ?? ""}`.toLowerCase();
       if (!text.includes(q)) return false;
@@ -129,17 +224,18 @@ export default async function ReportPage({
     all: rows.length,
     variance: rows.filter(
       (r) =>
-        Number.parseFloat(r.counted_qty) !== Number.parseFloat(r.sml_qty),
+        Number.parseFloat(r.counted_qty) !==
+        Number.parseFloat(r.reference_qty),
     ).length,
     uncounted: rows.filter(
       (r) =>
         Number.parseFloat(r.counted_qty) === 0 &&
-        Number.parseFloat(r.sml_qty) > 0,
+        Number.parseFloat(r.reference_qty) > 0,
     ).length,
     extra: rows.filter(
       (r) =>
         Number.parseFloat(r.counted_qty) > 0 &&
-        Number.parseFloat(r.sml_qty) === 0,
+        Number.parseFloat(r.reference_qty) === 0,
     ).length,
   };
 
@@ -179,12 +275,12 @@ export default async function ReportPage({
           accent={counts.variance > 0 ? "red" : "emerald"}
         />
         <Stat
-          label="ໃນ SML ບໍ່ໄດ້ນັບ"
+          label="ໃນຍອດອ້າງອີງ ບໍ່ໄດ້ນັບ"
           value={counts.uncounted}
           accent={counts.uncounted > 0 ? "amber" : "default"}
         />
         <Stat
-          label="ນັບໄດ້ ບໍ່ມີໃນ SML"
+          label="ນັບໄດ້ ບໍ່ມີໃນຍອດອ້າງອີງ"
           value={counts.extra}
           accent={counts.extra > 0 ? "amber" : "default"}
         />
@@ -267,11 +363,13 @@ export default async function ReportPage({
               {filtered.map((r) => {
                 const counted = Number.parseFloat(r.counted_qty) || 0;
                 const sml = Number.parseFloat(r.sml_qty) || 0;
-                const variance = counted - sml;
+                const pending = Number.parseFloat(r.pending_qty) || 0;
+                const ref = Number.parseFloat(r.reference_qty) || 0;
+                const variance = counted - ref;
                 return (
                   <li
                     key={r.item_code}
-                    className="grid grid-cols-[1fr_auto] gap-3 px-5 py-3.5 sm:grid-cols-[1fr_100px_100px_120px]"
+                    className="grid grid-cols-[1fr_auto] gap-3 px-5 py-3.5 sm:grid-cols-[1fr_80px_80px_80px_80px_100px]"
                   >
                     <div className="min-w-0">
                       <div className="truncate font-mono text-xs font-semibold text-zinc-900 dark:text-zinc-50">
@@ -296,10 +394,28 @@ export default async function ReportPage({
                       <div className="text-[10px] text-zinc-500">ນັບໄດ້</div>
                     </div>
                     <div className="hidden text-right sm:block">
-                      <div className="font-mono text-sm font-semibold tabular-nums text-zinc-500">
+                      <div className="font-mono text-sm tabular-nums text-zinc-700 dark:text-zinc-300">
                         {formatQty(sml)}
                       </div>
                       <div className="text-[10px] text-zinc-500">SML</div>
+                    </div>
+                    <div className="hidden text-right sm:block">
+                      <div
+                        className={`font-mono text-sm tabular-nums ${
+                          pending > 0
+                            ? "font-semibold text-amber-700 dark:text-amber-400"
+                            : "text-zinc-400"
+                        }`}
+                      >
+                        {pending > 0 ? `+${formatQty(pending)}` : "—"}
+                      </div>
+                      <div className="text-[10px] text-zinc-500">ຄ້າງຈ່າຍ</div>
+                    </div>
+                    <div className="hidden text-right sm:block">
+                      <div className="font-mono text-sm font-semibold tabular-nums text-zinc-700 dark:text-zinc-300">
+                        {formatQty(ref)}
+                      </div>
+                      <div className="text-[10px] text-zinc-500">ອ້າງອີງ</div>
                     </div>
                     <div className="text-right">
                       <div
@@ -315,7 +431,12 @@ export default async function ReportPage({
                         {formatQty(variance)}
                       </div>
                       <div className="text-[10px] text-zinc-500 sm:hidden">
-                        ນັບ {formatQty(counted)} / SML {formatQty(sml)}
+                        ນັບ {formatQty(counted)} / ອ້າງອີງ {formatQty(ref)}
+                        {pending !== 0 && (
+                          <span className="text-amber-600 dark:text-amber-400">
+                            {" "}(ຄ້າງ +{formatQty(pending)})
+                          </span>
+                        )}
                       </div>
                       <div className="hidden text-[10px] text-zinc-500 sm:block">
                         ສ່ວນຕ່າງ
@@ -332,6 +453,96 @@ export default async function ReportPage({
           </div>
         )}
       </section>
+
+      {/* Pending bills breakdown */}
+      {billGroups.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-base font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+              ບິນຄ້າງຈ່າຍທີ່ຮວມໃນຍອດອ້າງອີງ
+            </h2>
+            <span className="text-xs text-zinc-500">
+              {billGroups.length.toLocaleString("en-US")} ບິນ ·{" "}
+              {pendingLines.length.toLocaleString("en-US")} ລາຍການ
+            </span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {billGroups.map((g) => (
+              <details
+                key={`${g.doc_no}::${g.trans_flag}`}
+                className="group overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800"
+                open={g.lines.length <= 5}
+              >
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-zinc-900 dark:text-zinc-50">
+                        {g.doc_no}
+                      </span>
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[9px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                        flag {g.trans_flag}
+                      </span>
+                      {g.doc_date && (
+                        <span className="text-[10px] text-zinc-500">
+                          {g.doc_date}
+                        </span>
+                      )}
+                    </div>
+                    {g.cust_code && (
+                      <div className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+                        {g.cust_code}
+                      </div>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="font-mono text-sm font-bold tabular-nums text-amber-700 dark:text-amber-400">
+                      +{formatQty(g.total_qty)}
+                    </div>
+                    <div className="text-[10px] text-zinc-500">
+                      {g.lines.length} ລາຍ
+                    </div>
+                  </div>
+                  <span className="ml-1 text-xs text-zinc-400 transition-transform group-open:rotate-90">
+                    ›
+                  </span>
+                </summary>
+                <ul className="divide-y divide-zinc-100 border-t border-zinc-100 dark:divide-zinc-800 dark:border-zinc-800">
+                  {g.lines.map((l, i) => (
+                    <li
+                      key={`${l.item_code}-${i}`}
+                      className="flex items-center justify-between gap-3 px-4 py-1.5 text-xs"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
+                          {l.item_code}
+                        </span>
+                        {l.item_name && (
+                          <span
+                            className="ml-2 truncate text-zinc-500 dark:text-zinc-400"
+                            title={l.item_name}
+                          >
+                            {l.item_name}
+                          </span>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="font-mono font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+                          +{formatQty(Number.parseFloat(l.qty) || 0)}
+                        </span>
+                        {l.unit_code && (
+                          <span className="ml-1 text-[10px] text-zinc-400">
+                            {l.unit_code}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
     </StocktakeLayout>
   );

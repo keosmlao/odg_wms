@@ -4,7 +4,7 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { Notice } from "@/components/ui/Card";
-import { AlertIcon, CheckIcon } from "@/components/ui/Icons";
+import { AlertIcon, ChevronRightIcon, PlusIcon } from "@/components/ui/Icons";
 import StocktakeLayout from "../_components/StocktakeLayout";
 import {
   stEyebrow,
@@ -58,27 +58,38 @@ export default async function NewStocktakePage() {
 
   return (
     <StocktakeLayout>
-      <div className="mx-auto max-w-xl space-y-5">
-        <div className={`${stPanel} ${stPanelPad}`}>
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-600/25">
-              <CheckIcon className="h-6 w-6" />
-            </div>
-            <div>
-              <p className={stEyebrow}>ກວດນັບສິນຄ້າ</p>
-              <h1 className={`mt-1 ${stTitleLg}`}>ສ້າງຮອບກວດນັບໃໝ່</h1>
-              <p className={`mt-2 ${stMuted}`}>ເລືອກສາງ ແລະ ວັນທີ່ນັບ — ຈາກນັ້ນສ້າງປ້າຍແລະເລີ່ມນັບໄດ້ທັນທີ</p>
-            </div>
+      <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+        <Link href="/stocktake" className={stNavLink}>
+          ກວດນັບສິນຄ້າ
+        </Link>
+        <ChevronRightIcon className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
+        <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+          ສ້າງຮອບໃໝ່
+        </span>
+      </nav>
+
+      <div className="mx-auto max-w-2xl">
+        <header className="mb-5 flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-white shadow-sm shadow-indigo-500/30">
+            <PlusIcon className="h-5 w-5" />
           </div>
-        </div>
+          <div>
+            <p className={stEyebrow}>ກວດນັບສິນຄ້າ</p>
+            <h1 className={`mt-1 ${stTitleLg}`}>ສ້າງຮອບກວດນັບໃໝ່</h1>
+            <p className={`mt-1 ${stMuted}`}>
+              ເລືອກສາງ ແລະ ວັນທີ່ນັບ — ຈາກນັ້ນສ້າງປ້າຍແລະເລີ່ມນັບໄດ້ທັນທີ
+            </p>
+          </div>
+        </header>
 
         <div className={`${stPanel} ${stPanelPad}`}>
-        <NewSessionForm warehouses={whOptions} role={session.role} />
-        <div className="mt-6 border-t border-slate-100 pt-5 dark:border-slate-800">
+          <NewSessionForm warehouses={whOptions} role={session.role} />
+        </div>
+
+        <div className="mt-4 text-center">
           <Link href="/stocktake" className={stNavLink}>
             ← ກັບໄປໜ້າຮອບກວດນັບ
           </Link>
-        </div>
         </div>
       </div>
     </StocktakeLayout>

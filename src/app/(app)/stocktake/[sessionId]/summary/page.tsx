@@ -4,9 +4,10 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { Notice } from "@/components/ui/Card";
-import { AlertIcon } from "@/components/ui/Icons";
+import { AlertIcon, ChevronRightIcon } from "@/components/ui/Icons";
 import PrintButton from "../print/PrintButton";
 import StocktakeLayout from "../../_components/StocktakeLayout";
+import { stNavLink } from "../../_components/stocktake-theme";
 
 type SessionInfo = {
   session_id: number;
@@ -34,6 +35,7 @@ type VarianceRow = {
   unit_code: string | null;
   counted_qty: string;
   sml_qty: string;
+  pending_qty: string;
 };
 
 type LabelStat = {
@@ -45,6 +47,17 @@ type LabelStat = {
 type CounterStat = {
   counted_employee: string | null;
   line_count: number;
+};
+
+type PendingBillLine = {
+  doc_no: string;
+  trans_flag: number;
+  doc_date: string | null;
+  cust_code: string | null;
+  item_code: string;
+  item_name: string | null;
+  unit_code: string | null;
+  qty: string;
 };
 
 function formatQty(value: number) {
@@ -113,7 +126,7 @@ export default async function SessionSummaryPage({
     );
   }
 
-  const [rows, labelStatRows, counterRows] = await Promise.all([
+  const [rows, labelStatRows, counterRows, pendingLines] = await Promise.all([
     query<VarianceRow>(
       `WITH counted AS (
          SELECT item_code, MAX(item_name) AS item_name, MAX(unit_code) AS unit_code,
@@ -121,16 +134,37 @@ export default async function SessionSummaryPage({
          FROM public.wms_stocktake_line
          WHERE session_id = $1
          GROUP BY item_code
+       ),
+       universe AS (
+         SELECT item_code, item_name, unit_code FROM counted
+         UNION
+         SELECT item_code, item_name, unit_code
+         FROM public.wms_stocktake_snapshot
+         WHERE session_id = $1
+         UNION
+         SELECT item_code, item_name, unit_code
+         FROM public.wms_stocktake_pending
+         WHERE session_id = $1
        )
        SELECT
-         COALESCE(c.item_code, ss.item_code) AS item_code,
-         COALESCE(c.item_name, ss.item_name) AS item_name,
-         COALESCE(c.unit_code, ss.unit_code) AS unit_code,
-         COALESCE(c.counted_qty, 0)::text    AS counted_qty,
-         COALESCE(ss.snapshot_qty, 0)::text  AS sml_qty
-       FROM counted c
-       FULL OUTER JOIN public.wms_stocktake_snapshot ss
-         ON ss.item_code = c.item_code AND ss.session_id = $1`,
+         u.item_code                          AS item_code,
+         COALESCE(c.item_name, u.item_name)   AS item_name,
+         COALESCE(c.unit_code, u.unit_code)   AS unit_code,
+         COALESCE(c.counted_qty, 0)::text     AS counted_qty,
+         COALESCE(ss.snapshot_qty, 0)::text   AS sml_qty,
+         COALESCE(p.pending_qty, 0)::text     AS pending_qty
+       FROM (
+         SELECT item_code, MAX(item_name) AS item_name, MAX(unit_code) AS unit_code
+         FROM universe
+         WHERE item_code IS NOT NULL
+         GROUP BY item_code
+       ) u
+       LEFT JOIN counted c
+         ON c.item_code = u.item_code
+       LEFT JOIN public.wms_stocktake_snapshot ss
+         ON ss.item_code = u.item_code AND ss.session_id = $1
+       LEFT JOIN public.wms_stocktake_pending p
+         ON p.item_code = u.item_code AND p.session_id = $1`,
       [sid],
     ),
     query<LabelStat>(
@@ -149,7 +183,60 @@ export default async function SessionSummaryPage({
        ORDER BY line_count DESC`,
       [sid],
     ),
+    query<PendingBillLine>(
+      `SELECT
+         pb.doc_no,
+         pb.trans_flag,
+         t.doc_date::text AS doc_date,
+         t.cust_code,
+         d.item_code,
+         d.item_name,
+         d.unit_code,
+         d.qty::text AS qty
+       FROM public.wms_stocktake_pending_bill pb
+       JOIN public.ic_trans t
+         ON t.doc_no = pb.doc_no AND t.trans_flag = pb.trans_flag
+       JOIN public.ic_trans_detail d
+         ON d.doc_no = pb.doc_no AND d.trans_flag = pb.trans_flag
+       WHERE pb.session_id = $1
+         AND d.wh_code = $2
+         AND (d.status = 0 OR d.status IS NULL)
+         AND d.item_code IS NOT NULL
+         AND d.item_code <> ''
+       ORDER BY t.doc_date DESC, pb.doc_no, d.item_code`,
+      [sid, info.wh_code],
+    ),
   ]);
+
+  const billGroups: Array<{
+    doc_no: string;
+    trans_flag: number;
+    doc_date: string | null;
+    cust_code: string | null;
+    lines: PendingBillLine[];
+    total_qty: number;
+  }> = [];
+  {
+    const idx = new Map<string, (typeof billGroups)[number]>();
+    for (const l of pendingLines) {
+      const key = `${l.doc_no}::${l.trans_flag}`;
+      let g = idx.get(key);
+      if (!g) {
+        g = {
+          doc_no: l.doc_no,
+          trans_flag: l.trans_flag,
+          doc_date: l.doc_date,
+          cust_code: l.cust_code,
+          lines: [],
+          total_qty: 0,
+        };
+        idx.set(key, g);
+        billGroups.push(g);
+      }
+      g.lines.push(l);
+      g.total_qty += Number.parseFloat(l.qty) || 0;
+    }
+  }
 
   const labelStat = labelStatRows[0] ?? {
     label_count: 0,
@@ -157,9 +244,12 @@ export default async function SessionSummaryPage({
     total_lines: 0,
   };
 
-  // Aggregate
+  // Aggregate — the reference balance is SML + pending shipments
+  // (goods deducted from SML but still physically in the warehouse).
   let countedTotal = 0;
   let smlTotal = 0;
+  let pendingTotal = 0;
+  let referenceTotal = 0;
   let matched = 0;
   let positiveVariance = 0;
   let negativeVariance = 0;
@@ -169,19 +259,28 @@ export default async function SessionSummaryPage({
   let negativeQty = 0;
   let onlyCountedQty = 0;
   let onlySmlQty = 0;
-  const enriched: Array<VarianceRow & { variance: number; absVar: number }> =
-    [];
+  const enriched: Array<
+    VarianceRow & {
+      reference_qty: number;
+      variance: number;
+      absVar: number;
+    }
+  > = [];
   for (const r of rows) {
     const c = Number.parseFloat(r.counted_qty) || 0;
     const s = Number.parseFloat(r.sml_qty) || 0;
-    const v = c - s;
+    const p = Number.parseFloat(r.pending_qty) || 0;
+    const ref = s + p;
+    const v = c - ref;
     countedTotal += c;
     smlTotal += s;
+    pendingTotal += p;
+    referenceTotal += ref;
     if (v === 0) matched++;
-    else if (c > 0 && s === 0) {
+    else if (c > 0 && ref === 0) {
       onlyCounted++;
       onlyCountedQty += v;
-    } else if (s > 0 && c === 0) {
+    } else if (ref > 0 && c === 0) {
       onlySml++;
       onlySmlQty += v;
     } else if (v > 0) {
@@ -191,7 +290,7 @@ export default async function SessionSummaryPage({
       negativeVariance++;
       negativeQty += v;
     }
-    enriched.push({ ...r, variance: v, absVar: Math.abs(v) });
+    enriched.push({ ...r, reference_qty: ref, variance: v, absVar: Math.abs(v) });
   }
 
   const totalItems = rows.length;
@@ -219,23 +318,39 @@ export default async function SessionSummaryPage({
       `}</style>
 
       <div className="print-page mx-auto w-full max-w-5xl space-y-4">
-        <div className="no-print flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-card ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+        <nav className="no-print flex flex-wrap items-center gap-2 text-sm">
+          <Link href="/stocktake" className={stNavLink}>
+            ກວດນັບສິນຄ້າ
+          </Link>
+          <ChevronRightIcon className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
+          <Link href={`/stocktake/${sid}`} className={stNavLink}>
+            <span className="font-mono">{info.session_code}</span>
+          </Link>
+          <ChevronRightIcon className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
+          <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            ສະຫຼຸບ
+          </span>
+        </nav>
+
+        <div className="no-print flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200/70 bg-white/90 p-4 backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/80">
           <div>
-            <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-              ລາຍງານສະຫຼຸບການກວດນັບ
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
+              ລາຍງານ
+            </p>
+            <div className="mt-0.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+              ສະຫຼຸບການກວດນັບ
             </div>
-            <div className="text-xs text-zinc-500">{info.session_code}</div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link
               href={`/stocktake/${sid}`}
-              className="rounded-lg bg-zinc-100 px-3.5 py-2 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
               ← ກັບໄປຮອບ
             </Link>
             <Link
               href={`/stocktake/${sid}/report`}
-              className="rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
               ລາຍລະອຽດປຽບທຽບ
             </Link>
@@ -344,20 +459,31 @@ export default async function SessionSummaryPage({
             />
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
             <Stat
               label="ນັບໄດ້ລວມ"
               value={formatQty(countedTotal)}
               accent="indigo"
             />
-            <Stat label="SML ລວມ" value={formatQty(smlTotal)} />
+            <Stat label="SML" value={formatQty(smlTotal)} />
+            <Stat
+              label="ບິນຄ້າງຈ່າຍ"
+              value={`+${formatQty(pendingTotal)}`}
+              accent="amber"
+              sub="(ບວກກັບ SML)"
+            />
+            <Stat
+              label="ຍອດອ້າງອີງ"
+              value={formatQty(referenceTotal)}
+              sub="SML + ຄ້າງ"
+            />
             <Stat
               label="ສ່ວນຕ່າງລວມ (net)"
-              value={`${countedTotal - smlTotal > 0 ? "+" : ""}${formatQty(countedTotal - smlTotal)}`}
+              value={`${countedTotal - referenceTotal > 0 ? "+" : ""}${formatQty(countedTotal - referenceTotal)}`}
               accent={
-                Math.abs(countedTotal - smlTotal) < 0.0001
+                Math.abs(countedTotal - referenceTotal) < 0.0001
                   ? "neutral"
-                  : countedTotal - smlTotal > 0
+                  : countedTotal - referenceTotal > 0
                     ? "emerald"
                     : "red"
               }
@@ -381,31 +507,31 @@ export default async function SessionSummaryPage({
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                 <Row
-                  label="ກົງກັນ (qty ນັບໄດ້ = SML)"
+                  label="ກົງກັນ (ນັບໄດ້ = SML + ຄ້າງ)"
                   count={matched}
                   qty={0}
                   tone="neutral"
                 />
                 <Row
-                  label="ນັບໄດ້ສູງກວ່າ SML"
+                  label="ນັບໄດ້ສູງກວ່າຍອດອ້າງອີງ"
                   count={positiveVariance}
                   qty={positiveQty}
                   tone="emerald"
                 />
                 <Row
-                  label="ນັບໄດ້ຕ່ຳກວ່າ SML"
+                  label="ນັບໄດ້ຕ່ຳກວ່າຍອດອ້າງອີງ"
                   count={negativeVariance}
                   qty={negativeQty}
                   tone="red"
                 />
                 <Row
-                  label="ນັບໄດ້ ແຕ່ບໍ່ມີໃນ SML"
+                  label="ນັບໄດ້ ແຕ່ບໍ່ມີໃນຍອດອ້າງອີງ"
                   count={onlyCounted}
                   qty={onlyCountedQty}
                   tone="emerald"
                 />
                 <Row
-                  label="ໃນ SML ແຕ່ບໍ່ໄດ້ນັບ"
+                  label="ໃນຍອດອ້າງອີງ ແຕ່ບໍ່ໄດ້ນັບ"
                   count={onlySml}
                   qty={onlySmlQty}
                   tone="red"
@@ -418,8 +544,8 @@ export default async function SessionSummaryPage({
                     {totalItems}
                   </td>
                   <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-                    {countedTotal - smlTotal > 0 ? "+" : ""}
-                    {formatQty(countedTotal - smlTotal)}
+                    {countedTotal - referenceTotal > 0 ? "+" : ""}
+                    {formatQty(countedTotal - referenceTotal)}
                   </td>
                 </tr>
               </tfoot>
@@ -442,6 +568,8 @@ export default async function SessionSummaryPage({
                     <th className="px-3 py-2 text-left">ຊື່</th>
                     <th className="px-3 py-2 text-right">ນັບໄດ້</th>
                     <th className="px-3 py-2 text-right">SML</th>
+                    <th className="px-3 py-2 text-right">ຄ້າງ</th>
+                    <th className="px-3 py-2 text-right">ອ້າງອີງ</th>
                     <th className="px-3 py-2 text-right">ສ່ວນຕ່າງ</th>
                     <th className="px-3 py-2 text-left">ຫົວໜ່ວຍ</th>
                   </tr>
@@ -466,6 +594,13 @@ export default async function SessionSummaryPage({
                       </td>
                       <td className="px-3 py-1.5 text-right font-mono tabular-nums">
                         {formatQty(Number.parseFloat(r.sml_qty) || 0)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums text-amber-700 dark:text-amber-400">
+                        {Number.parseFloat(r.pending_qty) > 0 ? "+" : ""}
+                        {formatQty(Number.parseFloat(r.pending_qty) || 0)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums">
+                        {formatQty(r.reference_qty)}
                       </td>
                       <td
                         className={`px-3 py-1.5 text-right font-mono font-bold tabular-nums ${
@@ -497,6 +632,94 @@ export default async function SessionSummaryPage({
                 </Link>
               </div>
             )}
+          </section>
+        )}
+
+        {/* Pending bills breakdown */}
+        {billGroups.length > 0 && (
+          <section className="summary-card overflow-hidden rounded-2xl bg-white p-6 shadow-card ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+            <div className="mb-4 flex items-baseline justify-between gap-2">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                ບິນຄ້າງຈ່າຍທີ່ຮວມໃນຍອດອ້າງອີງ
+              </h2>
+              <span className="text-xs text-zinc-500">
+                {billGroups.length.toLocaleString("en-US")} ບິນ ·{" "}
+                {pendingLines.length.toLocaleString("en-US")} ລາຍການ
+              </span>
+            </div>
+            <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+              <table className="w-full text-xs">
+                <thead className="bg-zinc-50 uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/40">
+                  <tr>
+                    <th className="px-3 py-2 text-left">doc_no</th>
+                    <th className="px-3 py-2 text-left">flag</th>
+                    <th className="px-3 py-2 text-left">ວັນທີ</th>
+                    <th className="px-3 py-2 text-left">ລູກຄ້າ</th>
+                    <th className="px-3 py-2 text-left">ສິນຄ້າ</th>
+                    <th className="px-3 py-2 text-right">qty</th>
+                    <th className="px-3 py-2 text-left">ຫົວໜ່ວຍ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {billGroups.flatMap((g) => [
+                    <tr
+                      key={`${g.doc_no}::${g.trans_flag}::header`}
+                      className="bg-amber-50/40 dark:bg-amber-950/15"
+                    >
+                      <td className="px-3 py-1.5 font-mono font-bold text-zinc-900 dark:text-zinc-50">
+                        {g.doc_no}
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-500">
+                        {g.trans_flag}
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-600 dark:text-zinc-300">
+                        {g.doc_date ?? "—"}
+                      </td>
+                      <td
+                        className="px-3 py-1.5 text-zinc-600 dark:text-zinc-300"
+                        colSpan={2}
+                      >
+                        {g.cust_code ?? "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono font-bold tabular-nums text-amber-700 dark:text-amber-400">
+                        +{formatQty(g.total_qty)}
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-400">
+                        {g.lines.length} ລາຍ
+                      </td>
+                    </tr>,
+                    ...g.lines.map((l, i) => (
+                      <tr
+                        key={`${g.doc_no}::${g.trans_flag}::${l.item_code}::${i}`}
+                      >
+                        <td className="px-3 py-1" colSpan={4} />
+                        <td className="px-3 py-1">
+                          <div className="flex flex-col">
+                            <span className="font-mono font-semibold">
+                              {l.item_code}
+                            </span>
+                            {l.item_name && (
+                              <span
+                                className="max-w-[300px] truncate text-zinc-500"
+                                title={l.item_name}
+                              >
+                                {l.item_name}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-1 text-right font-mono tabular-nums text-amber-700 dark:text-amber-400">
+                          +{formatQty(Number.parseFloat(l.qty) || 0)}
+                        </td>
+                        <td className="px-3 py-1 text-zinc-500">
+                          {l.unit_code ?? ""}
+                        </td>
+                      </tr>
+                    )),
+                  ])}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
 

@@ -11,6 +11,14 @@ import {
   remove as removeFromQueue,
 } from "@/lib/offline-queue";
 import { lineConflictsSlot } from "@/lib/stocktake-count-slot";
+import {
+  CheckIcon,
+  ChevronRightIcon,
+  EyeIcon,
+  EyeOffIcon,
+  MapPinIcon,
+  SearchIcon,
+} from "@/components/ui/Icons";
 import type { CountedLine, LocationOption, RackOption } from "./page";
 
 type ItemHit = {
@@ -214,20 +222,15 @@ export default function Counter({
     setSelected(hit);
     setHits([]);
     setSearch("");
-
     setTimeout(() => qtyInputRef.current?.focus(), 50);
   }
 
   function handleScan(text: string) {
     setScannerOpen(false);
-
-
     const code = text.trim();
     setSelected(null);
     setSearch(code);
     vibrate(50);
-
-
     setTimeout(() => searchInputRef.current?.focus(), 50);
   }
 
@@ -238,6 +241,7 @@ export default function Counter({
     setNote("");
     setTimeout(() => searchInputRef.current?.focus(), 50);
   }
+
   async function addLine(e?: React.FormEvent) {
     e?.preventDefault();
     if (!selected) { showToast("err", "ກະລຸນາເລືອກສິນຄ້າ"); return; }
@@ -374,332 +378,496 @@ export default function Counter({
 
   const totalQty = useMemo(() => lines.reduce((s, l) => s + (Number.parseFloat(l.qty) || 0), 0), [lines]);
 
-  const sessionStatusLabel =
+  const statusLabel =
     sessionStatus === "open" ? "ເປີດ" : sessionStatus === "pending_approval" ? "ລໍຖ້າ" : "ປິດ";
+  const statusChip =
+    sessionStatus === "open"
+      ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:ring-emerald-900"
+      : sessionStatus === "pending_approval"
+        ? "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:ring-amber-900"
+        : "bg-zinc-100 text-zinc-600 ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700";
 
   return (
-    <div className="flex min-h-[100dvh] flex-col rounded-2xl bg-gradient-to-b from-white to-slate-50/95 font-sans text-slate-900 selection:bg-indigo-100 dark:from-slate-900 dark:to-slate-950 dark:text-slate-100 dark:selection:bg-indigo-950 dark:selection:text-indigo-100 lg:min-h-0 lg:rounded-xl">
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80 lg:static lg:shrink-0 lg:bg-white dark:lg:bg-slate-900">
-        <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3 sm:gap-4 lg:max-w-none lg:px-8 lg:py-4">
+    <div className="-mx-6 -my-6 flex min-h-[calc(100dvh-3.5rem)] flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 lg:min-h-0">
+      {/* ========== STICKY HEADER ========== */}
+      <header className="sticky top-14 z-30 border-b border-zinc-200/70 bg-white/85 backdrop-blur-md dark:border-zinc-800/70 dark:bg-zinc-950/85">
+        <div className="mx-auto flex w-full max-w-5xl items-center gap-2 px-3 py-2 sm:px-4">
           <Link
             href={`/stocktake/${sessionId}`}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 active:scale-95 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 lg:h-10 lg:w-10"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 active:scale-95 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
             aria-label="ກັບໄປຮອບກວດນັບ"
           >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="m15 18-6-6 6-6" />
-            </svg>
+            <ChevronRightIcon className="h-4 w-4 rotate-180" />
           </Link>
+
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-bold tracking-tight lg:text-xl">{labelCode}</h1>
-            <p className="truncate text-[10px] font-medium uppercase tracking-wider text-slate-500 lg:text-xs lg:normal-case lg:tracking-normal">
-              <span className="lg:hidden">{sessionCode} • {whCode}</span>
-              <span className="hidden lg:inline">
-                {sessionName ?? sessionCode}
-                {whName ? ` · ${whCode} (${whName})` : ` · ${whCode}`}
+            <div className="flex items-center gap-1.5">
+              <h1 className="truncate text-base font-bold leading-tight tracking-tight sm:text-lg">
+                {labelCode}
+              </h1>
+              <span
+                className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ${statusChip}`}
+              >
+                ● {statusLabel}
+                {blind && " ·B"}
               </span>
+              {!online && (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-700 ring-1 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:ring-rose-900">
+                  <span className="h-1 w-1 animate-pulse rounded-full bg-rose-500" />
+                  OFF
+                </span>
+              )}
+            </div>
+            <p className="truncate text-[10px] text-zinc-500 dark:text-zinc-400 sm:text-xs">
+              {sessionCode} · {whCode}
+              {whName ? ` (${whName})` : ""}
+              {sessionName && ` · ${sessionName}`}
             </p>
           </div>
-          <span
-            className={`hidden shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 lg:inline-flex ${
-              sessionOpen
-                ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-300 dark:ring-emerald-900"
-                : "bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700"
-            }`}
-          >
-            ● {sessionStatusLabel}
-            {blind && " · Blind"}
-          </span>
-          <div className="shrink-0 text-right">
-            <div className="text-xl font-black tabular-nums text-indigo-600 dark:text-indigo-400 lg:text-2xl">{formatQty(totalQty)}</div>
-            <div className="text-[10px] font-bold uppercase text-slate-400">{lines.length} ລາຍການ</div>
+
+          <div className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1 text-right text-white shadow-sm shadow-indigo-500/25">
+            <div className="font-mono text-base font-black leading-none tabular-nums sm:text-lg">
+              {formatQty(totalQty)}
+            </div>
+            <div className="mt-0.5 text-[8px] font-bold uppercase tracking-wider opacity-90">
+              {lines.length} ລາຍ
+            </div>
           </div>
         </div>
 
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 pb-3 lg:max-w-none lg:px-8 lg:pb-4">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        {/* Sub-row: chips (pinned/blind toggle) */}
+        {(labelPinned || canRevealBalance) && (
+          <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-1.5 px-3 pb-2 sm:px-4">
             {labelPinned && (
-              <span className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-400">
-                <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={3}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                <span className="truncate">{labelRackCode}{labelLocationCode && ` / ${labelLocationCode}`}</span>
+              <span className="inline-flex max-w-[60%] items-center gap-1 truncate rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-900">
+                <MapPinIcon className="h-2.5 w-2.5 shrink-0" />
+                <span className="truncate">
+                  {labelRackCode}
+                  {labelLocationCode && ` / ${labelLocationCode}`}
+                </span>
               </span>
             )}
-            <button
-              type="button"
-              onClick={toggleBlind}
-              disabled={!canRevealBalance || !sessionOpen || toggling}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-400 lg:py-1.5"
-            >
-              {blind ? "🙈 Blind" : "👁️ ສະແດງຍອດ"}
-              {canRevealBalance && <span className="text-indigo-500 underline decoration-indigo-500/30">ປ່ຽນ</span>}
-            </button>
+            {canRevealBalance && (
+              <button
+                type="button"
+                onClick={toggleBlind}
+                disabled={!sessionOpen || toggling}
+                className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-700 transition hover:bg-zinc-200 disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+              >
+                {blind ? (
+                  <EyeOffIcon className="h-2.5 w-2.5" />
+                ) : (
+                  <EyeIcon className="h-2.5 w-2.5" />
+                )}
+                {blind ? "Blind" : "ສະແດງຍອດ"}
+              </button>
+            )}
           </div>
-          {!online && (
-            <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-bold text-rose-600 dark:text-rose-400">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-              OFFLINE
-            </div>
-          )}
-        </div>
+        )}
       </header>
 
+      {/* ========== MAIN ========== */}
       <main
         className={
           sessionOpen
-            ? "mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-5 pb-28 sm:py-6 sm:pb-32 lg:max-w-none lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,400px)] lg:gap-0 lg:px-8 lg:py-6 lg:pb-8 xl:grid-cols-[minmax(0,1fr)_420px]"
-            : "mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-5 pb-10 sm:px-6 sm:py-6 lg:max-w-3xl lg:px-8"
+            ? "mx-auto w-full max-w-5xl flex-1 px-3 pb-24 pt-3 sm:px-4 sm:pb-28 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] lg:gap-5 lg:pb-6"
+            : "mx-auto w-full max-w-3xl flex-1 px-3 py-3 sm:px-4 sm:py-4"
         }
       >
+        {/* ===== LEFT: COUNTING ===== */}
         {sessionOpen && (
-        <div className="min-w-0 lg:border-r lg:border-slate-200 lg:pr-8 dark:lg:border-slate-800">
-        {showReEntryWarning && (
-          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30 lg:mb-6">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3}><path d="M12 9v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 18c-.77 1.333.192 3 1.732 3z"/></svg>
-            </div>
-            <div className="flex-1 text-xs font-medium text-amber-800 dark:text-amber-200">
-              <p className="font-bold">ປ້າຍນີ້ມີຂໍ້ມູນແລ້ວ {initialLines.length} ລາຍການ</p>
-              <p className="mt-0.5 opacity-80">ການນັບໃໝ່ຈະຖືກເພີ່ມຕໍ່ທ້າຍ. ກວດສອບລາຍການເກົ່າຢູ່ດ້ານຂ້າງ.</p>
-            </div>
-            <button type="button" onClick={() => setShowReEntryWarning(false)} className="text-amber-400 hover:text-amber-600">✕</button>
-          </div>
-        )}
-
-          <div className="space-y-5 lg:space-y-5">
-            <div className="group relative isolate z-20 mb-1 sm:mb-2">
-              <div className="pointer-events-none absolute inset-y-0 left-4 z-10 flex items-center sm:left-5">
-                <svg viewBox="0 0 24 24" className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500" fill="none" stroke="currentColor" strokeWidth={2.5}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          </div>
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); if (selected) setSelected(null); }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    if (!selected && hits.length === 1) selectHit(hits[0]);
-                    else if (selected && qty) addLine();
-                  }
-                }}
-                placeholder="ຄົ້ນຫາລະຫັດສິນຄ້າ ຫຼື COM..."
-                className="relative z-0 h-14 w-full rounded-2xl border-none bg-white pl-11 pr-[3.25rem] text-base font-medium shadow-lg shadow-slate-200/40 ring-1 ring-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 sm:h-16 sm:rounded-3xl sm:pl-12 sm:pr-20 sm:text-lg sm:shadow-xl sm:shadow-slate-200/50 dark:bg-slate-900 dark:shadow-none dark:ring-slate-800 lg:h-14 lg:rounded-xl lg:pr-14 lg:text-sm lg:shadow-sm"
-              />
-              <button
-                type="button"
-                title="ສະແກນບາໂຄດ"
-                onClick={() => setScannerOpen(true)}
-                className="absolute inset-y-1.5 right-1.5 z-20 flex w-11 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/25 transition active:scale-95 active:bg-indigo-700 sm:inset-y-2 sm:right-2 sm:w-12 sm:rounded-2xl sm:shadow-lg lg:inset-y-1.5 lg:w-11 lg:rounded-lg"
-        >
-                <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 7V5a2 2 0 0 1 2-2h2m10 0h2a2 2 0 0 1 2 2v2m0 10v2a2 2 0 0 1-2 2h-2m-10 0H5a2 2 0 0 1-2-2v-2M7 12h10M8 8h.01M16 8h.01M8 16h.01M16 16h.01"/></svg>
-              </button>
-
-              {(hits.length > 0 || searching) && !selected && (
-                <div className="absolute inset-x-0 top-[calc(100%+0.375rem)] z-[60] max-h-80 overflow-auto rounded-3xl bg-white p-2 shadow-2xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
-                  {searching && <div className="p-4 text-center text-sm font-medium text-slate-400">ກຳລັງຄົ້ນຫາ...</div>}
-                  {hits.map((h) => (
-                    <button
-                      key={h.item_code}
-                      onClick={() => selectHit(h)}
-                      className="flex w-full items-center gap-4 rounded-2xl p-4 text-left transition hover:bg-slate-50 active:bg-slate-100 dark:hover:bg-slate-800 dark:active:bg-slate-800/50"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="font-mono text-sm font-bold text-indigo-600 dark:text-indigo-400">{h.item_code}</div>
-                        <div className="truncate text-sm font-medium">{h.item_name}</div>
-        </div>
-                      <div className="text-right">
-                        {showBalance && h.balance_qty !== null && (
-                          <div className="font-mono text-sm font-black">{formatQty(h.balance_qty)}</div>
-      )}
-                        <div className="text-[10px] font-bold text-slate-400">{h.unit_code}</div>
-    </div>
-                    </button>
-                  ))}
+          <section className="min-w-0">
+            {showReEntryWarning && (
+              <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs dark:border-amber-900/50 dark:bg-amber-950/30">
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
+                  !
+                </span>
+                <div className="flex-1 text-amber-900 dark:text-amber-200">
+                  <span className="font-semibold">
+                    ປ້າຍນີ້ມີ {initialLines.length} ລາຍການແລ້ວ
+                  </span>
+                  <span className="opacity-80"> — ການນັບໃໝ່ຈະຖືກເພີ່ມຕໍ່ທ້າຍ</span>
                 </div>
-              )}
-            </div>
-
-            {!labelPinned && (racks.length > 0 || locations.length > 0) && (
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <select value={rackCode} onChange={(e) => setRackCode(e.target.value)} className="min-h-11 flex-1 rounded-xl bg-white px-3 py-2.5 text-xs font-bold shadow-sm ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:ring-slate-800 sm:rounded-2xl sm:py-2 lg:min-h-0">
-                  <option value="">RACK: —</option>
-                  {racks.map((r) => <option key={r.code} value={r.code}>{r.code}</option>)}
-                </select>
-                <select value={locationCode} onChange={(e) => setLocationCode(e.target.value)} className="min-h-11 flex-1 rounded-xl bg-white px-3 py-2.5 text-xs font-bold shadow-sm ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:ring-slate-800 sm:rounded-2xl sm:py-2 lg:min-h-0">
-                  <option value="">LOC: —</option>
-                  {availableLocations.map((l) => <option key={l.code} value={l.code}>{l.code}</option>)}
-                </select>
-              </div>
-            )}
-
-            {selected && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 rounded-2xl bg-indigo-600 p-5 text-white shadow-xl shadow-indigo-500/20 dark:bg-indigo-500 sm:rounded-3xl sm:p-6 lg:rounded-xl lg:p-5">
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0">
-                    <h2 className="font-mono text-xs font-bold opacity-80">{selected.item_code}</h2>
-                    <h3 className="mt-1 truncate text-lg font-bold leading-tight">{selected.item_name}</h3>
-                  </div>
-                  <button onClick={clearSelection} className="rounded-full bg-white/20 p-2 transition hover:bg-white/30">
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3}><path d="M18 6 6 18M6 6l12 12"/></svg>
-                  </button>
-                </div>
-
-                <div className="my-4 sm:my-6 lg:my-4">
-                  <div className="relative">
-                    <input
-                      ref={qtyInputRef}
-                      type="number"
-                      inputMode="decimal"
-                      value={qty}
-                      onChange={(e) => setQty(e.target.value)}
-                      placeholder="0.00"
-                      className="w-full bg-transparent text-center font-mono text-5xl font-black tabular-nums tracking-tighter text-white placeholder:text-white/30 focus:outline-none sm:text-6xl md:text-7xl lg:text-5xl xl:text-6xl"
-                    />
-                    <div className="mt-2 text-center text-xs font-bold uppercase tracking-widest opacity-80">{selected.unit_code ?? "ຈຳນວນ"}</div>
-                  </div>
-                </div>
-
-                {showBalance && selected.balance_qty !== null && (
-                  <div className="rounded-2xl bg-black/10 px-4 py-3 text-center text-xs font-bold">
-                    SML Balance: {formatQty(selected.balance_qty)} {selected.unit_code}
-                  </div>
-                )}
-
-                <div className="mt-3 sm:mt-4">
-                  <input
-                    type="text"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="ບັນທຶກເພີ່ມເຕີມ..."
-                    className="w-full rounded-xl bg-white/10 px-4 py-3 text-sm font-medium placeholder:text-white/50 focus:bg-white/20 focus:outline-none sm:rounded-2xl"
-                  />
-                </div>
-
                 <button
                   type="button"
-                  onClick={() => addLine()}
-                  disabled={submitting || !qty}
-                  className="mt-5 hidden h-12 w-full items-center justify-center rounded-xl bg-white text-base font-black text-indigo-700 shadow-md transition hover:bg-slate-50 disabled:opacity-50 dark:bg-white dark:text-indigo-800 lg:flex"
+                  onClick={() => setShowReEntryWarning(false)}
+                  className="shrink-0 text-amber-500 hover:text-amber-700 dark:text-amber-400"
+                  aria-label="ປິດ"
                 >
-                  {submitting ? "ກຳລັງບັນທຶກ..." : "ຢືນຢັນການນັບ"}
+                  ✕
                 </button>
               </div>
             )}
-          </div>
-        </div>
+
+            <div className="space-y-3">
+              {/* Search input */}
+              <div className="relative isolate z-20">
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    if (selected) setSelected(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      if (!selected && hits.length === 1) selectHit(hits[0]);
+                      else if (selected && qty) addLine();
+                    }
+                  }}
+                  placeholder="ຄົ້ນຫາລະຫັດສິນຄ້າ ຫຼື COM..."
+                  className="relative z-0 h-11 w-full rounded-xl border-none bg-white pl-9 pr-12 text-sm font-medium shadow-sm ring-1 ring-zinc-200 transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:bg-zinc-900 dark:ring-zinc-800"
+                />
+                <button
+                  type="button"
+                  title="ສະແກນບາໂຄດ"
+                  onClick={() => setScannerOpen(true)}
+                  className="absolute inset-y-1 right-1 z-20 flex w-9 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm transition hover:bg-indigo-500 active:scale-95"
+                  aria-label="ສະແກນບາໂຄດ"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path d="M3 7V5a2 2 0 0 1 2-2h2m10 0h2a2 2 0 0 1 2 2v2m0 10v2a2 2 0 0 1-2 2h-2m-10 0H5a2 2 0 0 1-2-2v-2M7 12h10M8 8h.01M16 8h.01M8 16h.01M16 16h.01" />
+                  </svg>
+                </button>
+
+                {/* Dropdown */}
+                {(hits.length > 0 || searching) && !selected && (
+                  <div className="absolute inset-x-0 top-[calc(100%+0.4rem)] z-[60] max-h-72 overflow-auto rounded-xl bg-white p-1 shadow-2xl ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+                    {searching && (
+                      <div className="p-3 text-center text-xs font-medium text-zinc-400">
+                        ກຳລັງຄົ້ນຫາ...
+                      </div>
+                    )}
+                    {hits.map((h) => (
+                      <button
+                        key={h.item_code}
+                        onClick={() => selectHit(h)}
+                        className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800/70 dark:active:bg-zinc-800"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-mono text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                            {h.item_code}
+                          </div>
+                          <div className="mt-0.5 truncate text-xs font-medium">
+                            {h.item_name}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {showBalance && h.balance_qty !== null && (
+                            <div className="font-mono text-xs font-black tabular-nums">
+                              {formatQty(h.balance_qty)}
+                            </div>
+                          )}
+                          <div className="text-[9px] font-bold uppercase text-zinc-400">
+                            {h.unit_code}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Rack / Location selectors */}
+              {!labelPinned && (racks.length > 0 || locations.length > 0) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="mb-0.5 block pl-0.5 text-[9px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Rack
+                    </span>
+                    <select
+                      value={rackCode}
+                      onChange={(e) => setRackCode(e.target.value)}
+                      className="h-9 w-full rounded-lg bg-white px-2 text-xs font-semibold shadow-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-900 dark:ring-zinc-800"
+                    >
+                      <option value="">— ບໍ່ລະບຸ —</option>
+                      {racks.map((r) => (
+                        <option key={r.code} value={r.code}>
+                          {r.code}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-0.5 block pl-0.5 text-[9px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Location
+                    </span>
+                    <select
+                      value={locationCode}
+                      onChange={(e) => setLocationCode(e.target.value)}
+                      className="h-9 w-full rounded-lg bg-white px-2 text-xs font-semibold shadow-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-900 dark:ring-zinc-800"
+                    >
+                      <option value="">— ບໍ່ລະບຸ —</option>
+                      {availableLocations.map((l) => (
+                        <option key={l.code} value={l.code}>
+                          {l.code}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+
+              {/* Selected item card */}
+              {selected && (
+                <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-700 text-white shadow-lg shadow-indigo-600/25 dark:from-indigo-500 dark:to-indigo-600">
+                  <div className="flex items-start justify-between gap-2 px-4 pb-1 pt-3">
+                    <div className="min-w-0">
+                      <div className="font-mono text-[10px] font-bold uppercase tracking-wider opacity-80">
+                        {selected.item_code}
+                      </div>
+                      <h3 className="mt-0.5 text-sm font-bold leading-tight">
+                        {selected.item_name}
+                      </h3>
+                    </div>
+                    <button
+                      onClick={clearSelection}
+                      className="-mr-1 -mt-1 shrink-0 rounded-full bg-white/15 p-1.5 transition hover:bg-white/25 active:scale-95"
+                      aria-label="ຍົກເລີກ"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                      >
+                        <path d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="px-4 pb-3">
+                    <div className="relative py-1">
+                      <input
+                        ref={qtyInputRef}
+                        type="number"
+                        inputMode="decimal"
+                        value={qty}
+                        onChange={(e) => setQty(e.target.value)}
+                        placeholder="0"
+                        className="w-full bg-transparent text-center font-mono text-5xl font-black tabular-nums tracking-tight text-white placeholder:text-white/30 focus:outline-none"
+                      />
+                      <div className="mt-0.5 text-center text-[10px] font-bold uppercase tracking-[0.18em] opacity-80">
+                        {selected.unit_code ?? "ຈຳນວນ"}
+                      </div>
+                    </div>
+
+                    {showBalance && selected.balance_qty !== null && (
+                      <div className="mt-2 flex items-center justify-center gap-2 rounded-lg bg-black/15 px-3 py-1.5 text-[11px] font-bold">
+                        <span className="opacity-80">SML:</span>
+                        <span className="font-mono tabular-nums">
+                          {formatQty(selected.balance_qty)} {selected.unit_code}
+                        </span>
+                      </div>
+                    )}
+
+                    <input
+                      type="text"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="ບັນທຶກ..."
+                      className="mt-2 w-full rounded-lg bg-white/10 px-3 py-2 text-xs font-medium placeholder:text-white/50 focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
+                    />
+
+                    {/* Desktop confirm (mobile uses fixed bar) */}
+                    <button
+                      type="button"
+                      onClick={() => addLine()}
+                      disabled={submitting || !qty}
+                      className="mt-3 hidden h-10 w-full items-center justify-center gap-2 rounded-lg bg-white text-sm font-bold text-indigo-700 shadow-sm transition hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50 lg:flex"
+                    >
+                      <CheckIcon className="h-4 w-4" />
+                      {submitting ? "ກຳລັງບັນທຶກ..." : "ຢືນຢັນການນັບ"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
         )}
 
+        {/* ===== RIGHT: COUNTED LINES ===== */}
         <aside
           className={
             sessionOpen
-              ? "mt-8 min-h-0 lg:mt-0 lg:flex lg:flex-col lg:pl-8 lg:pt-0"
-              : "mt-2 min-h-0 w-full lg:mt-0"
+              ? "mt-4 min-w-0 lg:mt-0 lg:flex lg:flex-col"
+              : "mt-1 min-h-0 w-full"
           }
         >
-          <div className="lg:sticky lg:top-0 lg:max-h-[min(100dvh-10rem,52rem)] lg:overflow-y-auto lg:overscroll-contain lg:pb-4 lg:pt-1">
-          <div className="mb-3 flex items-center justify-between px-1 sm:px-2 lg:px-0">
-            <h2 className="text-xs font-black uppercase tracking-widest text-slate-400">ລາຍການທີ່ນັບແລ້ວ</h2>
-            {pendingCount > 0 && (
-              <span className="text-[10px] font-black uppercase text-amber-500 animate-pulse">ລໍຖ້າ sync {pendingCount}...</span>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {lines.length === 0 ? (
-              <div className="rounded-3xl border-2 border-dashed border-slate-200 py-12 text-center dark:border-slate-800">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800">
-                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
-                </div>
-                <p className="text-sm font-bold text-slate-400">ຍັງບໍ່ມີການນັບ</p>
+          <div className="lg:sticky lg:top-32 lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto lg:overscroll-contain lg:pb-3">
+            <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
+              <h2 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                ລາຍການນັບແລ້ວ
+              </h2>
+              <div className="flex items-center gap-1.5">
+                <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                  {lines.length}
+                </span>
+                {pendingCount > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-900">
+                    <span className="h-1 w-1 animate-pulse rounded-full bg-amber-500" />
+                    Sync {pendingCount}
+                  </span>
+                )}
               </div>
-            ) : (
-              lines.map((l) => (
-                <div key={l.line_id} className="group relative overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md dark:bg-slate-900 dark:ring-slate-800">
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{l.item_code}</span>
-                        {l.line_id < 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[8px] font-black text-amber-700 dark:bg-amber-900/40">OFFLINE</span>}
-                      </div>
-                      <div className="mt-0.5 truncate text-sm font-bold">{l.item_name}</div>
-                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-bold text-slate-400">
-                        {(l.rack_code || l.location_code) && (
-                          <span className="flex items-center gap-1">📍 {l.rack_code ?? "—"} / {l.location_code ?? "—"}</span>
-                        )}
-                        {l.note && <span className="truncate italic">“{l.note}”</span>}
-                      </div>
-                    </div>
+            </div>
 
-                    <div className="text-right">
-                      {editingId === l.line_id ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            autoFocus
-                            value={editingQty}
-                            onChange={(e) => setEditingQty(e.target.value)}
-                            className="w-20 rounded-xl bg-slate-100 px-2 py-1 text-right font-mono text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:bg-slate-800"
-                          />
-                          <button onClick={() => saveEdit(l.line_id)} className="rounded-lg bg-indigo-600 p-1.5 text-white">
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7"/></svg>
-                          </button>
+            <div className="space-y-1.5">
+              {lines.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-zinc-200 py-8 text-center dark:border-zinc-800">
+                  <p className="text-xs font-semibold text-zinc-400">
+                    ຍັງບໍ່ມີການນັບ
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-zinc-400">
+                    ສະແກນ ຫຼື ຄົ້ນຫາສິນຄ້າເພື່ອນັບ
+                  </p>
+                </div>
+              ) : (
+                lines.map((l) => (
+                  <div
+                    key={l.line_id}
+                    className="group rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-zinc-200 transition hover:ring-zinc-300 dark:bg-zinc-900 dark:ring-zinc-800 dark:hover:ring-zinc-700"
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                            {l.item_code}
+                          </span>
+                          {l.line_id < 0 && (
+                            <span className="rounded bg-amber-100 px-1 py-0 text-[8px] font-bold uppercase text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                              Offline
+                            </span>
+                          )}
                         </div>
-                      ) : (
+                        <div className="truncate text-xs font-semibold leading-tight">
+                          {l.item_name}
+                        </div>
+                        {(l.rack_code || l.location_code || l.note) && (
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0 text-[10px] text-zinc-500 dark:text-zinc-400">
+                            {(l.rack_code || l.location_code) && (
+                              <span className="inline-flex items-center gap-0.5">
+                                <MapPinIcon className="h-2.5 w-2.5" />
+                                {l.rack_code ?? "—"}/{l.location_code ?? "—"}
+                              </span>
+                            )}
+                            {l.note && (
+                              <span className="truncate italic">
+                                &ldquo;{l.note}&rdquo;
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        {editingId === l.line_id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              autoFocus
+                              value={editingQty}
+                              onChange={(e) => setEditingQty(e.target.value)}
+                              className="w-16 rounded bg-zinc-100 px-1.5 py-1 text-right font-mono text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-800"
+                            />
+                            <button
+                              onClick={() => saveEdit(l.line_id)}
+                              className="rounded bg-indigo-600 p-1 text-white hover:bg-indigo-700"
+                              aria-label="ບັນທຶກ"
+                            >
+                              <CheckIcon className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            disabled={!sessionOpen}
+                            onClick={() => startEdit(l)}
+                            className="text-right transition active:scale-95 disabled:opacity-100"
+                          >
+                            <div className="font-mono text-base font-black leading-none tabular-nums text-zinc-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400">
+                              {formatQty(l.qty)}
+                            </div>
+                            <div className="mt-0.5 text-[9px] font-bold uppercase text-zinc-400">
+                              {l.unit_code}
+                            </div>
+                          </button>
+                        )}
+                      </div>
+
+                      {sessionOpen && editingId !== l.line_id && (
                         <button
-                          disabled={!sessionOpen}
-                          onClick={() => startEdit(l)}
-                          className="group/qty text-right transition active:scale-95 disabled:opacity-100"
+                          onClick={() => deleteLine(l.line_id)}
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-300 transition hover:bg-rose-50 hover:text-rose-500 dark:text-zinc-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-400"
+                          aria-label="ລຶບ"
                         >
-                          <div className="font-mono text-lg font-black leading-none text-slate-900 group-hover/qty:text-indigo-600 dark:text-white dark:group-hover/qty:text-indigo-400">{formatQty(l.qty)}</div>
-                          <div className="text-[10px] font-bold text-slate-400">{l.unit_code}</div>
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-3.5 w-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                          >
+                            <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                          </svg>
                         </button>
                       )}
                     </div>
-
-                    {sessionOpen && editingId !== l.line_id && (
-                      <button
-                        onClick={() => deleteLine(l.line_id)}
-                        className="ml-2 flex h-8 w-8 items-center justify-center rounded-xl text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-500/10"
-                      >
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                      </button>
-                    )}
                   </div>
-                </div>
-              ))
-            )}
-          </div>
+                ))
+              )}
+            </div>
           </div>
         </aside>
       </main>
 
+      {/* ========== MOBILE FIXED CONFIRM ========== */}
       {sessionOpen && selected && (
-        <div className="fixed inset-x-0 bottom-0 z-50 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] animate-in slide-in-from-bottom-full duration-300 lg:hidden">
-          <div className="mx-auto max-w-2xl">
-            <button
-              onClick={() => addLine()}
-              disabled={submitting || !qty}
-              className="group relative flex h-16 w-full items-center justify-center overflow-hidden rounded-3xl bg-indigo-600 text-lg font-black tracking-wide text-white shadow-2xl shadow-indigo-600/40 transition-all active:scale-[0.98] disabled:opacity-50 dark:bg-indigo-500"
-            >
-              <span className="relative z-10">{submitting ? "ກຳລັງບັນທຶກ..." : "ຢືນຢັນການນັບ"}</span>
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-500 group-hover:translate-x-full" />
-            </button>
-          </div>
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-200 bg-white/95 px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/95 lg:hidden">
+          <button
+            onClick={() => addLine()}
+            disabled={submitting || !qty}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-bold text-white shadow-md shadow-indigo-600/30 transition active:scale-[0.98] disabled:opacity-40"
+          >
+            <CheckIcon className="h-4 w-4" />
+            {submitting ? "ກຳລັງບັນທຶກ..." : "ຢືນຢັນການນັບ"}
+          </button>
         </div>
       )}
 
+      {/* ========== TOAST ========== */}
       {toast && (
-        <div className={`fixed left-1/2 top-24 z-[100] -translate-x-1/2 animate-in fade-in zoom-in duration-300`}>
-          <div className={`flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-bold text-white shadow-2xl ${toast.kind === "ok" ? "bg-emerald-500" : "bg-rose-500"}`}>
+        <div className="fixed left-1/2 top-20 z-[100] -translate-x-1/2">
+          <div
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-white shadow-xl ${toast.kind === "ok" ? "bg-emerald-500" : "bg-rose-500"}`}
+          >
             {toast.kind === "ok" ? (
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={4}><path d="M5 13l4 4L19 7"/></svg>
+              <CheckIcon className="h-3.5 w-3.5" />
             ) : (
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={4}><path d="M18 6 6 18M6 6l12 12"/></svg>
+              <svg
+                viewBox="0 0 24 24"
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={4}
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
             )}
             {toast.text}
           </div>
         </div>
       )}
 
+      {/* ========== SCANNER ========== */}
       {scannerOpen && (
         <BarcodeScanner
           onDetect={handleScan}

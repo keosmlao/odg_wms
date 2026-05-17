@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import {
   SESSION_SELECT_FIELDS,
+  SNAPSHOT_INSERT_SQL,
   nextSessionCode,
   trimOrNull,
   type SessionRow,
@@ -69,24 +70,10 @@ export async function POST(request: Request) {
 
     // Freeze the SML balance at session start so the variance report
     // does not drift as movements continue during counting.
-    await client.query(
-      `INSERT INTO public.wms_stocktake_snapshot
-         (session_id, item_code, item_name, unit_code, snapshot_qty)
-       SELECT
-         $1,
-         t.item_code,
-         MAX(t.item_name),
-         MAX(t.unit_code),
-         SUM(t.qty * t.calc_flag)::numeric
-       FROM public.odg_wms_trans_detail t
-       WHERE (t.status = 0 OR t.status IS NULL)
-         AND t.wh_code = $2
-         AND t.item_code IS NOT NULL
-         AND t.item_code <> ''
-       GROUP BY t.item_code
-       HAVING SUM(t.qty * t.calc_flag) <> 0`,
-      [row.session_id, wh],
-    );
+    await client.query(SNAPSHOT_INSERT_SQL, [row.session_id, wh]);
+
+    // Pending shipments are NOT auto-pulled — the user picks bills
+    // explicitly through the pending-bills UI before counting.
 
     await client.query("COMMIT");
     return NextResponse.json({ ok: true, session: row });
