@@ -74,8 +74,8 @@ export default function ExcelImport({ sessionId }: { sessionId: number }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs text-zinc-500 dark:text-zinc-400">
-          ຄໍລຳ: <b>ລະຫັດ</b> · <b>ລາຍຊື່</b> · <b>ຈຳນວນທີກວດນັບ</b> ·{" "}
-          <b>ທີມ</b>
+          ຄໍລຳ: <b>ລະຫັດ</b> · <b>ລາຍຊື່</b> · <b>ຫົວໜ່ວຍ</b> ·{" "}
+          <b>ຈຳນວນທີກວດນັບ</b> · <b>ທີມ</b>
         </div>
         <a
           href={`/api/stocktake/sessions/${sessionId}/import`}

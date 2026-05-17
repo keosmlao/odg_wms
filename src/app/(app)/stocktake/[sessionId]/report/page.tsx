@@ -18,7 +18,8 @@ type SessionInfo = {
 type VarianceRow = {
   item_code: string;
   item_name: string | null;
-  unit_code: string | null;
+  counted_unit: string | null;
+  sml_unit: string | null;
   counted_qty: string;
   sml_qty: string;
   pending_qty: string;
@@ -38,6 +39,7 @@ type PendingBillLine = {
 };
 
 type SearchParams = Record<string, string | string[] | undefined>;
+type CompareScope = "counted" | "all";
 
 function pick(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0]?.trim() ?? "";
@@ -53,12 +55,30 @@ function formatQty(value: string | number | null | undefined) {
   });
 }
 
+function signedQty(value: number) {
+  return `${value > 0 ? "+" : ""}${formatQty(value)}`;
+}
+
 const FILTERS: Array<{ value: string; label: string }> = [
-  { value: "all", label: "ທັງໝົດ" },
+  { value: "all", label: "ທຸກປະເພດ" },
   { value: "variance", label: "ມີສ່ວນຕ່າງ" },
   { value: "uncounted", label: "ໃນຍອດອ້າງອີງ ບໍ່ໄດ້ນັບ" },
   { value: "extra", label: "ນັບໄດ້ ບໍ່ມີໃນຍອດອ້າງອີງ" },
 ];
+
+const COMPARE_SCOPES: Array<{ value: CompareScope; label: string; detail: string }> =
+  [
+    {
+      value: "counted",
+      label: "ນັບແລ້ວ",
+      detail: "ສະເພາະສິນຄ້າທີ່ມີຈຳນວນນັບ",
+    },
+    {
+      value: "all",
+      label: "ທັງໝົດ",
+      detail: "ລວມ SML/ຄ້າງຈ່າຍທີ່ຍັງບໍ່ໄດ້ນັບ",
+    },
+  ];
 
 export default async function ReportPage({
   params,
@@ -97,6 +117,7 @@ export default async function ReportPage({
   const sp = await searchParams;
   const filter = pick(sp.filter) || "all";
   const q = pick(sp.q).toLowerCase();
+  const scope: CompareScope = pick(sp.scope) === "all" ? "all" : "counted";
 
   const pendingLines = await query<PendingBillLine>(
     `SELECT
@@ -177,7 +198,8 @@ export default async function ReportPage({
      SELECT
        u.item_code                                    AS item_code,
        COALESCE(c.item_name, u.item_name)             AS item_name,
-       COALESCE(c.unit_code, u.unit_code)             AS unit_code,
+       c.unit_code                                    AS counted_unit,
+       ss.unit_code                                   AS sml_unit,
        COALESCE(c.counted_qty, 0)::text               AS counted_qty,
        COALESCE(ss.snapshot_qty, 0)::text             AS sml_qty,
        COALESCE(p.pending_qty, 0)::text               AS pending_qty,
@@ -206,7 +228,23 @@ export default async function ReportPage({
     [sid],
   );
 
-  const filtered = rows.filter((r) => {
+  const correctedItemRows = await query<{ item_code: string; n: number }>(
+    `SELECT item_code, count(*)::int AS n
+     FROM public.wms_stocktake_unit_log
+     WHERE session_id = $1
+     GROUP BY item_code`,
+    [sid],
+  );
+  const correctedItems = new Map(
+    correctedItemRows.map((r) => [r.item_code, r.n]),
+  );
+
+  const countedRows = rows.filter(
+    (r) => (Number.parseFloat(r.counted_qty) || 0) > 0,
+  );
+  const scopedRows = scope === "counted" ? countedRows : rows;
+
+  const filtered = scopedRows.filter((r) => {
     const counted = Number.parseFloat(r.counted_qty);
     const ref = Number.parseFloat(r.reference_qty);
     const variance = counted - ref;
@@ -221,133 +259,238 @@ export default async function ReportPage({
   });
 
   const counts = {
-    all: rows.length,
-    variance: rows.filter(
+    all: scopedRows.length,
+    variance: scopedRows.filter(
       (r) =>
         Number.parseFloat(r.counted_qty) !==
         Number.parseFloat(r.reference_qty),
     ).length,
-    uncounted: rows.filter(
+    uncounted: scopedRows.filter(
       (r) =>
         Number.parseFloat(r.counted_qty) === 0 &&
         Number.parseFloat(r.reference_qty) > 0,
     ).length,
-    extra: rows.filter(
+    extra: scopedRows.filter(
       (r) =>
         Number.parseFloat(r.counted_qty) > 0 &&
         Number.parseFloat(r.reference_qty) === 0,
     ).length,
   };
+  const totals = scopedRows.reduce(
+    (acc, r) => {
+      const counted = Number.parseFloat(r.counted_qty) || 0;
+      const sml = Number.parseFloat(r.sml_qty) || 0;
+      const pending = Number.parseFloat(r.pending_qty) || 0;
+      const ref = Number.parseFloat(r.reference_qty) || 0;
+      const variance = counted - ref;
+      acc.counted += counted;
+      acc.sml += sml;
+      acc.pending += pending;
+      acc.reference += ref;
+      acc.variance += variance;
+      acc.absVariance += Math.abs(variance);
+      return acc;
+    },
+    {
+      counted: 0,
+      sml: 0,
+      pending: 0,
+      reference: 0,
+      variance: 0,
+      absVariance: 0,
+    },
+  );
+  const accuracy =
+    counts.all === 0 ? 100 : ((counts.all - counts.variance) / counts.all) * 100;
+  const activeScope = COMPARE_SCOPES.find((s) => s.value === scope);
 
   function filterHref(value: string) {
     const params = new URLSearchParams();
+    if (scope !== "counted") params.set("scope", scope);
     if (value !== "all") params.set("filter", value);
     if (q) params.set("q", q);
     const s = params.toString();
     return s ? `?${s}` : "";
   }
 
+  function scopeHref(value: CompareScope) {
+    const params = new URLSearchParams();
+    if (value !== "counted") params.set("scope", value);
+    if (filter !== "all") params.set("filter", filter);
+    if (q) params.set("q", q);
+    const s = params.toString();
+    return s ? `?${s}` : "";
+  }
+
+  function filterCount(value: string) {
+    if (value === "all") return counts.all;
+    if (value === "variance") return counts.variance;
+    if (value === "uncounted") return counts.uncounted;
+    return counts.extra;
+  }
+
   return (
     <StocktakeLayout wide>
-    <div className="mx-auto w-full max-w-5xl space-y-6 pb-8">
-      <header>
-        <Link
-          href={`/stocktake/${sid}`}
-          className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-        >
-          ← {info.session_code}
-        </Link>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-          ປຽບທຽບກັບ SML
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          {info.name ?? info.session_code} · {info.wh_code}
-          {info.wh_name ? ` · ${info.wh_name}` : ""} · {info.count_date}
-        </p>
-      </header>
+    <div className="mx-auto w-full max-w-7xl space-y-5 pb-8">
+      <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="grid gap-5 p-5 lg:grid-cols-[1fr_380px] lg:p-6">
+          <div className="min-w-0">
+            <Link
+              href={`/stocktake/${sid}`}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+            >
+              ← {info.session_code}
+            </Link>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
+                ລາຍງານປຽບທຽບ
+              </p>
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                {info.status === "open"
+                  ? "ກຳລັງດຳເນີນ"
+                  : info.status === "pending_approval"
+                    ? "ລໍຖ້າອະນຸມັດ"
+                    : "ປິດແລ້ວ"}
+              </span>
+            </div>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl dark:text-zinc-50">
+              ປຽບທຽບກັບ SML
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              {info.name ?? info.session_code} · {info.wh_code}
+              {info.wh_name ? ` · ${info.wh_name}` : ""} · {info.count_date}
+            </p>
 
-      {/* Stat strip — horizontal compact */}
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="ສິນຄ້າທັງໝົດ" value={counts.all} />
-        <Stat
-          label="ມີສ່ວນຕ່າງ"
-          value={counts.variance}
-          accent={counts.variance > 0 ? "red" : "emerald"}
-        />
-        <Stat
-          label="ໃນຍອດອ້າງອີງ ບໍ່ໄດ້ນັບ"
-          value={counts.uncounted}
-          accent={counts.uncounted > 0 ? "amber" : "default"}
-        />
-        <Stat
-          label="ນັບໄດ້ ບໍ່ມີໃນຍອດອ້າງອີງ"
-          value={counts.extra}
-          accent={counts.extra > 0 ? "amber" : "default"}
-        />
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                label={scope === "counted" ? "ນັບແລ້ວ" : "ທັງໝົດ"}
+                value={counts.all.toLocaleString("en-US")}
+                sub={activeScope?.label ?? ""}
+                tone="zinc"
+              />
+              <MetricCard
+                label="ມີສ່ວນຕ່າງ"
+                value={counts.variance.toLocaleString("en-US")}
+                sub={`${accuracy.toFixed(1)}% ກົງ`}
+                tone={counts.variance > 0 ? "red" : "emerald"}
+              />
+              <MetricCard
+                label="ນັບໄດ້ລວມ"
+                value={formatQty(totals.counted)}
+                sub={`ອ້າງອີງ ${formatQty(totals.reference)}`}
+                tone="indigo"
+              />
+              <MetricCard
+                label="ສ່ວນຕ່າງ net"
+                value={signedQty(totals.variance)}
+                sub={`abs ${formatQty(totals.absVariance)}`}
+                tone={
+                  Math.abs(totals.variance) < 0.0001
+                    ? "emerald"
+                    : totals.variance > 0
+                      ? "amber"
+                      : "red"
+                }
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-950/40">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
+              ມຸມມອງການປຽບທຽບ
+            </div>
+            <nav className="mt-3 grid gap-2">
+              {COMPARE_SCOPES.map((s) => {
+                const active = scope === s.value;
+                const count =
+                  s.value === "counted" ? countedRows.length : rows.length;
+                return (
+                  <Link
+                    key={s.value}
+                    href={scopeHref(s.value)}
+                    className={`rounded-xl px-3 py-3 ring-1 transition ${
+                      active
+                        ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:ring-zinc-100"
+                        : "bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-zinc-800 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-bold">{s.label}</div>
+                        <div
+                          className={`mt-0.5 text-xs ${
+                            active
+                              ? "text-white/70 dark:text-zinc-600"
+                              : "text-zinc-500 dark:text-zinc-400"
+                          }`}
+                        >
+                          {s.detail}
+                        </div>
+                      </div>
+                      <div className="font-mono text-xl font-bold tabular-nums">
+                        {count.toLocaleString("en-US")}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
       </section>
 
-      {/* Search bar */}
-      <form
-        method="get"
-        className="flex flex-wrap items-center gap-2 rounded-2xl bg-white p-3 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800"
-      >
-        {filter !== "all" && (
-          <input type="hidden" name="filter" value={filter} />
-        )}
-        <input
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder="ຄົ້ນຫາ ລະຫັດ ຫຼື ຊື່..."
-          className="min-w-0 flex-1 rounded-lg bg-zinc-50 px-3 py-2 text-sm ring-1 ring-zinc-200 outline-none focus:bg-white focus:ring-2 focus:ring-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 dark:ring-zinc-700"
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          ຄົ້ນຫາ
-        </button>
-      </form>
+      <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <form method="get" className="flex flex-col gap-3 lg:flex-row">
+          {scope !== "counted" && (
+            <input type="hidden" name="scope" value={scope} />
+          )}
+          {filter !== "all" && (
+            <input type="hidden" name="filter" value={filter} />
+          )}
+          <input
+            type="text"
+            name="q"
+            defaultValue={q}
+            placeholder="ຄົ້ນຫາລະຫັດ ຫຼື ຊື່ສິນຄ້າ..."
+            className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+          />
+          <button
+            type="submit"
+            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          >
+            ຄົ້ນຫາ
+          </button>
+        </form>
 
-      {/* Filter tabs */}
-      <nav className="flex flex-wrap gap-1 border-b border-zinc-200 dark:border-zinc-800">
-        {FILTERS.map((f) => {
-          const active = filter === f.value;
-          const count =
-            f.value === "all"
-              ? counts.all
-              : f.value === "variance"
-                ? counts.variance
-                : f.value === "uncounted"
-                  ? counts.uncounted
-                  : counts.extra;
-          return (
-            <Link
-              key={f.value}
-              href={filterHref(f.value)}
-              className={`relative px-3 py-2.5 text-sm font-medium transition ${
-                active
-                  ? "text-zinc-900 dark:text-zinc-50"
-                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-              }`}
-            >
-              {f.label}
-              <span
-                className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold ${
+        <nav className="mt-3 flex flex-wrap gap-2">
+          {FILTERS.map((f) => {
+            const active = filter === f.value;
+            const count = filterCount(f.value);
+            return (
+              <Link
+                key={f.value}
+                href={filterHref(f.value)}
+                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
                   active
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                    ? "bg-indigo-600 text-white ring-indigo-600"
+                    : "bg-white text-zinc-600 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800"
                 }`}
               >
-                {count}
-              </span>
-              {active && (
-                <span className="absolute inset-x-0 -bottom-px h-0.5 bg-zinc-900 dark:bg-zinc-50" />
-              )}
-            </Link>
-          );
-        })}
-      </nav>
+                {f.label}
+                <span
+                  className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] ${
+                    active
+                      ? "bg-white/20 text-white"
+                      : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                  }`}
+                >
+                  {count.toLocaleString("en-US")}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+      </section>
 
       {/* Results */}
       <section>
@@ -358,7 +501,15 @@ export default async function ReportPage({
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+          <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="hidden grid-cols-[minmax(220px,1fr)_110px_110px_110px_120px_130px] gap-3 border-b border-zinc-100 bg-zinc-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950/40 md:grid">
+              <div>ສິນຄ້າ</div>
+              <div className="text-right">ນັບໄດ້</div>
+              <div className="text-right">SML</div>
+              <div className="text-right">ຄ້າງຈ່າຍ</div>
+              <div className="text-right">ອ້າງອີງ</div>
+              <div className="text-right">ສ່ວນຕ່າງ</div>
+            </div>
             <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {filtered.map((r) => {
                 const counted = Number.parseFloat(r.counted_qty) || 0;
@@ -366,89 +517,30 @@ export default async function ReportPage({
                 const pending = Number.parseFloat(r.pending_qty) || 0;
                 const ref = Number.parseFloat(r.reference_qty) || 0;
                 const variance = counted - ref;
+                const tone =
+                  variance === 0
+                    ? "neutral"
+                    : variance > 0
+                      ? "over"
+                      : "under";
                 return (
-                  <li
+                  <ComparisonRow
                     key={r.item_code}
-                    className="grid grid-cols-[1fr_auto] gap-3 px-5 py-3.5 sm:grid-cols-[1fr_80px_80px_80px_80px_100px]"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-mono text-xs font-semibold text-zinc-900 dark:text-zinc-50">
-                        {r.item_code}
-                      </div>
-                      <div
-                        className="truncate text-sm text-zinc-700 dark:text-zinc-300"
-                        title={r.item_name ?? ""}
-                      >
-                        {r.item_name ?? "—"}
-                      </div>
-                      {r.unit_code && (
-                        <div className="text-[10px] text-zinc-500">
-                          {r.unit_code}
-                        </div>
-                      )}
-                    </div>
-                    <div className="hidden text-right sm:block">
-                      <div className="font-mono text-sm font-semibold tabular-nums text-zinc-700 dark:text-zinc-300">
-                        {formatQty(counted)}
-                      </div>
-                      <div className="text-[10px] text-zinc-500">ນັບໄດ້</div>
-                    </div>
-                    <div className="hidden text-right sm:block">
-                      <div className="font-mono text-sm tabular-nums text-zinc-700 dark:text-zinc-300">
-                        {formatQty(sml)}
-                      </div>
-                      <div className="text-[10px] text-zinc-500">SML</div>
-                    </div>
-                    <div className="hidden text-right sm:block">
-                      <div
-                        className={`font-mono text-sm tabular-nums ${
-                          pending > 0
-                            ? "font-semibold text-amber-700 dark:text-amber-400"
-                            : "text-zinc-400"
-                        }`}
-                      >
-                        {pending > 0 ? `+${formatQty(pending)}` : "—"}
-                      </div>
-                      <div className="text-[10px] text-zinc-500">ຄ້າງຈ່າຍ</div>
-                    </div>
-                    <div className="hidden text-right sm:block">
-                      <div className="font-mono text-sm font-semibold tabular-nums text-zinc-700 dark:text-zinc-300">
-                        {formatQty(ref)}
-                      </div>
-                      <div className="text-[10px] text-zinc-500">ອ້າງອີງ</div>
-                    </div>
-                    <div className="text-right">
-                      <div
-                        className={`font-mono text-base font-bold tabular-nums ${
-                          variance === 0
-                            ? "text-zinc-400"
-                            : variance > 0
-                              ? "text-emerald-700 dark:text-emerald-400"
-                              : "text-red-700 dark:text-red-400"
-                        }`}
-                      >
-                        {variance > 0 ? "+" : ""}
-                        {formatQty(variance)}
-                      </div>
-                      <div className="text-[10px] text-zinc-500 sm:hidden">
-                        ນັບ {formatQty(counted)} / ອ້າງອີງ {formatQty(ref)}
-                        {pending !== 0 && (
-                          <span className="text-amber-600 dark:text-amber-400">
-                            {" "}(ຄ້າງ +{formatQty(pending)})
-                          </span>
-                        )}
-                      </div>
-                      <div className="hidden text-[10px] text-zinc-500 sm:block">
-                        ສ່ວນຕ່າງ
-                      </div>
-                    </div>
-                  </li>
+                    row={r}
+                    counted={counted}
+                    sml={sml}
+                    pending={pending}
+                    refQty={ref}
+                    variance={variance}
+                    tone={tone}
+                    correctedCount={correctedItems.get(r.item_code)}
+                  />
                 );
               })}
             </ul>
             <div className="border-t border-zinc-100 px-5 py-2.5 text-xs text-zinc-500 dark:border-zinc-800">
               ສະແດງ {filtered.length.toLocaleString("en-US")} ຈາກ{" "}
-              {rows.length.toLocaleString("en-US")} ລາຍການ
+              {scopedRows.length.toLocaleString("en-US")} ລາຍການ
             </div>
           </div>
         )}
@@ -548,30 +640,178 @@ export default async function ReportPage({
   );
 }
 
-function Stat({
+function MetricCard({
   label,
   value,
-  accent = "default",
+  sub,
+  tone = "zinc",
 }: {
   label: string;
-  value: number;
-  accent?: "default" | "emerald" | "red" | "amber";
+  value: string;
+  sub: string;
+  tone?: "zinc" | "emerald" | "red" | "amber" | "indigo";
 }) {
-  const colorMap = {
-    default: "text-zinc-900 dark:text-zinc-50",
-    emerald: "text-emerald-700 dark:text-emerald-400",
-    red: "text-red-700 dark:text-red-400",
-    amber: "text-amber-700 dark:text-amber-400",
-  };
+  const toneMap = {
+    zinc: "border-zinc-200 bg-zinc-50/80 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950/30 dark:text-zinc-100",
+    emerald:
+      "border-emerald-200 bg-emerald-50/70 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-200",
+    red: "border-red-200 bg-red-50/70 text-red-800 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-200",
+    amber:
+      "border-amber-200 bg-amber-50/70 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200",
+    indigo:
+      "border-indigo-200 bg-indigo-50/70 text-indigo-800 dark:border-indigo-900/50 dark:bg-indigo-950/20 dark:text-indigo-200",
+  } as const;
   return (
-    <div className="rounded-2xl bg-white px-4 py-3 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-      <div className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+    <div className={`rounded-xl border px-3 py-3 ${toneMap[tone]}`}>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] opacity-70">
+        {label}
+      </div>
+      <div className="mt-1 font-mono text-xl font-black tabular-nums">
+        {value}
+      </div>
+      <div className="mt-0.5 text-[10px] font-medium opacity-70">{sub}</div>
+    </div>
+  );
+}
+
+function ComparisonRow({
+  row,
+  counted,
+  sml,
+  pending,
+  refQty,
+  variance,
+  tone,
+  correctedCount,
+}: {
+  row: VarianceRow;
+  counted: number;
+  sml: number;
+  pending: number;
+  refQty: number;
+  variance: number;
+  tone: "neutral" | "over" | "under";
+  correctedCount?: number;
+}) {
+  const accent =
+    tone === "neutral"
+      ? "bg-zinc-300 dark:bg-zinc-700"
+      : tone === "over"
+        ? "bg-emerald-500"
+        : "bg-red-500";
+  const varianceColor =
+    tone === "neutral"
+      ? "text-zinc-400"
+      : tone === "over"
+        ? "text-emerald-700 dark:text-emerald-400"
+        : "text-red-700 dark:text-red-400";
+  const countedUnit = row.counted_unit?.trim() || null;
+  const smlUnit = row.sml_unit?.trim() || null;
+  const unitMismatch =
+    countedUnit !== null &&
+    smlUnit !== null &&
+    countedUnit.toUpperCase() !== smlUnit.toUpperCase();
+  return (
+    <li className="relative grid gap-3 px-4 py-3 transition hover:bg-zinc-50/70 md:grid-cols-[minmax(220px,1fr)_110px_110px_110px_120px_130px] dark:hover:bg-zinc-950/30">
+      <span className={`absolute inset-y-3 left-0 w-1 rounded-r-full ${accent}`} />
+      <div className="min-w-0 pl-2 md:pl-0">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="truncate font-mono text-xs font-bold text-zinc-900 dark:text-zinc-50">
+            {row.item_code}
+          </div>
+          {correctedCount !== undefined && (
+            <span
+              title={`ປັບຫົວໜ່ວຍແລ້ວ ${correctedCount} ຄັ້ງ`}
+              className="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50"
+            >
+              ປັບແລ້ວ
+            </span>
+          )}
+        </div>
+        <div
+          className="mt-0.5 truncate text-sm text-zinc-700 dark:text-zinc-300"
+          title={row.item_name ?? ""}
+        >
+          {row.item_name ?? "—"}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+          <span
+            className={`rounded-md px-1.5 py-0.5 font-mono font-semibold ring-1 ${
+              unitMismatch
+                ? "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-900/60"
+                : "bg-zinc-50 text-zinc-600 ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700"
+            }`}
+            title="ຫົວໜ່ວຍນັບ"
+          >
+            ນັບ: {countedUnit ?? "—"}
+          </span>
+          <span
+            className={`rounded-md px-1.5 py-0.5 font-mono font-semibold ring-1 ${
+              unitMismatch
+                ? "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-900/60"
+                : "bg-zinc-50 text-zinc-600 ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700"
+            }`}
+            title="ຫົວໜ່ວຍ SML"
+          >
+            SML: {smlUnit ?? "—"}
+          </span>
+          {unitMismatch && (
+            <span className="rounded-full bg-red-50 px-1.5 py-0.5 font-bold text-red-700 ring-1 ring-red-200 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-900/60">
+              ຫົວໜ່ວຍບໍ່ກົງ
+            </span>
+          )}
+        </div>
+      </div>
+
+      <QtyCell label="ນັບໄດ້" value={formatQty(counted)} strong />
+      <QtyCell label="SML" value={formatQty(sml)} />
+      <QtyCell
+        label="ຄ້າງຈ່າຍ"
+        value={pending > 0 ? `+${formatQty(pending)}` : "—"}
+        tone={pending > 0 ? "amber" : "muted"}
+      />
+      <QtyCell label="ອ້າງອີງ" value={formatQty(refQty)} strong />
+
+      <div className="flex items-end justify-between gap-3 border-t border-zinc-100 pt-2 md:block md:border-t-0 md:pt-0 md:text-right dark:border-zinc-800">
+        <span className="text-[10px] font-medium text-zinc-500 md:hidden">
+          ສ່ວນຕ່າງ
+        </span>
+        <div className={`font-mono text-lg font-black tabular-nums ${varianceColor}`}>
+          {signedQty(variance)}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function QtyCell({
+  label,
+  value,
+  tone = "default",
+  strong,
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "amber" | "muted";
+  strong?: boolean;
+}) {
+  const color =
+    tone === "amber"
+      ? "text-amber-700 dark:text-amber-400"
+      : tone === "muted"
+        ? "text-zinc-400"
+        : "text-zinc-700 dark:text-zinc-300";
+  return (
+    <div className="flex items-baseline justify-between gap-3 md:block md:text-right">
+      <div className="text-[10px] font-medium text-zinc-500 md:hidden">
         {label}
       </div>
       <div
-        className={`mt-1 font-mono text-2xl font-bold tabular-nums ${colorMap[accent]}`}
+        className={`font-mono text-sm tabular-nums ${color} ${
+          strong ? "font-bold" : "font-medium"
+        }`}
       >
-        {value.toLocaleString("en-US")}
+        {value}
       </div>
     </div>
   );

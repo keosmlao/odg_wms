@@ -9,19 +9,26 @@ type ParsedRow = {
   row_index: number;
   item_code: string;
   item_name: string | null;
+  unit_code: string | null;
   qty: number;
   team: string;
 };
 
 type RowError = { row: number; message: string };
 
-const HEADER_MAP: Record<string, "code" | "name" | "qty" | "team"> = {
+type ColKey = "code" | "name" | "unit" | "qty" | "team";
+
+const HEADER_MAP: Record<string, ColKey> = {
   // Lao
   "ລະຫັດ": "code",
   "ລະຫັດສິນຄ້າ": "code",
   "ລາຍຊື່": "name",
   "ຊື່": "name",
   "ຊື່ສິນຄ້າ": "name",
+  "ຫົວໜ່ວຍ": "unit",
+  "ຫົວຫນ່ວຍ": "unit",
+  "ໜ່ວຍ": "unit",
+  "ຫນ່ວຍ": "unit",
   "ຈຳນວນ": "qty",
   "ຈຳນວນທີກວດນັບ": "qty",
   "ຈຳນວນທີ່ກວດນັບ": "qty",
@@ -33,6 +40,10 @@ const HEADER_MAP: Record<string, "code" | "name" | "qty" | "team"> = {
   name: "name",
   item_name: "name",
   itemname: "name",
+  unit: "unit",
+  uom: "unit",
+  unit_code: "unit",
+  unitcode: "unit",
   qty: "qty",
   quantity: "qty",
   team: "team",
@@ -54,9 +65,9 @@ function trim(v: unknown): string {
 
 function detectHeader(firstRow: RawRow): {
   hasHeader: boolean;
-  cols: { code: number; name: number; qty: number; team: number };
+  cols: { code: number; name: number; unit: number; qty: number; team: number };
 } {
-  const map: Partial<Record<"code" | "name" | "qty" | "team", number>> = {};
+  const map: Partial<Record<ColKey, number>> = {};
   for (let i = 0; i < firstRow.length; i++) {
     const key = normalizeHeader(firstRow[i]);
     const mapped = HEADER_MAP[String(firstRow[i] ?? "").trim()] ?? HEADER_MAP[key];
@@ -69,15 +80,16 @@ function detectHeader(firstRow: RawRow): {
       cols: {
         code: map.code ?? 0,
         name: map.name ?? 1,
+        unit: map.unit ?? -1,
         qty: map.qty ?? 2,
         team: map.team ?? 3,
       },
     };
   }
-  // No header — assume default column order
+  // No header — assume default column order: code, name, unit, qty, team
   return {
     hasHeader: false,
-    cols: { code: 0, name: 1, qty: 2, team: 3 },
+    cols: { code: 0, name: 1, unit: 2, qty: 3, team: 4 },
   };
 }
 
@@ -164,7 +176,8 @@ export async function POST(
 
   const detection = detectHeader(rows[0]);
   const dataRows = detection.hasHeader ? rows.slice(1) : rows;
-  const { code: cCode, name: cName, qty: cQty, team: cTeam } = detection.cols;
+  const { code: cCode, name: cName, unit: cUnit, qty: cQty, team: cTeam } =
+    detection.cols;
 
   const parsed: ParsedRow[] = [];
   const errors: RowError[] = [];
@@ -176,6 +189,7 @@ export async function POST(
     const team = trim(r[cTeam]);
     const qty = parseQty(r[cQty]);
     const itemName = trim(r[cName]) || null;
+    const unitCode = cUnit >= 0 ? trim(r[cUnit]) || null : null;
 
     if (!itemCode && !team && qty === null) continue; // fully blank
     if (!itemCode) {
@@ -202,10 +216,15 @@ export async function POST(
       errors.push({ row: rowNumber, message: "ປ້າຍຍາວເກີນ 40 ຕົວ" });
       continue;
     }
+    if (unitCode && unitCode.length > 20) {
+      errors.push({ row: rowNumber, message: "ຫົວໜ່ວຍຍາວເກີນ 20 ຕົວ" });
+      continue;
+    }
     parsed.push({
       row_index: rowNumber,
       item_code: itemCode,
       item_name: itemName ? itemName.slice(0, 200) : null,
+      unit_code: unitCode,
       qty,
       team,
     });
@@ -239,6 +258,7 @@ export async function POST(
     if (ex) {
       ex.qty += p.qty;
       if (!ex.item_name && p.item_name) ex.item_name = p.item_name;
+      if (!ex.unit_code && p.unit_code) ex.unit_code = p.unit_code;
     } else {
       merged.set(key, { ...p });
     }
@@ -287,12 +307,12 @@ export async function POST(
       if (!labelId) continue;
       const ins = await client.query<{ line_id: number }>(
         `INSERT INTO public.wms_stocktake_line
-           (session_id, label_id, item_code, item_name, qty, counted_by)
-         SELECT $1, $2, $3, $4, $5, $6
+           (session_id, label_id, item_code, item_name, unit_code, qty, counted_by)
+         SELECT $1::int, $2::int, $3::varchar, $4::varchar, $5::varchar, $6::numeric, $7::int
          WHERE NOT EXISTS (
            SELECT 1 FROM public.wms_stocktake_line
-           WHERE label_id = $2
-             AND item_code = $3
+           WHERE label_id = $2::int
+             AND item_code = $3::varchar
              AND rack_code IS NULL
              AND location_code IS NULL
          )
@@ -302,6 +322,7 @@ export async function POST(
           labelId,
           row.item_code,
           row.item_name,
+          row.unit_code,
           row.qty,
           guard.session.employee_id,
         ],
@@ -359,12 +380,18 @@ export async function GET(
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([
-    ["ລະຫັດ", "ລາຍຊື່", "ຈຳນວນທີກວດນັບ", "ທີມ"],
-    ["IT-0001", "ຕົວຢ່າງສິນຄ້າ", 10, "A01"],
-    ["IT-0002", "ຕົວຢ່າງສິນຄ້າ 2", 5, "A01"],
-    ["IT-0003", "ຕົວຢ່າງສິນຄ້າ 3", 7, "A02"],
+    ["ລະຫັດ", "ລາຍຊື່", "ຫົວໜ່ວຍ", "ຈຳນວນທີກວດນັບ", "ທີມ"],
+    ["IT-0001", "ຕົວຢ່າງສິນຄ້າ", "PCS", 10, "A01"],
+    ["IT-0002", "ຕົວຢ່າງສິນຄ້າ 2", "BOX", 5, "A01"],
+    ["IT-0003", "ຕົວຢ່າງສິນຄ້າ 3", "PCS", 7, "A02"],
   ]);
-  ws["!cols"] = [{ wch: 16 }, { wch: 36 }, { wch: 16 }, { wch: 10 }];
+  ws["!cols"] = [
+    { wch: 16 },
+    { wch: 36 },
+    { wch: 10 },
+    { wch: 16 },
+    { wch: 10 },
+  ];
   XLSX.utils.book_append_sheet(wb, ws, "ກວດນັບ");
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 

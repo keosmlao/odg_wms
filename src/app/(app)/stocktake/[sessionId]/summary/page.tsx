@@ -33,9 +33,34 @@ type VarianceRow = {
   item_code: string;
   item_name: string | null;
   unit_code: string | null;
+  category_code: string | null;
+  category_name: string | null;
+  brand_code: string | null;
+  brand_name: string | null;
   counted_qty: string;
   sml_qty: string;
   pending_qty: string;
+};
+
+type EnrichedVarianceRow = VarianceRow & {
+  reference_qty: number;
+  variance: number;
+  absVar: number;
+};
+
+type GroupSummary = {
+  key: string;
+  code: string | null;
+  name: string;
+  itemCount: number;
+  countedItemCount: number;
+  countedMatchedCount: number;
+  matchedCount: number;
+  varianceCount: number;
+  countedQty: number;
+  referenceQty: number;
+  varianceQty: number;
+  absVarianceQty: number;
 };
 
 type LabelStat = {
@@ -47,6 +72,11 @@ type LabelStat = {
 type CounterStat = {
   counted_employee: string | null;
   line_count: number;
+  item_count: number;
+  label_count: number;
+  qty_sum: string;
+  first_counted_at: string | null;
+  last_counted_at: string | null;
 };
 
 type PendingBillLine = {
@@ -60,10 +90,77 @@ type PendingBillLine = {
   qty: string;
 };
 
+type LabelDetailStat = {
+  label_id: number;
+  label_code: string;
+  note: string | null;
+  rack_code: string | null;
+  location_code: string | null;
+  line_count: number;
+  item_count: number;
+  qty_sum: string;
+  first_counted_at: string | null;
+  last_counted_at: string | null;
+  counted_employee: string | null;
+};
+
 function formatQty(value: number) {
   return value.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 4,
+  });
+}
+
+function buildGroupSummary(
+  rows: EnrichedVarianceRow[],
+  getGroup: (
+    row: EnrichedVarianceRow,
+  ) => { code: string | null; name: string | null },
+): GroupSummary[] {
+  const map = new Map<string, GroupSummary>();
+  for (const row of rows) {
+    const group = getGroup(row);
+    const code = group.code?.trim() || null;
+    const name = group.name?.trim() || code || "ບໍ່ລະບຸ";
+    const key = code ?? `__missing__:${name}`;
+    let summary = map.get(key);
+    if (!summary) {
+      summary = {
+        key,
+        code,
+        name,
+        itemCount: 0,
+        countedItemCount: 0,
+        countedMatchedCount: 0,
+        matchedCount: 0,
+        varianceCount: 0,
+        countedQty: 0,
+        referenceQty: 0,
+        varianceQty: 0,
+        absVarianceQty: 0,
+      };
+      map.set(key, summary);
+    }
+    const countedQty = Number.parseFloat(row.counted_qty) || 0;
+    summary.itemCount++;
+    if (countedQty > 0) {
+      summary.countedItemCount++;
+      if (row.variance === 0) summary.countedMatchedCount++;
+    }
+    summary.countedQty += countedQty;
+    summary.referenceQty += row.reference_qty;
+    summary.varianceQty += row.variance;
+    summary.absVarianceQty += row.absVar;
+    if (row.variance === 0) {
+      summary.matchedCount++;
+    } else {
+      summary.varianceCount++;
+    }
+  }
+  return [...map.values()].sort((a, b) => {
+    const byAbsVariance = b.absVarianceQty - a.absVarianceQty;
+    if (byAbsVariance !== 0) return byAbsVariance;
+    return b.itemCount - a.itemCount;
   });
 }
 
@@ -126,7 +223,8 @@ export default async function SessionSummaryPage({
     );
   }
 
-  const [rows, labelStatRows, counterRows, pendingLines] = await Promise.all([
+  const [rows, labelStatRows, counterRows, pendingLines, labelDetailRows] =
+    await Promise.all([
     query<VarianceRow>(
       `WITH counted AS (
          SELECT item_code, MAX(item_name) AS item_name, MAX(unit_code) AS unit_code,
@@ -150,6 +248,10 @@ export default async function SessionSummaryPage({
          u.item_code                          AS item_code,
          COALESCE(c.item_name, u.item_name)   AS item_name,
          COALESCE(c.unit_code, u.unit_code)   AS unit_code,
+         NULLIF(TRIM(inv.item_category), '')  AS category_code,
+         cat.name_1                           AS category_name,
+         NULLIF(TRIM(inv.item_brand), '')     AS brand_code,
+         br.name_1                            AS brand_name,
          COALESCE(c.counted_qty, 0)::text     AS counted_qty,
          COALESCE(ss.snapshot_qty, 0)::text   AS sml_qty,
          COALESCE(p.pending_qty, 0)::text     AS pending_qty
@@ -164,7 +266,13 @@ export default async function SessionSummaryPage({
        LEFT JOIN public.wms_stocktake_snapshot ss
          ON ss.item_code = u.item_code AND ss.session_id = $1
        LEFT JOIN public.wms_stocktake_pending p
-         ON p.item_code = u.item_code AND p.session_id = $1`,
+         ON p.item_code = u.item_code AND p.session_id = $1
+       LEFT JOIN public.ic_inventory inv
+         ON inv.code = u.item_code
+       LEFT JOIN public.ic_category cat
+         ON cat.code = inv.item_category
+       LEFT JOIN public.ic_brand br
+         ON br.code = inv.item_brand`,
       [sid],
     ),
     query<LabelStat>(
@@ -175,12 +283,19 @@ export default async function SessionSummaryPage({
       [sid],
     ),
     query<CounterStat>(
-      `SELECT e.fullname_lo AS counted_employee, count(*)::int AS line_count
+      `SELECT
+         e.fullname_lo AS counted_employee,
+         count(*)::int AS line_count,
+         count(DISTINCT ln.item_code)::int AS item_count,
+         count(DISTINCT ln.label_id)::int AS label_count,
+         COALESCE(SUM(ln.qty), 0)::text AS qty_sum,
+         MIN(ln.counted_at)::text AS first_counted_at,
+         MAX(ln.counted_at)::text AS last_counted_at
        FROM public.wms_stocktake_line ln
        LEFT JOIN public.odg_employee e ON e.employee_id = ln.counted_by
        WHERE ln.session_id = $1
        GROUP BY e.fullname_lo
-       ORDER BY line_count DESC`,
+       ORDER BY line_count DESC, counted_employee NULLS LAST`,
       [sid],
     ),
     query<PendingBillLine>(
@@ -205,6 +320,38 @@ export default async function SessionSummaryPage({
          AND d.item_code <> ''
        ORDER BY t.doc_date DESC, pb.doc_no, d.item_code`,
       [sid, info.wh_code],
+    ),
+    query<LabelDetailStat>(
+      `SELECT
+         l.label_id,
+         l.label_code,
+         l.note,
+         l.rack_code,
+         l.location_code,
+         COALESCE(stats.line_count, 0)::int AS line_count,
+         COALESCE(stats.item_count, 0)::int AS item_count,
+         COALESCE(stats.qty_sum, '0') AS qty_sum,
+         stats.first_counted_at::text AS first_counted_at,
+         stats.last_counted_at::text AS last_counted_at,
+         stats.counted_employee
+       FROM public.wms_stocktake_label l
+       LEFT JOIN (
+         SELECT
+           ln.label_id,
+           count(*)::int AS line_count,
+           count(DISTINCT ln.item_code)::int AS item_count,
+           SUM(ln.qty)::text AS qty_sum,
+           MIN(ln.counted_at) AS first_counted_at,
+           MAX(ln.counted_at) AS last_counted_at,
+           string_agg(DISTINCT COALESCE(e.fullname_lo, '(ບໍ່ລະບຸ)'), ', ' ORDER BY COALESCE(e.fullname_lo, '(ບໍ່ລະບຸ)')) AS counted_employee
+         FROM public.wms_stocktake_line ln
+         LEFT JOIN public.odg_employee e ON e.employee_id = ln.counted_by
+         WHERE ln.session_id = $1
+         GROUP BY ln.label_id
+       ) stats ON stats.label_id = l.label_id
+       WHERE l.session_id = $1
+       ORDER BY l.label_code`,
+      [sid],
     ),
   ]);
 
@@ -259,13 +406,7 @@ export default async function SessionSummaryPage({
   let negativeQty = 0;
   let onlyCountedQty = 0;
   let onlySmlQty = 0;
-  const enriched: Array<
-    VarianceRow & {
-      reference_qty: number;
-      variance: number;
-      absVar: number;
-    }
-  > = [];
+  const enriched: EnrichedVarianceRow[] = [];
   for (const r of rows) {
     const c = Number.parseFloat(r.counted_qty) || 0;
     const s = Number.parseFloat(r.sml_qty) || 0;
@@ -299,10 +440,171 @@ export default async function SessionSummaryPage({
   const accuracy =
     totalItems === 0 ? 100 : (matched / totalItems) * 100;
 
+  const categorySummary = buildGroupSummary(enriched, (row) => ({
+    code: row.category_code,
+    name: row.category_name,
+  }));
+  const brandSummary = buildGroupSummary(enriched, (row) => ({
+    code: row.brand_code,
+    name: row.brand_name,
+  }));
+
   const top = [...enriched]
     .filter((r) => r.absVar > 0)
     .sort((a, b) => b.absVar - a.absVar)
     .slice(0, 15);
+
+  // Counted-only summary — restricted to items actually counted in this session.
+  const countedOnly = enriched.filter(
+    (r) => (Number.parseFloat(r.counted_qty) || 0) > 0,
+  );
+  const countedOnlyItems = countedOnly.length;
+  let countedOnlyQty = 0;
+  let countedOnlyRef = 0;
+  let coMatched = 0;
+  let coOver = 0;
+  let coOverQty = 0;
+  let coUnder = 0;
+  let coUnderQty = 0;
+  let coOnly = 0;
+  let coOnlyQty = 0;
+  for (const r of countedOnly) {
+    const c = Number.parseFloat(r.counted_qty) || 0;
+    countedOnlyQty += c;
+    countedOnlyRef += r.reference_qty;
+    if (r.variance === 0) coMatched++;
+    else if (r.reference_qty === 0) {
+      coOnly++;
+      coOnlyQty += r.variance;
+    } else if (r.variance > 0) {
+      coOver++;
+      coOverQty += r.variance;
+    } else {
+      coUnder++;
+      coUnderQty += r.variance;
+    }
+  }
+  const coAccuracy =
+    countedOnlyItems === 0 ? 100 : (coMatched / countedOnlyItems) * 100;
+  const countedOnlyTop = [...countedOnly]
+    .sort((a, b) => {
+      const aQty = Number.parseFloat(a.counted_qty) || 0;
+      const bQty = Number.parseFloat(b.counted_qty) || 0;
+      return bQty - aQty;
+    })
+    .slice(0, 20);
+
+  // Evaluation — A–E grade composed of:
+  //   accuracy (matched items / all known items)
+  //   coverage (items in reference that were counted)
+  //   completeness (labels worked through)
+  //   variance ratio (1 − Σ|var| / Σref)
+  const inReferenceCount = enriched.filter((r) => r.reference_qty > 0).length;
+  const coveredCount = enriched.filter(
+    (r) =>
+      r.reference_qty > 0 && (Number.parseFloat(r.counted_qty) || 0) > 0,
+  ).length;
+  const coverage =
+    inReferenceCount === 0 ? 100 : (coveredCount / inReferenceCount) * 100;
+  const completeness =
+    labelStat.label_count === 0
+      ? 100
+      : (labelStat.counted_count / labelStat.label_count) * 100;
+  const totalAbsVar = enriched.reduce((s, r) => s + r.absVar, 0);
+  const varianceRatio =
+    referenceTotal === 0
+      ? totalAbsVar === 0
+        ? 100
+        : 0
+      : Math.max(0, (1 - totalAbsVar / referenceTotal) * 100);
+  const evalScore =
+    accuracy * 0.4 + coverage * 0.3 + completeness * 0.15 + varianceRatio * 0.15;
+  const grade =
+    evalScore >= 90
+      ? "A"
+      : evalScore >= 80
+        ? "B"
+        : evalScore >= 70
+          ? "C"
+          : evalScore >= 60
+            ? "D"
+            : "E";
+  const gradeTone: "emerald" | "indigo" | "amber" | "red" =
+    grade === "A"
+      ? "emerald"
+      : grade === "B"
+        ? "indigo"
+        : grade === "C"
+          ? "amber"
+          : "red";
+  const gradeLabel =
+    grade === "A"
+      ? "ດີເລີດ"
+      : grade === "B"
+        ? "ດີ"
+        : grade === "C"
+          ? "ພໍໃຊ້"
+          : grade === "D"
+            ? "ຄວນປັບປຸງ"
+            : "ຕ້ອງກວດຄືນ";
+
+  const netVarRatio =
+    referenceTotal === 0
+      ? 0
+      : Math.abs(countedTotal - referenceTotal) / referenceTotal;
+  type SignalTone = "ok" | "warn" | "bad";
+  const signals: { label: string; detail: string; tone: SignalTone }[] = [
+    {
+      label: "ການກວດປ້າຍ",
+      detail: `${labelStat.counted_count}/${labelStat.label_count}`,
+      tone:
+        labelStat.label_count === 0
+          ? "warn"
+          : labelStat.counted_count === labelStat.label_count
+            ? "ok"
+            : labelStat.counted_count >= labelStat.label_count * 0.8
+              ? "warn"
+              : "bad",
+    },
+    {
+      label: "ການກວດເທິບ SML",
+      detail:
+        inReferenceCount === 0
+          ? "ບໍ່ມີຍອດອ້າງອີງ"
+          : `${coveredCount}/${inReferenceCount} (${coverage.toFixed(0)}%)`,
+      tone:
+        inReferenceCount === 0
+          ? "warn"
+          : onlySml === 0
+            ? "ok"
+            : coverage >= 90
+              ? "warn"
+              : "bad",
+    },
+    {
+      label: "ສ່ວນຕ່າງລວມ",
+      detail:
+        referenceTotal === 0
+          ? formatQty(countedTotal - referenceTotal)
+          : `${(netVarRatio * 100).toFixed(2)}%`,
+      tone:
+        netVarRatio <= 0.01 ? "ok" : netVarRatio <= 0.05 ? "warn" : "bad",
+    },
+    {
+      label: "ນັບໄດ້ ນອກ SML",
+      detail: `${onlyCounted} ລາຍ`,
+      tone: onlyCounted === 0 ? "ok" : onlyCounted <= 5 ? "warn" : "bad",
+    },
+  ];
+  const countedLabelRows = labelDetailRows.filter((l) => l.line_count > 0);
+  const emptyLabelRows = labelDetailRows.filter((l) => l.line_count === 0);
+  const labelQtyTop = [...countedLabelRows]
+    .sort(
+      (a, b) =>
+        (Number.parseFloat(b.qty_sum) || 0) -
+        (Number.parseFloat(a.qty_sum) || 0),
+    )
+    .slice(0, 25);
 
   return (
     <StocktakeLayout wide>
@@ -431,6 +733,41 @@ export default async function SessionSummaryPage({
           </div>
         </header>
 
+        {/* Evaluation */}
+        <section className="summary-card overflow-hidden rounded-2xl bg-white p-6 shadow-card ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+            ປະເມີນການກວດນັບ
+          </h2>
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+            <GradeBadge
+              grade={grade}
+              tone={gradeTone}
+              score={evalScore}
+              label={gradeLabel}
+            />
+            <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-4">
+              <MiniMetric label="ຄວາມຖືກຕ້ອງ" value={`${accuracy.toFixed(1)}%`} />
+              <MiniMetric label="ການກວດເທິບ SML" value={`${coverage.toFixed(1)}%`} />
+              <MiniMetric label="ກວດຄົບປ້າຍ" value={`${completeness.toFixed(1)}%`} />
+              <MiniMetric label="ດັດສະນີສ່ວນຕ່າງ" value={`${varianceRatio.toFixed(1)}%`} />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {signals.map((s) => (
+              <Signal
+                key={s.label}
+                label={s.label}
+                detail={s.detail}
+                tone={s.tone}
+              />
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-zinc-500">
+            ຄະແນນ = ຄວາມຖືກຕ້ອງ 40% · ການກວດເທິບ SML 30% · ກວດຄົບປ້າຍ 15% ·
+            ດັດສະນີສ່ວນຕ່າງ 15%
+          </p>
+        </section>
+
         {/* High-level KPIs */}
         <section className="summary-card overflow-hidden rounded-2xl bg-white p-6 shadow-card ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
           <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
@@ -488,6 +825,23 @@ export default async function SessionSummaryPage({
                     : "red"
               }
             />
+          </div>
+        </section>
+
+        {/* Category / brand summary */}
+        <section className="summary-card overflow-hidden rounded-2xl bg-white p-6 shadow-card ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+              ສະຫຼຸບແຍກໝວດ ແລະ Brand
+            </h2>
+            <span className="text-xs text-zinc-500">
+              ຄຳນວນຈາກສິນຄ້າທັງໝົດໃນການປຽບທຽບ
+            </span>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <GroupSummaryTable title="ແຍກຕາມໝວດ" rows={categorySummary} />
+            <GroupSummaryTable title="ແຍກຕາມ Brand" rows={brandSummary} />
           </div>
         </section>
 
@@ -551,6 +905,296 @@ export default async function SessionSummaryPage({
               </tfoot>
             </table>
           </div>
+        </section>
+
+        {/* Counted-only summary */}
+        <section className="summary-card overflow-hidden rounded-2xl bg-white p-6 shadow-card ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+          <div className="mb-4 flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+              ສະຫຼຸບສະເພາະທີ່ກວດນັບ
+            </h2>
+            <span className="text-xs text-zinc-500">
+              ບໍ່ນັບລາຍການທີ່ມີໃນ SML/ຄ້າງ ແຕ່ບໍ່ໄດ້ນັບ
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat
+              label="ສິນຄ້າທີ່ນັບ"
+              value={countedOnlyItems.toLocaleString("en-US")}
+              sub="ລະຫັດທີ່ບໍ່ຊ້ຳ"
+            />
+            <Stat
+              label="ນັບໄດ້ລວມ"
+              value={formatQty(countedOnlyQty)}
+              accent="indigo"
+            />
+            <Stat
+              label="ຍອດອ້າງອີງ"
+              value={formatQty(countedOnlyRef)}
+              sub="SML + ຄ້າງ (ສະເພາະທີ່ນັບ)"
+            />
+            <Stat
+              label="ຄວາມຖືກຕ້ອງ"
+              value={`${coAccuracy.toFixed(1)}%`}
+              accent={
+                coAccuracy >= 95 ? "emerald" : coAccuracy >= 80 ? "amber" : "red"
+              }
+              sub={`${coMatched} / ${countedOnlyItems} ກົງ`}
+            />
+          </div>
+
+          <div className="mt-4 overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/40">
+                <tr>
+                  <th className="px-4 py-2 text-left">ປະເພດ</th>
+                  <th className="px-4 py-2 text-right">ຈຳນວນສິນຄ້າ</th>
+                  <th className="px-4 py-2 text-right">qty ສ່ວນຕ່າງ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                <Row
+                  label="ນັບໄດ້ກົງກັບຍອດອ້າງອີງ"
+                  count={coMatched}
+                  qty={0}
+                  tone="neutral"
+                />
+                <Row
+                  label="ນັບໄດ້ສູງກວ່າຍອດອ້າງອີງ"
+                  count={coOver}
+                  qty={coOverQty}
+                  tone="emerald"
+                />
+                <Row
+                  label="ນັບໄດ້ຕ່ຳກວ່າຍອດອ້າງອີງ"
+                  count={coUnder}
+                  qty={coUnderQty}
+                  tone="red"
+                />
+                <Row
+                  label="ນັບໄດ້ ແຕ່ບໍ່ມີໃນຍອດອ້າງອີງ"
+                  count={coOnly}
+                  qty={coOnlyQty}
+                  tone="emerald"
+                />
+              </tbody>
+              <tfoot className="border-t-2 border-zinc-200 bg-zinc-50 text-sm font-bold dark:border-zinc-700 dark:bg-zinc-800/40">
+                <tr>
+                  <td className="px-4 py-2.5">ລວມ (ສະເພາະທີ່ນັບ)</td>
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                    {countedOnlyItems}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                    {countedOnlyQty - countedOnlyRef > 0 ? "+" : ""}
+                    {formatQty(countedOnlyQty - countedOnlyRef)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {countedOnlyTop.length > 0 && (
+            <div className="mt-4 overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+              <table className="w-full text-xs">
+                <thead className="bg-zinc-50 uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/40">
+                  <tr>
+                    <th className="px-3 py-2 text-left">#</th>
+                    <th className="px-3 py-2 text-left">ລະຫັດ</th>
+                    <th className="px-3 py-2 text-left">ຊື່</th>
+                    <th className="px-3 py-2 text-right">ນັບໄດ້</th>
+                    <th className="px-3 py-2 text-right">ອ້າງອີງ</th>
+                    <th className="px-3 py-2 text-right">ສ່ວນຕ່າງ</th>
+                    <th className="px-3 py-2 text-left">ຫົວໜ່ວຍ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {countedOnlyTop.map((r, i) => (
+                    <tr key={r.item_code}>
+                      <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
+                      <td className="px-3 py-1.5 font-mono font-semibold">
+                        {r.item_code}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <div
+                          className="max-w-[260px] truncate"
+                          title={r.item_name ?? ""}
+                        >
+                          {r.item_name ?? "—"}
+                        </div>
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums">
+                        {formatQty(Number.parseFloat(r.counted_qty) || 0)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                        {formatQty(r.reference_qty)}
+                      </td>
+                      <td
+                        className={`px-3 py-1.5 text-right font-mono font-bold tabular-nums ${
+                          r.variance === 0
+                            ? "text-zinc-500"
+                            : r.variance > 0
+                              ? "text-emerald-700 dark:text-emerald-400"
+                              : "text-red-700 dark:text-red-400"
+                        }`}
+                      >
+                        {r.variance > 0 ? "+" : ""}
+                        {formatQty(r.variance)}
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-500">
+                        {r.unit_code ?? ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {countedOnly.length > countedOnlyTop.length && (
+            <div className="mt-2 text-xs text-zinc-500">
+              ສະແດງ {countedOnlyTop.length} ຈາກ {countedOnly.length} ລາຍການທີ່ນັບ
+            </div>
+          )}
+        </section>
+
+        {/* Label-level count detail */}
+        <section className="summary-card overflow-hidden rounded-2xl bg-white p-6 shadow-card ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+              ສະຫຼຸບລາຍປ້າຍ
+            </h2>
+            <span className="text-xs text-zinc-500">
+              {countedLabelRows.length.toLocaleString("en-US")} ນັບແລ້ວ ·{" "}
+              {emptyLabelRows.length.toLocaleString("en-US")} ຍັງບໍ່ໄດ້ນັບ
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat
+              label="ປ້າຍທີ່ນັບແລ້ວ"
+              value={countedLabelRows.length.toLocaleString("en-US")}
+              sub={`${completeness.toFixed(1)}% ຂອງປ້າຍທັງໝົດ`}
+              accent={emptyLabelRows.length === 0 ? "emerald" : "amber"}
+            />
+            <Stat
+              label="ປ້າຍຍັງວ່າງ"
+              value={emptyLabelRows.length.toLocaleString("en-US")}
+              accent={emptyLabelRows.length === 0 ? "neutral" : "red"}
+            />
+            <Stat
+              label="ສະເລ່ຍລາຍ/ປ້າຍ"
+              value={
+                countedLabelRows.length === 0
+                  ? "0"
+                  : formatQty(labelStat.total_lines / countedLabelRows.length)
+              }
+            />
+            <Stat
+              label="ສະເລ່ຍ qty/ປ້າຍ"
+              value={
+                countedLabelRows.length === 0
+                  ? "0"
+                  : formatQty(countedTotal / countedLabelRows.length)
+              }
+            />
+          </div>
+
+          {labelQtyTop.length > 0 && (
+            <div className="mt-4 overflow-x-auto rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+              <table className="w-full min-w-[860px] text-xs">
+                <thead className="bg-zinc-50 uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/40">
+                  <tr>
+                    <th className="px-3 py-2 text-left">ປ້າຍ</th>
+                    <th className="px-3 py-2 text-left">ຕຳແໜ່ງ</th>
+                    <th className="px-3 py-2 text-right">ລາຍການ</th>
+                    <th className="px-3 py-2 text-right">ສິນຄ້າ</th>
+                    <th className="px-3 py-2 text-right">qty ລວມ</th>
+                    <th className="px-3 py-2 text-left">ຜູ້ນັບ</th>
+                    <th className="px-3 py-2 text-left">ເວລາຫຼ້າສຸດ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {labelQtyTop.map((l) => (
+                    <tr key={l.label_id}>
+                      <td className="px-3 py-1.5">
+                        <Link
+                          href={`/stocktake/${sid}/count/${l.label_id}`}
+                          className="font-mono font-bold text-indigo-600 hover:underline dark:text-indigo-400"
+                        >
+                          {l.label_code}
+                        </Link>
+                        {l.note && (
+                          <div
+                            className="max-w-[180px] truncate text-[10px] text-zinc-500"
+                            title={l.note}
+                          >
+                            {l.note}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 font-mono text-zinc-600 dark:text-zinc-300">
+                        {l.rack_code || l.location_code
+                          ? `${l.rack_code ?? "-"} / ${l.location_code ?? "-"}`
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                        {l.line_count.toLocaleString("en-US")}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                        {l.item_count.toLocaleString("en-US")}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono font-bold tabular-nums text-zinc-900 dark:text-zinc-50">
+                        {formatQty(Number.parseFloat(l.qty_sum) || 0)}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <div
+                          className="max-w-[180px] truncate text-zinc-700 dark:text-zinc-300"
+                          title={l.counted_employee ?? ""}
+                        >
+                          {l.counted_employee ?? "—"}
+                        </div>
+                      </td>
+                      <td className="px-3 py-1.5 font-mono text-zinc-500">
+                        {l.last_counted_at?.slice(0, 16) ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {countedLabelRows.length > labelQtyTop.length && (
+            <div className="mt-2 text-xs text-zinc-500">
+              ສະແດງ {labelQtyTop.length} ປ້າຍທີ່ qty ສູງສຸດ ຈາກ{" "}
+              {countedLabelRows.length} ປ້າຍທີ່ນັບແລ້ວ
+            </div>
+          )}
+
+          {emptyLabelRows.length > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <div className="text-xs font-semibold text-amber-800 dark:text-amber-200">
+                ປ້າຍທີ່ຍັງບໍ່ໄດ້ນັບ
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {emptyLabelRows.slice(0, 40).map((l) => (
+                  <Link
+                    key={l.label_id}
+                    href={`/stocktake/${sid}/count/${l.label_id}`}
+                    className="rounded-md bg-white px-2 py-1 font-mono text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-zinc-900 dark:text-amber-200 dark:ring-amber-900/60"
+                  >
+                    {l.label_code}
+                  </Link>
+                ))}
+              </div>
+              {emptyLabelRows.length > 40 && (
+                <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                  ແລະອີກ {(emptyLabelRows.length - 40).toLocaleString("en-US")}{" "}
+                  ປ້າຍ
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Top variances */}
@@ -729,21 +1373,48 @@ export default async function SessionSummaryPage({
             <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
               ຜູ້ກວດນັບ
             </h2>
-            <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {counterRows.map((c, i) => (
-                <li
-                  key={c.counted_employee ?? `unknown-${i}`}
-                  className="flex items-center justify-between py-2 text-sm"
-                >
-                  <span className="text-zinc-700 dark:text-zinc-300">
-                    {c.counted_employee ?? "(ບໍ່ລະບຸ)"}
-                  </span>
-                  <span className="font-mono tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {c.line_count.toLocaleString("en-US")} ລາຍການ
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="overflow-x-auto rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+              <table className="w-full min-w-[760px] text-xs">
+                <thead className="bg-zinc-50 uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/40">
+                  <tr>
+                    <th className="px-3 py-2 text-left">ຜູ້ນັບ</th>
+                    <th className="px-3 py-2 text-right">ລາຍການ</th>
+                    <th className="px-3 py-2 text-right">ສິນຄ້າ</th>
+                    <th className="px-3 py-2 text-right">ປ້າຍ</th>
+                    <th className="px-3 py-2 text-right">qty ລວມ</th>
+                    <th className="px-3 py-2 text-left">ເລີ່ມ</th>
+                    <th className="px-3 py-2 text-left">ຫຼ້າສຸດ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {counterRows.map((c, i) => (
+                    <tr key={c.counted_employee ?? `unknown-${i}`}>
+                      <td className="px-3 py-1.5 font-semibold text-zinc-700 dark:text-zinc-300">
+                        {c.counted_employee ?? "(ບໍ່ລະບຸ)"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                        {c.line_count.toLocaleString("en-US")}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                        {c.item_count.toLocaleString("en-US")}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                        {c.label_count.toLocaleString("en-US")}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono font-bold tabular-nums text-zinc-900 dark:text-zinc-50">
+                        {formatQty(Number.parseFloat(c.qty_sum) || 0)}
+                      </td>
+                      <td className="px-3 py-1.5 font-mono text-zinc-500">
+                        {c.first_counted_at?.slice(0, 16) ?? "—"}
+                      </td>
+                      <td className="px-3 py-1.5 font-mono text-zinc-500">
+                        {c.last_counted_at?.slice(0, 16) ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
 
@@ -764,6 +1435,150 @@ export default async function SessionSummaryPage({
         </footer>
       </div>
     </StocktakeLayout>
+  );
+}
+
+function GroupSummaryTable({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: GroupSummary[];
+}) {
+  const shown = rows.slice(0, 30);
+  const totalItems = rows.reduce((sum, row) => sum + row.itemCount, 0);
+  const totalCountedItems = rows.reduce(
+    (sum, row) => sum + row.countedItemCount,
+    0,
+  );
+  const totalVariance = rows.reduce((sum, row) => sum + row.varianceQty, 0);
+
+  return (
+    <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+      <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-800/40">
+        <div>
+          <div className="text-xs font-bold text-zinc-800 dark:text-zinc-100">
+            {title}
+          </div>
+          <div className="mt-0.5 text-[10px] text-zinc-500">
+            {rows.length.toLocaleString("en-US")} ກຸ່ມ ·{" "}
+            {totalItems.toLocaleString("en-US")} ສິນຄ້າ ·{" "}
+            {totalCountedItems.toLocaleString("en-US")} ນັບແລ້ວ
+          </div>
+        </div>
+        <div
+          className={`font-mono text-sm font-bold tabular-nums ${
+            totalVariance === 0
+              ? "text-zinc-500"
+              : totalVariance > 0
+                ? "text-emerald-700 dark:text-emerald-400"
+                : "text-red-700 dark:text-red-400"
+          }`}
+        >
+          {totalVariance > 0 ? "+" : ""}
+          {formatQty(totalVariance)}
+        </div>
+      </div>
+
+      {shown.length === 0 ? (
+        <div className="px-4 py-6 text-center text-xs text-zinc-500">
+          ບໍ່ມີຂໍ້ມູນ
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[780px] text-xs">
+            <thead className="bg-white uppercase tracking-wider text-zinc-500 dark:bg-zinc-900">
+              <tr>
+                <th className="px-3 py-2 text-left">ກຸ່ມ</th>
+                <th className="px-3 py-2 text-right">ຈຳນວນສິນຄ້າ</th>
+                <th className="px-3 py-2 text-right">ນັບແລ້ວ</th>
+                <th className="px-3 py-2 text-right">ນັບແລ້ວກົງ</th>
+                <th className="px-3 py-2 text-right">qty ນັບໄດ້</th>
+                <th className="px-3 py-2 text-right">ອ້າງອີງ</th>
+                <th className="px-3 py-2 text-right">ສ່ວນຕ່າງ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {shown.map((row) => {
+                const countedPct =
+                  row.itemCount === 0
+                    ? 0
+                    : (row.countedItemCount / row.itemCount) * 100;
+                const countedMatchedPct =
+                  row.countedItemCount === 0
+                    ? 0
+                    : (row.countedMatchedCount / row.countedItemCount) * 100;
+                return (
+                  <tr key={row.key}>
+                    <td className="px-3 py-2">
+                      <div className="font-semibold text-zinc-800 dark:text-zinc-100">
+                        {row.name}
+                      </div>
+                      {row.code && (
+                        <div className="mt-0.5 font-mono text-[10px] text-zinc-500">
+                          {row.code}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">
+                      {row.itemCount.toLocaleString("en-US")}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="font-mono font-semibold tabular-nums text-zinc-800 dark:text-zinc-100">
+                        {row.countedItemCount.toLocaleString("en-US")}
+                      </div>
+                      <div className="text-[10px] text-zinc-500">
+                        {countedPct.toFixed(1)}%
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <div
+                        className={`font-mono font-semibold tabular-nums ${
+                          countedMatchedPct >= 95
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : countedMatchedPct >= 80
+                              ? "text-amber-700 dark:text-amber-400"
+                              : "text-red-700 dark:text-red-400"
+                        }`}
+                      >
+                        {row.countedMatchedCount.toLocaleString("en-US")}
+                      </div>
+                      <div className="text-[10px] text-zinc-500">
+                        {countedMatchedPct.toFixed(1)}%
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">
+                      {formatQty(row.countedQty)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">
+                      {formatQty(row.referenceQty)}
+                    </td>
+                    <td
+                      className={`px-3 py-2 text-right font-mono font-bold tabular-nums ${
+                        row.varianceQty === 0
+                          ? "text-zinc-500"
+                          : row.varianceQty > 0
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : "text-red-700 dark:text-red-400"
+                      }`}
+                    >
+                      {row.varianceQty > 0 ? "+" : ""}
+                      {formatQty(row.varianceQty)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {rows.length > shown.length && (
+        <div className="border-t border-zinc-100 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800">
+          ສະແດງ {shown.length} ກຸ່ມທີ່ມີສ່ວນຕ່າງສູງສຸດ ຈາກ{" "}
+          {rows.length.toLocaleString("en-US")} ກຸ່ມ
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -834,6 +1649,100 @@ function Row({
         {formatQty(qty)}
       </td>
     </tr>
+  );
+}
+
+function GradeBadge({
+  grade,
+  tone,
+  score,
+  label,
+}: {
+  grade: string;
+  tone: "emerald" | "indigo" | "amber" | "red";
+  score: number;
+  label: string;
+}) {
+  const toneMap: Record<typeof tone, string> = {
+    emerald:
+      "from-emerald-500 to-emerald-600 ring-emerald-200 dark:ring-emerald-800",
+    indigo: "from-indigo-500 to-indigo-600 ring-indigo-200 dark:ring-indigo-800",
+    amber: "from-amber-500 to-amber-600 ring-amber-200 dark:ring-amber-800",
+    red: "from-red-500 to-red-600 ring-red-200 dark:ring-red-800",
+  };
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        className={`flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-4xl font-black text-white shadow-lg ring-2 ${toneMap[tone]}`}
+      >
+        {grade}
+      </div>
+      <div>
+        <div className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+          ຄະແນນລວມ
+        </div>
+        <div className="font-mono text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+          {score.toFixed(1)}
+          <span className="text-sm font-normal text-zinc-500">/100</span>
+        </div>
+        <div className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+          {label}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-zinc-50 px-3 py-2 ring-1 ring-zinc-200 dark:bg-zinc-800/40 dark:ring-zinc-700">
+      <div className="text-[9px] font-semibold uppercase tracking-wider text-zinc-500">
+        {label}
+      </div>
+      <div className="mt-0.5 font-mono text-sm font-bold tabular-nums text-zinc-900 dark:text-zinc-50">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Signal({
+  label,
+  detail,
+  tone,
+}: {
+  label: string;
+  detail: string;
+  tone: "ok" | "warn" | "bad";
+}) {
+  const toneMap: Record<typeof tone, { dot: string; ring: string; text: string }> = {
+    ok: {
+      dot: "bg-emerald-500",
+      ring: "ring-emerald-200 dark:ring-emerald-800/60",
+      text: "text-emerald-700 dark:text-emerald-300",
+    },
+    warn: {
+      dot: "bg-amber-500",
+      ring: "ring-amber-200 dark:ring-amber-800/60",
+      text: "text-amber-700 dark:text-amber-300",
+    },
+    bad: {
+      dot: "bg-red-500",
+      ring: "ring-red-200 dark:ring-red-800/60",
+      text: "text-red-700 dark:text-red-300",
+    },
+  };
+  const t = toneMap[tone];
+  return (
+    <div
+      className={`inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 ring-1 ${t.ring} dark:bg-zinc-900`}
+    >
+      <span className={`h-2 w-2 rounded-full ${t.dot}`} />
+      <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
+        {label}
+      </span>
+      <span className={`font-mono text-xs tabular-nums ${t.text}`}>{detail}</span>
+    </div>
   );
 }
 

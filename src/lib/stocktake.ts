@@ -164,6 +164,51 @@ export const SNAPSHOT_INSERT_SQL = `
   HAVING SUM(t.qty * t.calc_flag) <> 0
 `;
 
+export type SnapshotFilters = {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+};
+
+/**
+ * Build the snapshot INSERT SQL with optional WHERE filters appended.
+ * Returns the SQL text + the full parameter array (session_id, wh_code, …).
+ */
+export function buildSnapshotInsertSql(
+  sessionId: number,
+  whCode: string,
+  filters: SnapshotFilters = {},
+): { sql: string; params: unknown[] } {
+  const params: unknown[] = [sessionId, whCode];
+  const extra: string[] = [];
+  if (filters.dateFrom) {
+    params.push(filters.dateFrom);
+    extra.push(`AND t.doc_date >= $${params.length}::date`);
+  }
+  if (filters.dateTo) {
+    params.push(filters.dateTo);
+    extra.push(`AND t.doc_date <= $${params.length}::date`);
+  }
+  const sql = `
+    INSERT INTO public.wms_stocktake_snapshot
+      (session_id, item_code, item_name, unit_code, snapshot_qty)
+    SELECT
+      $1,
+      t.item_code,
+      MAX(t.item_name),
+      MAX(t.unit_code),
+      SUM(t.qty * t.calc_flag)::numeric
+    FROM public.odg_wms_trans_detail t
+    WHERE (t.status = 0 OR t.status IS NULL)
+      AND t.wh_code = $2
+      AND t.item_code IS NOT NULL
+      AND t.item_code <> ''
+      ${extra.join("\n      ")}
+    GROUP BY t.item_code
+    HAVING SUM(t.qty * t.calc_flag) <> 0
+  `;
+  return { sql, params };
+}
+
 /**
  * SQL for rebuilding the per-warehouse pending-bill cache from the source
  * tables (ic_trans_shipment + ic_trans + ic_trans_detail + odg_tms_detail).

@@ -1,9 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CheckIcon, LayersIcon } from "@/components/ui/Icons";
 import PendingBillsDialog from "./PendingBillsDialog";
+import RefreshSnapshotDialog from "./RefreshSnapshotDialog";
 
 export default function SnapshotPanel({
   sessionId,
@@ -18,51 +18,8 @@ export default function SnapshotPanel({
   pendingBills: number;
   countedLines: number;
 }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-
-  async function refreshSml(force = false) {
-    if (snapshotItems > 0 && countedLines === 0 && !force) {
-      if (
-        !confirm(
-          "ດຶງ SML ຄືນ?\nຍອດ SML ປັດຈຸບັນຈະຖືກລ້າງ ແລະ ດຶງໃໝ່ຈາກລະບົບ.",
-        )
-      )
-        return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetch(
-        `/api/stocktake/sessions/${sessionId}/snapshot`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ force }),
-        },
-      );
-      const data = (await res.json()) as {
-        ok?: boolean;
-        error?: string;
-        requires_confirmation?: boolean;
-        counted_lines?: number;
-      };
-      if (res.status === 409 && data.requires_confirmation) {
-        const msg = `${data.error}.\n\nຢຶນຍັນດຶງຄືນ ເຖິງແມ່ນວ່າມີການນັບແລ້ວ ${data.counted_lines ?? countedLines} ລາຍການ?`;
-        if (confirm(msg)) {
-          setBusy(false);
-          return refreshSml(true);
-        }
-        return;
-      }
-      if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
-      router.refresh();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "ບໍ່ສຳເລັດ");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [refreshOpen, setRefreshOpen] = useState(false);
 
   const smlEmpty = snapshotItems === 0;
   const noPending = pendingBills === 0;
@@ -131,22 +88,20 @@ export default function SnapshotPanel({
           <button
             type="button"
             onClick={() => setDialogOpen(true)}
-            disabled={busy}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:opacity-60 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
           >
             {noPending ? "ເລືອກບິນຄ້າງຈ່າຍ" : "ປ່ຽນບິນທີ່ເລືອກ"}
           </button>
           <button
             type="button"
-            onClick={() => refreshSml()}
-            disabled={busy}
-            className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition disabled:opacity-60 ${
+            onClick={() => setRefreshOpen(true)}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
               smlEmpty
                 ? "bg-indigo-600 text-white shadow-sm hover:bg-indigo-500"
                 : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
             }`}
           >
-            {busy ? "ກຳລັງດຶງ..." : smlEmpty ? "ດຶງ SML" : "ດຶງຄືນ"}
+            {smlEmpty ? "ດຶງ SML" : "ດຶງຄືນ"}
           </button>
         </div>
       </div>
@@ -156,6 +111,14 @@ export default function SnapshotPanel({
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         hasCountedLines={hasCounts}
+      />
+
+      <RefreshSnapshotDialog
+        sessionId={sessionId}
+        open={refreshOpen}
+        onClose={() => setRefreshOpen(false)}
+        countedLines={countedLines}
+        hasSnapshot={!smlEmpty}
       />
     </>
   );

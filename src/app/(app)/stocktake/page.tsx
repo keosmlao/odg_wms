@@ -34,6 +34,7 @@ type Row = {
   line_count: number;
   total_qty: string;
   snapshot_items: number;
+  counted_sml_items: number;
   pending_bills: number;
 };
 
@@ -199,6 +200,14 @@ export default async function StocktakeListPage({
            SELECT count(*) FROM public.wms_stocktake_snapshot ss
            WHERE ss.session_id = s.session_id
          ), 0)::int AS snapshot_items,
+         COALESCE((
+           SELECT count(DISTINCT ln.item_code)
+           FROM public.wms_stocktake_line ln
+           JOIN public.wms_stocktake_snapshot ss
+             ON ss.session_id = ln.session_id
+            AND ss.item_code = ln.item_code
+           WHERE ln.session_id = s.session_id
+         ), 0)::int AS counted_sml_items,
          COALESCE((
            SELECT count(*) FROM public.wms_stocktake_pending_bill pb
            WHERE pb.session_id = s.session_id
@@ -409,9 +418,9 @@ export default async function StocktakeListPage({
                 {filteredRows.map((r) => {
                   const cfg = ROW_STATUS[r.status];
                   const progress =
-                    r.label_count === 0
+                    r.snapshot_items === 0
                       ? 0
-                      : (r.counted_labels / r.label_count) * 100;
+                      : (r.counted_sml_items / r.snapshot_items) * 100;
                   return (
                     <tr
                       key={r.session_id}
@@ -463,12 +472,12 @@ export default async function StocktakeListPage({
                         <div className="flex items-baseline justify-between gap-2 text-[11px]">
                           <span className="font-mono tabular-nums text-zinc-700 dark:text-zinc-200">
                             <span className="font-semibold">
-                              {r.counted_labels}
+                              {r.counted_sml_items}
                             </span>
                             <span className="text-zinc-400">
-                              /{r.label_count}
+                              /{r.snapshot_items}
                             </span>{" "}
-                            ປ້າຍ
+                            SML
                           </span>
                           <span className="font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
                             {progress.toFixed(0)}%

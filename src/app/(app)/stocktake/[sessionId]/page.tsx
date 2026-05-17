@@ -11,7 +11,6 @@ import {
   stNavLink,
   stPanel,
   stPanelPad,
-  stTitleLg,
 } from "../_components/stocktake-theme";
 import SessionActions from "./SessionActions";
 import SnapshotPanel from "./SnapshotPanel";
@@ -39,6 +38,8 @@ type SessionDetail = {
   approved_employee: string | null;
   closed_employee: string | null;
   snapshot_items: number;
+  snapshot_qty: string;
+  counted_items: number;
   pending_items: number;
   pending_bills: number;
 };
@@ -63,10 +64,21 @@ function formatQty(value: string | number | null | undefined) {
   });
 }
 
+type TabKey = "count" | "results" | "settings";
+
+const TAB_KEYS: TabKey[] = ["count", "results", "settings"];
+
+function resolveTab(value: string | string[] | undefined): TabKey {
+  const v = Array.isArray(value) ? value[0] : value;
+  return TAB_KEYS.includes(v as TabKey) ? (v as TabKey) : "count";
+}
+
 export default async function SessionDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ sessionId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const userSession = await getSession();
   if (!userSession) redirect("/login");
@@ -84,6 +96,8 @@ export default async function SessionDetailPage({
   const { sessionId } = await params;
   const id = Number.parseInt(sessionId, 10);
   if (!Number.isFinite(id)) notFound();
+  const sp = await searchParams;
+  const activeTab = resolveTab(sp.tab);
 
   const detail = (
     await query<SessionDetail>(
@@ -107,6 +121,12 @@ export default async function SessionDetailPage({
          eX.fullname_lo AS closed_employee,
          (SELECT count(*)::int FROM public.wms_stocktake_snapshot ss
           WHERE ss.session_id = s.session_id) AS snapshot_items,
+         (SELECT COALESCE(SUM(snapshot_qty), 0)::text
+          FROM public.wms_stocktake_snapshot ss
+          WHERE ss.session_id = s.session_id) AS snapshot_qty,
+         (SELECT count(DISTINCT item_code)::int
+          FROM public.wms_stocktake_line ln
+          WHERE ln.session_id = s.session_id) AS counted_items,
          (SELECT count(*)::int FROM public.wms_stocktake_pending p
           WHERE p.session_id = s.session_id) AS pending_items,
          (SELECT count(*)::int FROM public.wms_stocktake_pending_bill pb
@@ -137,7 +157,7 @@ export default async function SessionDetailPage({
     );
   }
 
-  const [labels, locMaster] = await Promise.all([
+  const [labels, locMaster, varianceRows] = await Promise.all([
     query<LabelInfo>(
       `SELECT
          l.label_id,
@@ -168,6 +188,55 @@ export default async function SessionDetailPage({
        WHERE wh_code = $1 AND code IS NOT NULL AND code <> ''`,
       [detail.wh_code],
     ),
+    query<{
+      item_code: string;
+      item_name: string | null;
+      counted_unit: string | null;
+      sml_unit: string | null;
+      counted_qty: string;
+      sml_qty: string;
+      pending_qty: string;
+    }>(
+      `WITH counted AS (
+         SELECT item_code, MAX(item_name) AS item_name, MAX(unit_code) AS unit_code,
+                SUM(qty)::numeric AS counted_qty
+         FROM public.wms_stocktake_line
+         WHERE session_id = $1
+         GROUP BY item_code
+       ),
+       universe AS (
+         SELECT item_code, item_name FROM counted
+         UNION
+         SELECT item_code, item_name
+         FROM public.wms_stocktake_snapshot
+         WHERE session_id = $1
+         UNION
+         SELECT item_code, item_name
+         FROM public.wms_stocktake_pending
+         WHERE session_id = $1
+       )
+       SELECT
+         u.item_code                          AS item_code,
+         COALESCE(c.item_name, u.item_name)   AS item_name,
+         c.unit_code                          AS counted_unit,
+         ss.unit_code                         AS sml_unit,
+         COALESCE(c.counted_qty, 0)::text     AS counted_qty,
+         COALESCE(ss.snapshot_qty, 0)::text   AS sml_qty,
+         COALESCE(p.pending_qty, 0)::text     AS pending_qty
+       FROM (
+         SELECT item_code, MAX(item_name) AS item_name
+         FROM universe
+         WHERE item_code IS NOT NULL
+         GROUP BY item_code
+       ) u
+       LEFT JOIN counted c
+         ON c.item_code = u.item_code
+       LEFT JOIN public.wms_stocktake_snapshot ss
+         ON ss.item_code = u.item_code AND ss.session_id = $1
+       LEFT JOIN public.wms_stocktake_pending p
+         ON p.item_code = u.item_code AND p.session_id = $1`,
+      [id],
+    ),
   ]);
   const locationCount = locMaster[0]?.n ?? 0;
 
@@ -183,6 +252,71 @@ export default async function SessionDetailPage({
   };
   const progress =
     summary.labels === 0 ? 0 : (summary.counted / summary.labels) * 100;
+  const snapshotQty = Number.parseFloat(detail.snapshot_qty) || 0;
+  const itemProgress =
+    detail.snapshot_items === 0
+      ? 0
+      : Math.min(100, (detail.counted_items / detail.snapshot_items) * 100);
+  const qtyProgress =
+    snapshotQty === 0 ? 0 : Math.min(100, (summary.qty / snapshotQty) * 100);
+
+  type VarItem = {
+    item_code: string;
+    item_name: string | null;
+    counted_unit: string | null;
+    sml_unit: string | null;
+    unit_code: string | null;
+    counted_qty: number;
+    reference_qty: number;
+    variance: number;
+    absVar: number;
+    unit_mismatch: boolean;
+  };
+  const varEnriched: VarItem[] = [];
+  for (const r of varianceRows) {
+    const c = Number.parseFloat(r.counted_qty) || 0;
+    const s = Number.parseFloat(r.sml_qty) || 0;
+    const p = Number.parseFloat(r.pending_qty) || 0;
+    const ref = s + p;
+    const v = c - ref;
+    const cu = (r.counted_unit ?? "").trim().toUpperCase();
+    const su = (r.sml_unit ?? "").trim().toUpperCase();
+    const mismatch = cu !== "" && su !== "" && cu !== su;
+    varEnriched.push({
+      item_code: r.item_code,
+      item_name: r.item_name,
+      counted_unit: r.counted_unit,
+      sml_unit: r.sml_unit,
+      unit_code: r.counted_unit ?? r.sml_unit,
+      counted_qty: c,
+      reference_qty: ref,
+      variance: v,
+      absVar: Math.abs(v),
+      unit_mismatch: mismatch,
+    });
+  }
+  const topVar = [...varEnriched]
+    .filter((r) => r.counted_qty > 0 && r.absVar > 0)
+    .sort((a, b) => b.absVar - a.absVar)
+    .slice(0, 5);
+  const countedVarItems = varEnriched.filter((r) => r.counted_qty > 0);
+  const countedMatched = countedVarItems.filter((r) => r.variance === 0).length;
+  const countedOver = countedVarItems.filter(
+    (r) => r.reference_qty > 0 && r.variance > 0,
+  ).length;
+  const countedUnder = countedVarItems.filter(
+    (r) => r.reference_qty > 0 && r.variance < 0,
+  ).length;
+  const countedOnly = countedVarItems.filter((r) => r.reference_qty === 0).length;
+  const countedNetVarianceQty = countedVarItems.reduce(
+    (sum, r) => sum + r.variance,
+    0,
+  );
+  const unitMismatches = countedVarItems.filter((r) => r.unit_mismatch);
+  const totalVarItems = countedVarItems.length;
+  const accuracyPct =
+    totalVarItems === 0 ? 100 : (countedMatched / totalVarItems) * 100;
+  const hasResults = totalVarItems > 0 && summary.lines > 0;
 
   const isOpen = detail.status === "open";
   const isPending = detail.status === "pending_approval";
@@ -191,6 +325,10 @@ export default async function SessionDetailPage({
   const nextLabel = labels.find((l) => l.line_count === 0);
   const canApprove =
     userSession.role === "manager" || userSession.role === "supervisor";
+  const mainProgress =
+    detail.snapshot_items > 0 ? itemProgress : progress;
+  const mainProgressLabel =
+    detail.snapshot_items > 0 ? "ຄວາມຄືບໜ້າທຽບ SML" : "ຄວາມຄືບໜ້າຕາມປ້າຍ";
 
   return (
     <StocktakeLayout wide>
@@ -205,13 +343,11 @@ export default async function SessionDetailPage({
         </span>
       </nav>
 
-      {/* Hero: title + meta + progress (one tight card) */}
       <section className={`${stPanel} mb-4 overflow-hidden`}>
-        <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
-          <div className="min-w-0 flex-1">
-            <p className={stEyebrow}>ຮອບກວດນັບ</p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h1 className={stTitleLg}>{detail.name ?? "ຮອບກວດນັບ"}</h1>
+        <div className="grid gap-5 p-5 lg:grid-cols-[1fr_360px] lg:p-6">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className={stEyebrow}>ຮອບກວດນັບ</p>
               <StatusBadge status={detail.status} />
               {detail.blind && (
                 <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
@@ -219,12 +355,17 @@ export default async function SessionDetailPage({
                 </span>
               )}
             </div>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl dark:text-white">
+              {detail.name ?? "ຮອບກວດນັບ"}
+            </h1>
             <div
-              className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs ${stMuted}`}
+              className={`mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs ${stMuted}`}
             >
-              <span className="font-mono">{detail.session_code}</span>
+              <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-100">
+                {detail.session_code}
+              </span>
               <span className="text-zinc-300 dark:text-zinc-600">·</span>
-              <span className="truncate">
+              <span>
                 {detail.wh_code}
                 {detail.wh_name ? ` (${detail.wh_name})` : ""}
               </span>
@@ -237,82 +378,255 @@ export default async function SessionDetailPage({
                 </>
               )}
             </div>
-          </div>
-        </div>
 
-        {/* Progress strip */}
-        <div className="border-t border-zinc-100 bg-zinc-50/40 px-5 py-3 sm:px-6 dark:border-zinc-800 dark:bg-zinc-950/30">
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between gap-3 text-[11px]">
-                <span className="font-medium text-zinc-500 dark:text-zinc-400">
-                  ຄວາມຄືບໜ້າ
-                </span>
-                <span className="font-mono text-zinc-600 dark:text-zinc-300">
-                  <span className="font-bold text-zinc-900 dark:text-white">
-                    {summary.counted}
-                  </span>
-                  <span className="text-zinc-400">/{summary.labels}</span> ປ້າຍ
-                  <span className="mx-1.5 text-zinc-300 dark:text-zinc-600">
-                    ·
-                  </span>
-                  <span className="text-amber-700 dark:text-amber-400">
-                    {summary.pending}
-                  </span>{" "}
-                  ຍັງເຫຼືອ
-                  <span className="mx-1.5 text-zinc-300 dark:text-zinc-600">
-                    ·
-                  </span>
-                  <span className="text-zinc-700 dark:text-zinc-200">
-                    {summary.lines.toLocaleString("en-US")}
-                  </span>{" "}
-                  ລາຍ
-                  <span className="mx-1.5 text-zinc-300 dark:text-zinc-600">
-                    ·
-                  </span>
-                  <span className="font-bold tabular-nums text-indigo-600 dark:text-indigo-300">
-                    {formatQty(summary.qty)}
-                  </span>{" "}
-                  ລວມ
-                </span>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <HeroMetric
+                label="SML ນັບແລ້ວ"
+                value={
+                  detail.snapshot_items > 0
+                    ? `${detail.counted_items.toLocaleString("en-US")}/${detail.snapshot_items.toLocaleString("en-US")}`
+                    : "ຍັງບໍ່ມີ"
+                }
+                sub={
+                  detail.snapshot_items > 0
+                    ? `${itemProgress.toFixed(0)}%`
+                    : "snapshot"
+                }
+                tone={
+                  itemProgress >= 90
+                    ? "emerald"
+                    : itemProgress >= 50
+                      ? "amber"
+                      : "indigo"
+                }
+              />
+              <HeroMetric
+                label="ປ້າຍ"
+                value={`${summary.counted}/${summary.labels}`}
+                sub={`${summary.pending} ຍັງເຫຼືອ`}
+                tone={
+                  summary.pending === 0 && summary.labels > 0
+                    ? "emerald"
+                    : "amber"
+                }
+              />
+              <HeroMetric
+                label="ລາຍການນັບ"
+                value={summary.lines.toLocaleString("en-US")}
+                sub={`${detail.counted_items.toLocaleString("en-US")} ລະຫັດ`}
+                tone="zinc"
+              />
+              <HeroMetric
+                label="ສ່ວນຕ່າງທີ່ນັບແລ້ວ"
+                value={`${countedNetVarianceQty > 0 ? "+" : ""}${formatQty(countedNetVarianceQty)}`}
+                sub={`${accuracyPct.toFixed(1)}% ກົງ`}
+                tone={
+                  Math.abs(countedNetVarianceQty) < 0.0001
+                    ? "emerald"
+                    : countedNetVarianceQty > 0
+                      ? "amber"
+                      : "red"
+                }
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-950/40">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
+                  {mainProgressLabel}
+                </div>
+                <div className="mt-1 font-mono text-4xl font-black tabular-nums text-zinc-900 dark:text-white">
+                  {mainProgress.toFixed(0)}%
+                </div>
               </div>
-              <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-zinc-200/60 dark:bg-zinc-800">
+              <div className="grid shrink-0 gap-2 text-right">
+                <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+                  <div className="font-mono text-sm font-bold tabular-nums text-zinc-900 dark:text-white">
+                    {formatQty(summary.qty)}
+                  </div>
+                  <div className="text-[10px] text-zinc-500">qty ນັບໄດ້</div>
+                </div>
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    isClosed
-                      ? "bg-zinc-400 dark:bg-zinc-500"
-                      : "bg-gradient-to-r from-emerald-400 to-teal-500"
+                  className={`rounded-xl px-3 py-2 ring-1 ${
+                    Math.abs(countedNetVarianceQty) < 0.0001
+                      ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/25 dark:text-emerald-300 dark:ring-emerald-900/50"
+                      : countedNetVarianceQty > 0
+                        ? "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/25 dark:text-amber-300 dark:ring-amber-900/50"
+                        : "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/25 dark:text-red-300 dark:ring-red-900/50"
                   }`}
-                  style={{ width: `${progress}%` }}
-                />
+                >
+                  <div className="font-mono text-sm font-bold tabular-nums">
+                    {countedNetVarianceQty > 0 ? "+" : ""}
+                    {formatQty(countedNetVarianceQty)}
+                  </div>
+                  <div className="text-[10px] opacity-75">ສ່ວນຕ່າງທີ່ນັບແລ້ວ</div>
+                </div>
               </div>
             </div>
-            <div className="shrink-0 text-right">
-              <div className="font-mono text-2xl font-bold tabular-nums leading-none text-zinc-900 dark:text-white">
-                {progress.toFixed(0)}%
-              </div>
+
+            <div className="mt-4 space-y-3">
+              <ProgressLine
+                label={mainProgressLabel}
+                value={mainProgress}
+                detail={
+                  detail.snapshot_items > 0
+                    ? `${detail.counted_items.toLocaleString("en-US")}/${detail.snapshot_items.toLocaleString("en-US")} ລະຫັດ`
+                    : `${summary.counted}/${summary.labels} ປ້າຍ`
+                }
+                tone="indigo"
+              />
+              <ProgressLine
+                label="ປ້າຍກວດນັບ"
+                value={progress}
+                detail={`${summary.counted}/${summary.labels} ປ້າຍ`}
+                tone="emerald"
+              />
+              {snapshotQty > 0 && (
+                <ProgressLine
+                  label="qty ທຽບ SML"
+                  value={qtyProgress}
+                  detail={`${formatQty(summary.qty)}/${formatQty(snapshotQty)}`}
+                  tone="violet"
+                />
+              )}
+            </div>
+
+            <div className="mt-4">
+              <PrimaryAction
+                status={detail.status}
+                canApprove={canApprove}
+                sessionId={detail.session_id}
+                nextLabelId={nextLabel?.label_id}
+                nextLabelCode={nextLabel?.label_code}
+                labelCount={summary.labels}
+                countedCount={summary.counted}
+              />
             </div>
           </div>
         </div>
       </section>
 
-      {/* Primary CTA (full width, prominent) */}
-      <div className="mb-4">
-        <PrimaryAction
-          status={detail.status}
-          canApprove={canApprove}
-          sessionId={detail.session_id}
-          nextLabelId={nextLabel?.label_id}
-          nextLabelCode={nextLabel?.label_code}
-          labelCount={summary.labels}
-          countedCount={summary.counted}
-        />
-      </div>
+      {/* Variance alert */}
+      {hasResults &&
+        (() => {
+          const variantCount = countedOver + countedUnder + countedOnly;
+          if (variantCount === 0 && unitMismatches.length === 0) return null;
+          const isCritical =
+            countedUnder > 0 || unitMismatches.length > 0;
+          return (
+            <div
+              className={`mb-4 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 ${
+                isCritical
+                  ? "border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30"
+                  : "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/50 dark:bg-emerald-950/20"
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className={`h-5 w-5 shrink-0 ${
+                  isCritical
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-emerald-600 dark:text-emerald-400"
+                }`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+              </svg>
+              <div className="min-w-0 flex-1">
+                <div
+                  className={`text-sm font-bold ${
+                    isCritical
+                      ? "text-amber-900 dark:text-amber-200"
+                      : "text-emerald-900 dark:text-emerald-200"
+                  }`}
+                >
+                  {variantCount > 0
+                    ? `ມີ ${variantCount} ລາຍການທີ່ນັບແລ້ວມີສ່ວນຕ່າງ`
+                    : "ການນັບກົງກັນທັງໝົດ"}
+                  {unitMismatches.length > 0 &&
+                    ` · ${unitMismatches.length} ຫົວໜ່ວຍບໍ່ກົງ`}
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-700 dark:text-zinc-300">
+                  {countedOver > 0 && (
+                    <span>
+                      <b className="text-emerald-700 dark:text-emerald-400">
+                        +{countedOver}
+                      </b>{" "}
+                      ສູງກວ່າ
+                    </span>
+                  )}
+                  {countedUnder > 0 && (
+                    <span>
+                      <b className="text-red-700 dark:text-red-400">
+                        −{countedUnder}
+                      </b>{" "}
+                      ຕ່ຳກວ່າ
+                    </span>
+                  )}
+                  {countedOnly > 0 && (
+                    <span>
+                      <b className="text-amber-700 dark:text-amber-400">
+                        {countedOnly}
+                      </b>{" "}
+                      ນອກ SML
+                    </span>
+                  )}
+                  <span className="text-zinc-500">
+                    · ສ່ວນຕ່າງທີ່ນັບແລ້ວ{" "}
+                    <b
+                      className={`font-mono tabular-nums ${
+                        Math.abs(countedNetVarianceQty) < 0.0001
+                          ? "text-zinc-700 dark:text-zinc-200"
+                          : countedNetVarianceQty > 0
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : "text-red-700 dark:text-red-400"
+                      }`}
+                    >
+                      {countedNetVarianceQty > 0 ? "+" : ""}
+                      {formatQty(countedNetVarianceQty)}
+                    </b>
+                  </span>
+                </div>
+              </div>
+              <Link
+                href={`/stocktake/${detail.session_id}/report?filter=variance`}
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  isCritical
+                    ? "bg-amber-600 text-white hover:bg-amber-700"
+                    : "bg-emerald-600 text-white hover:bg-emerald-700"
+                }`}
+              >
+                ເບິ່ງລາຍລະອຽດ →
+              </Link>
+            </div>
+          );
+        })()}
 
-      {/* 2-column dashboard */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Left: Main work (Labels + Create) */}
-        <div className="space-y-4 lg:col-span-2">
+      {/* Tab navigation */}
+      <TabNav
+        active={activeTab}
+        sessionId={detail.session_id}
+        countBadge={summary.pending > 0 ? summary.pending : undefined}
+        resultsBadge={
+          countedOver + countedUnder + countedOnly + unitMismatches.length || undefined
+        }
+        resultsTone={
+          countedUnder + unitMismatches.length > 0
+            ? "amber"
+            : countedOver + countedOnly > 0
+              ? "emerald"
+              : undefined
+        }
+        settingsBadge={isPending ? "!" : undefined}
+      />
+
+      {/* TAB: ກວດນັບ */}
+      {activeTab === "count" && (
+        <div className="space-y-4">
           <section className={`${stPanel} ${stPanelPad}`}>
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
@@ -341,7 +655,6 @@ export default async function SessionDetailPage({
             )}
           </section>
 
-          {/* Excel import (open only) */}
           {isOpen && (
             <details
               className={`${stPanel} group overflow-hidden`}
@@ -369,7 +682,6 @@ export default async function SessionDetailPage({
             </details>
           )}
 
-          {/* Create labels (open only) */}
           {isOpen && (
             <details
               className={`${stPanel} group overflow-hidden`}
@@ -413,41 +725,211 @@ export default async function SessionDetailPage({
             </details>
           )}
         </div>
+      )}
 
-        {/* Right: Sidebar (sticky on lg) */}
-        <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
-          {/* Reference / Snapshot — open sessions only */}
-          {isOpen && (
-            <div className={`${stPanel} ${stPanelPad}`}>
-              <SnapshotPanel
-                sessionId={detail.session_id}
-                snapshotItems={detail.snapshot_items}
-                pendingItems={detail.pending_items}
-                pendingBills={detail.pending_bills}
-                countedLines={summary.lines}
-              />
+      {/* TAB: ຜົນ */}
+      {activeTab === "results" && (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="space-y-4 lg:col-span-2">
+          {/* Live count results */}
+          {!hasResults && (
+            <div className={`${stPanel} ${stPanelPad} text-center text-sm text-zinc-500 dark:text-zinc-400`}>
+              ຍັງບໍ່ມີຜົນກວດນັບທີ່ຈະປຽບທຽບ. ໄປແທັບ <b>ກວດນັບ</b> ເພື່ອເລີ່ມ.
             </div>
           )}
+          {hasResults && (
+            <section className={`${stPanel} overflow-hidden`}>
+              <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-800">
+                <h3 className={stEyebrow}>ຜົນການກວດນັບ</h3>
+                <Link
+                  href={`/stocktake/${detail.session_id}/summary`}
+                  className="text-[10px] font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                >
+                  ສະຫຼຸບເຕັມ →
+                </Link>
+              </div>
+              <div className="space-y-3 px-4 py-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                    ຄວາມຖືກຕ້ອງ
+                  </span>
+                  <span
+                    className={`font-mono text-xl font-bold tabular-nums ${
+                      accuracyPct >= 95
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : accuracyPct >= 80
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {accuracyPct.toFixed(1)}%
+                  </span>
+                </div>
 
-          {/* Workflow + quick links */}
-          <div className={`${stPanel} overflow-hidden`}>
-            <div className="border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-800">
-              <h3 className={stEyebrow}>ການດຳເນີນ</h3>
-            </div>
-            <div className="px-3 py-3">
-              <SessionActions
-                sessionId={detail.session_id}
-                status={detail.status}
-                blind={detail.blind}
-                role={userSession.role}
-              />
-            </div>
+                <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                  <ResultChip label="ກົງກັນ" value={countedMatched} tone="ok" />
+                  <ResultChip
+                    label="ສູງກວ່າ"
+                    value={countedOver}
+                    tone="ok"
+                    sign="+"
+                  />
+                  <ResultChip
+                    label="ຕ່ຳກວ່າ"
+                    value={countedUnder}
+                    tone="bad"
+                  />
+                  <ResultChip
+                    label="ນອກ SML"
+                    value={countedOnly}
+                    tone="warn"
+                    sign="+"
+                  />
+                  <ResultChip
+                    label="ສ່ວນຕ່າງທີ່ນັບແລ້ວ"
+                    value={countedNetVarianceQty}
+                    tone={
+                      Math.abs(countedNetVarianceQty) < 0.0001
+                        ? "neutral"
+                        : countedNetVarianceQty > 0
+                          ? "ok"
+                          : "bad"
+                    }
+                    isQty
+                  />
+                </div>
+
+                {unitMismatches.length > 0 && (
+                  <div className="rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:ring-amber-800/60">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <Link
+                        href={`/stocktake/${detail.session_id}/units`}
+                        className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-800 hover:underline dark:text-amber-300"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2.5}
+                        >
+                          <path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+                        </svg>
+                        ຫົວໜ່ວຍບໍ່ກົງກັບ SML
+                      </Link>
+                      <span className="font-mono text-xs font-bold text-amber-700 dark:text-amber-300">
+                        {unitMismatches.length}
+                      </span>
+                    </div>
+                    <ul className="space-y-0.5">
+                      {unitMismatches.slice(0, 4).map((r) => (
+                        <li
+                          key={`um-${r.item_code}`}
+                          className="flex items-center justify-between gap-2 text-[11px]"
+                        >
+                          <span className="truncate font-mono font-semibold text-zinc-800 dark:text-zinc-100">
+                            {r.item_code}
+                          </span>
+                          <span className="shrink-0 font-mono text-[10px] tabular-nums">
+                            <span className="text-zinc-600 dark:text-zinc-300">
+                              {r.counted_unit ?? "—"}
+                            </span>
+                            <span className="mx-1 text-zinc-400">≠</span>
+                            <span className="text-zinc-500">{r.sml_unit}</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Link
+                      href={`/stocktake/${detail.session_id}/units`}
+                      className="mt-1 block text-[10px] font-semibold text-amber-800 hover:underline dark:text-amber-300"
+                    >
+                      {unitMismatches.length > 4
+                        ? `+ ${unitMismatches.length - 4} ລາຍການອື່ນ → ກວດສອບ ແລະ ແກ້ໄຂ`
+                        : "ກວດສອບ ແລະ ແກ້ໄຂ →"}
+                    </Link>
+                  </div>
+                )}
+
+                {topVar.length > 0 && (
+                  <div>
+                    <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                      ສ່ວນຕ່າງສຸງສຸດ
+                    </div>
+                    <ul className="space-y-1">
+                      {topVar.map((r) => (
+                        <li key={r.item_code}>
+                          <Link
+                            href={`/stocktake/${detail.session_id}/report?q=${encodeURIComponent(r.item_code)}`}
+                            className="flex items-center justify-between gap-2 rounded-md bg-zinc-50 px-2 py-1 text-[11px] transition hover:bg-indigo-50 hover:ring-1 hover:ring-indigo-200 dark:bg-zinc-800/40 dark:hover:bg-indigo-950/30 dark:hover:ring-indigo-800/60"
+                          >
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                              {r.item_code}
+                            </div>
+                            {r.item_name && (
+                              <div className="truncate text-[10px] text-zinc-500">
+                                {r.item_name}
+                              </div>
+                            )}
+                          </div>
+                          <div
+                            className={`shrink-0 text-right font-mono text-xs font-bold tabular-nums ${
+                              r.variance > 0
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-red-600 dark:text-red-400"
+                            }`}
+                          >
+                            {r.variance > 0 ? "+" : ""}
+                            {formatQty(r.variance)}
+                            {r.unit_code && (
+                              <span
+                                className={`ml-0.5 text-[9px] font-normal ${
+                                  r.unit_mismatch
+                                    ? "text-amber-600 dark:text-amber-400"
+                                    : "text-zinc-400"
+                                }`}
+                                title={
+                                  r.unit_mismatch
+                                    ? `ກວດນັບ: ${r.counted_unit ?? "—"} · SML: ${r.sml_unit ?? "—"}`
+                                    : undefined
+                                }
+                              >
+                                {r.unit_code}
+                                {r.unit_mismatch && " ⚠"}
+                              </span>
+                            )}
+                          </div>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+          </div>
+
+          <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+            {isOpen && (
+              <div className={`${stPanel} ${stPanelPad}`}>
+                <SnapshotPanel
+                  sessionId={detail.session_id}
+                  snapshotItems={detail.snapshot_items}
+                  pendingItems={detail.pending_items}
+                  pendingBills={detail.pending_bills}
+                  countedLines={summary.lines}
+                />
+              </div>
+            )}
+
             {(summary.lines > 0 || summary.labels > 0) && (
-              <>
-                <div className="border-t border-zinc-100 px-4 py-2 dark:border-zinc-800">
+              <div className={`${stPanel} overflow-hidden`}>
+                <div className="border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-800">
                   <h3 className={stEyebrow}>ລາຍງານ ແລະ ພິມ</h3>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5 px-3 pb-3">
+                <div className="grid grid-cols-2 gap-1.5 px-3 py-3">
                   {summary.lines > 0 && (
                     <SecondaryActionLink
                       href={`/stocktake/${detail.session_id}/summary`}
@@ -472,76 +954,102 @@ export default async function SessionDetailPage({
                       label="ພິມປ້າຍ"
                     />
                   )}
+                  {unitMismatches.length > 0 && (
+                    <SecondaryActionLink
+                      href={`/stocktake/${detail.session_id}/units`}
+                      label={`ກວດສອບຫົວໜ່ວຍ (${unitMismatches.length})`}
+                    />
+                  )}
                 </div>
-              </>
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+
+      {/* TAB: ຕັ້ງຄ່າ */}
+      {activeTab === "settings" && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-4">
+            <div className={`${stPanel} overflow-hidden`}>
+              <div className="border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-800">
+                <h3 className={stEyebrow}>ການດຳເນີນ</h3>
+              </div>
+              <div className="px-3 py-3">
+                <SessionActions
+                  sessionId={detail.session_id}
+                  status={detail.status}
+                  blind={detail.blind}
+                  role={userSession.role}
+                />
+              </div>
+            </div>
+
+            {(detail.note || detail.approval_note) && (
+              <div className="space-y-3">
+                {detail.note && (
+                  <div className={`${stPanel} ${stPanelPad}`}>
+                    <h3 className={stEyebrow}>ບັນທຶກ</h3>
+                    <p className="mt-1.5 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+                      {detail.note}
+                    </p>
+                  </div>
+                )}
+                {detail.approval_note && (
+                  <div
+                    className={`${stPanelPad} rounded-2xl border border-amber-200/70 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-950/20`}
+                  >
+                    <h3 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">
+                      ບັນທຶກອະນຸມັດ
+                    </h3>
+                    <p className="mt-1.5 whitespace-pre-wrap text-sm text-amber-900 dark:text-amber-200">
+                      {detail.approval_note}
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
-          {/* Notes */}
-          {(detail.note || detail.approval_note) && (
-            <div className="space-y-3">
-              {detail.note && (
-                <div className={`${stPanel} ${stPanelPad}`}>
-                  <h3 className={stEyebrow}>ບັນທຶກ</h3>
-                  <p className="mt-1.5 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
-                    {detail.note}
-                  </p>
-                </div>
-              )}
-              {detail.approval_note && (
-                <div
-                  className={`${stPanelPad} rounded-2xl border border-amber-200/70 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-950/20`}
-                >
-                  <h3 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">
-                    ບັນທຶກອະນຸມັດ
-                  </h3>
-                  <p className="mt-1.5 whitespace-pre-wrap text-sm text-amber-900 dark:text-amber-200">
-                    {detail.approval_note}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Audit trail */}
-          <details className={`${stPanel} group overflow-hidden`}>
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3.5 text-sm font-medium text-zinc-700 transition hover:text-indigo-600 dark:text-zinc-300 dark:hover:text-indigo-400">
-              ປະຫວັດ ແລະ ການອະນຸມັດ
-              <ChevronRightIcon className="ml-auto h-3.5 w-3.5 text-zinc-400 transition-transform group-open:rotate-90" />
-            </summary>
-            <div className="border-t border-zinc-100 px-5 pb-5 pt-4 dark:border-zinc-800">
-              <ol className="relative space-y-5 border-l-2 border-zinc-100 pl-6 dark:border-zinc-800">
-                <AuditStep
-                  label="ສ້າງຮອບ"
-                  employee={detail.created_employee}
-                  at={detail.created_at}
-                  done
-                />
-                {(detail.submitted_at || isPending || isClosed) && (
+          <div>
+            <div className={`${stPanel} overflow-hidden`}>
+              <div className="border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-800">
+                <h3 className={stEyebrow}>ປະຫວັດ ແລະ ການອະນຸມັດ</h3>
+              </div>
+              <div className="px-5 pb-5 pt-4">
+                <ol className="relative space-y-5 border-l-2 border-zinc-100 pl-6 dark:border-zinc-800">
                   <AuditStep
-                    label="ສົ່ງເພື່ອອະນຸມັດ"
-                    employee={detail.submitted_employee}
-                    at={detail.submitted_at}
-                    done={!!detail.submitted_at}
-                    pending={isPending}
+                    label="ສ້າງຮອບ"
+                    employee={detail.created_employee}
+                    at={detail.created_at}
+                    done
                   />
-                )}
-                {(isClosed || isPending) && (
-                  <AuditStep
-                    label="ອະນຸມັດ ແລະ ປິດ"
-                    employee={
-                      detail.approved_employee ?? detail.closed_employee
-                    }
-                    at={detail.closed_at}
-                    done={isClosed}
-                    pending={isPending}
-                  />
-                )}
-              </ol>
+                  {(detail.submitted_at || isPending || isClosed) && (
+                    <AuditStep
+                      label="ສົ່ງເພື່ອອະນຸມັດ"
+                      employee={detail.submitted_employee}
+                      at={detail.submitted_at}
+                      done={!!detail.submitted_at}
+                      pending={isPending}
+                    />
+                  )}
+                  {(isClosed || isPending) && (
+                    <AuditStep
+                      label="ອະນຸມັດ ແລະ ປິດ"
+                      employee={
+                        detail.approved_employee ?? detail.closed_employee
+                      }
+                      at={detail.closed_at}
+                      done={isClosed}
+                      pending={isPending}
+                    />
+                  )}
+                </ol>
+              </div>
             </div>
-          </details>
-        </aside>
-      </div>
+          </div>
+        </div>
+      )}
     </StocktakeLayout>
   );
 }
@@ -581,6 +1089,77 @@ function StatusBadge({
   );
 }
 
+function HeroMetric({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  tone: "emerald" | "amber" | "indigo" | "red" | "zinc";
+}) {
+  const toneMap = {
+    emerald:
+      "border-emerald-200 bg-emerald-50/70 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300",
+    amber:
+      "border-amber-200 bg-amber-50/70 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300",
+    indigo:
+      "border-indigo-200 bg-indigo-50/70 text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/20 dark:text-indigo-300",
+    red: "border-red-200 bg-red-50/70 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300",
+    zinc: "border-zinc-200 bg-zinc-50/80 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950/30 dark:text-zinc-300",
+  } as const;
+  return (
+    <div className={`rounded-xl border px-3 py-3 ${toneMap[tone]}`}>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] opacity-75">
+        {label}
+      </div>
+      <div className="mt-1 font-mono text-lg font-black tabular-nums">
+        {value}
+      </div>
+      <div className="mt-0.5 text-[10px] font-medium opacity-75">{sub}</div>
+    </div>
+  );
+}
+
+function ProgressLine({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  tone: "indigo" | "emerald" | "violet";
+}) {
+  const toneMap = {
+    indigo: "from-sky-400 to-indigo-500",
+    emerald: "from-emerald-400 to-teal-500",
+    violet: "from-violet-400 to-fuchsia-500",
+  } as const;
+  const width = Math.max(0, Math.min(100, value));
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between gap-3 text-[11px]">
+        <span className="font-medium text-zinc-500 dark:text-zinc-400">
+          {label}
+        </span>
+        <span className="font-mono tabular-nums text-zinc-700 dark:text-zinc-200">
+          {detail}
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200/70 dark:bg-zinc-800">
+        <div
+          className={`h-full rounded-full bg-gradient-to-r ${toneMap[tone]} transition-all duration-500`}
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function PrimaryAction({
   status,
   canApprove,
@@ -602,7 +1181,7 @@ function PrimaryAction({
     if (labelCount === 0) {
       return (
         <div
-          className={`${stPanel} px-5 py-4 text-center text-sm text-zinc-500 dark:text-zinc-400`}
+          className="rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-center text-sm font-medium text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
         >
           ສ້າງປ້າຍກວດນັບກ່ອນ ແລ້ວເລີ່ມຕົ້ນ
         </div>
@@ -642,7 +1221,7 @@ function PrimaryAction({
   if (status === "pending_approval") {
     return (
       <div
-        className={`${stPanel} px-5 py-4 text-center text-sm text-amber-700 dark:text-amber-300`}
+        className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-center text-sm font-medium text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300"
       >
         {canApprove
           ? "ກວດສອບ ແລະ ອະນຸມັດໄດ້ທີ່ປຸ່ມດ້ານລຸ່ມ"
@@ -653,13 +1232,145 @@ function PrimaryAction({
   return (
     <Link
       href={`/stocktake/${sessionId}/summary`}
-      className={`${stPanel} group flex items-center justify-between px-5 py-4 transition hover:border-indigo-200 hover:bg-indigo-50/30 dark:hover:border-indigo-900 dark:hover:bg-indigo-950/20`}
+      className="group flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 transition hover:border-indigo-200 hover:bg-indigo-50/60 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-indigo-900 dark:hover:bg-indigo-950/20"
     >
       <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
         ເບິ່ງລາຍງານສະຫຼຸບ
       </span>
       <ChevronRightIcon className="h-4 w-4 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-indigo-500" />
     </Link>
+  );
+}
+
+function TabNav({
+  active,
+  sessionId,
+  countBadge,
+  resultsBadge,
+  resultsTone,
+  settingsBadge,
+}: {
+  active: TabKey;
+  sessionId: number;
+  countBadge?: number;
+  resultsBadge?: number;
+  resultsTone?: "emerald" | "amber";
+  settingsBadge?: string;
+}) {
+  const tabs: {
+    key: TabKey;
+    label: string;
+    badge?: string | number;
+    tone?: "emerald" | "amber" | "indigo";
+  }[] = [
+    {
+      key: "count",
+      label: "ກວດນັບ",
+      badge: countBadge,
+      tone: "indigo",
+    },
+    {
+      key: "results",
+      label: "ຜົນ ແລະ ສ່ວນຕ່າງ",
+      badge: resultsBadge,
+      tone: resultsTone,
+    },
+    {
+      key: "settings",
+      label: "ຕັ້ງຄ່າ ແລະ ປະຫວັດ",
+      badge: settingsBadge,
+      tone: "amber",
+    },
+  ];
+
+  return (
+    <nav
+      role="tablist"
+      className="mb-4 flex flex-wrap items-center gap-1.5 border-b border-zinc-200 dark:border-zinc-800"
+    >
+      {tabs.map((t) => {
+        const isActive = active === t.key;
+        return (
+          <Link
+            key={t.key}
+            href={
+              t.key === "count"
+                ? `/stocktake/${sessionId}`
+                : `/stocktake/${sessionId}?tab=${t.key}`
+            }
+            role="tab"
+            aria-selected={isActive}
+            className={`group relative inline-flex items-center gap-2 rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
+              isActive
+                ? "text-indigo-700 dark:text-indigo-300"
+                : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+            }`}
+          >
+            {t.label}
+            {t.badge !== undefined && t.badge !== 0 && (
+              <span
+                className={`inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+                  t.tone === "amber"
+                    ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                    : t.tone === "emerald"
+                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                      : "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300"
+                }`}
+              >
+                {t.badge}
+              </span>
+            )}
+            {isActive && (
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-indigo-500"
+              />
+            )}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function ResultChip({
+  label,
+  value,
+  tone,
+  sign,
+  isQty,
+}: {
+  label: string;
+  value: number;
+  tone: "ok" | "warn" | "bad" | "neutral";
+  sign?: "+";
+  isQty?: boolean;
+}) {
+  const toneMap = {
+    ok: "text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800/60",
+    warn: "text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-800/60",
+    bad: "text-red-700 dark:text-red-300 ring-red-200 dark:ring-red-800/60",
+    neutral: "text-zinc-700 dark:text-zinc-300 ring-zinc-200 dark:ring-zinc-700",
+  } as const;
+  const dotMap = {
+    ok: "bg-emerald-500",
+    warn: "bg-amber-500",
+    bad: "bg-red-500",
+    neutral: "bg-zinc-400",
+  } as const;
+  const display = isQty
+    ? `${value > 0 ? "+" : ""}${formatQty(value)}`
+    : `${sign && value > 0 ? sign : ""}${value}`;
+  return (
+    <div
+      className={`flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1 ring-1 ${toneMap[tone]} dark:bg-zinc-900`}
+    >
+      <span className="flex items-center gap-1.5 text-[10px] font-semibold text-zinc-600 dark:text-zinc-300">
+        <span className={`h-1.5 w-1.5 rounded-full ${dotMap[tone]}`} />
+        {label}
+      </span>
+      <span className="font-mono text-xs font-bold tabular-nums">{display}</span>
+    </div>
   );
 }
 

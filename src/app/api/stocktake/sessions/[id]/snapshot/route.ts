@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import {
   PENDING_INSERT_SQL,
-  SNAPSHOT_INSERT_SQL,
+  buildSnapshotInsertSql,
   requireSessionAccess,
 } from "@/lib/stocktake";
 
@@ -29,11 +29,36 @@ export async function POST(
   const guard = await requireSessionAccess(sessionId, { mustBeOpen: true });
   if (!guard.ok) return guard.response;
 
-  let body: { force?: boolean } = {};
+  let body: {
+    force?: boolean;
+    filters?: { date_from?: string | null; date_to?: string | null };
+  } = {};
   try {
-    body = (await request.json()) as { force?: boolean };
+    body = (await request.json()) as typeof body;
   } catch {
     // empty body is fine
+  }
+  const dateFrom = body.filters?.date_from?.trim() || null;
+  const dateTo = body.filters?.date_to?.trim() || null;
+  // YYYY-MM-DD format check
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (dateFrom && !dateRe.test(dateFrom)) {
+    return NextResponse.json(
+      { error: "date_from ບໍ່ຖືກຮູບແບບ (YYYY-MM-DD)" },
+      { status: 400 },
+    );
+  }
+  if (dateTo && !dateRe.test(dateTo)) {
+    return NextResponse.json(
+      { error: "date_to ບໍ່ຖືກຮູບແບບ (YYYY-MM-DD)" },
+      { status: 400 },
+    );
+  }
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    return NextResponse.json(
+      { error: "date_from ຕ້ອງກ່ອນ date_to" },
+      { status: 400 },
+    );
   }
 
   const client = await pool.connect();
@@ -67,10 +92,12 @@ export async function POST(
       `DELETE FROM public.wms_stocktake_pending WHERE session_id = $1`,
       [sessionId],
     );
-    const snap = await client.query(SNAPSHOT_INSERT_SQL, [
+    const { sql: snapSql, params: snapParams } = buildSnapshotInsertSql(
       sessionId,
       guard.row.wh_code,
-    ]);
+      { dateFrom, dateTo },
+    );
+    const snap = await client.query(snapSql, snapParams);
     const pend = await client.query(PENDING_INSERT_SQL, [
       sessionId,
       guard.row.wh_code,
