@@ -177,6 +177,25 @@ export default function PendingBillsDialog({
     return { qty, lines };
   }, [bills, selected]);
 
+  // Suggested = still in warehouse (TMS not shipped) + recent (doc_date ≤ 60 days)
+  const recommended = useMemo(() => {
+    const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    const ok: Bill[] = [];
+    for (const b of bills) {
+      if (b.tms_shipped > 0) continue;
+      if (b.doc_date) {
+        const t = Date.parse(b.doc_date);
+        if (Number.isFinite(t) && t < cutoff) continue;
+      }
+      ok.push(b);
+    }
+    return ok;
+  }, [bills]);
+  const recommendedUnselected = useMemo(
+    () => recommended.filter((b) => !selected.has(billKey(b))).length,
+    [recommended, selected],
+  );
+
   if (!open) return null;
   if (typeof document === "undefined") return null;
 
@@ -202,10 +221,26 @@ export default function PendingBillsDialog({
     setSelected(new Set());
   }
 
-  async function save(force = false) {
+  function selectRecommended() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const b of recommended) next.add(billKey(b));
+      return next;
+    });
+  }
+
+  async function save(mode: "replace" | "append", force = false) {
     setSaving(true);
     try {
-      const payload = Array.from(selected).map((k) => {
+      // Append mode only sends keys that aren't already in pending (delta).
+      const keys =
+        mode === "append"
+          ? Array.from(selected).filter((k) => {
+              const bill = bills.find((b) => billKey(b) === k);
+              return bill ? !bill.selected : true;
+            })
+          : Array.from(selected);
+      const payload = keys.map((k) => {
         const [doc_no, flag] = k.split("::");
         return { doc_no, trans_flag: Number.parseInt(flag, 10) };
       });
@@ -214,7 +249,7 @@ export default function PendingBillsDialog({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ selected: payload, force }),
+          body: JSON.stringify({ selected: payload, force, mode }),
         },
       );
       const data = (await res.json()) as {
@@ -222,15 +257,17 @@ export default function PendingBillsDialog({
         error?: string;
         requires_confirmation?: boolean;
         counted_lines?: number;
+        added_bills?: number;
+        selected_bills?: number;
       };
       if (res.status === 409 && data.requires_confirmation) {
         if (
           confirm(
-            `${data.error}.\n\nຢຶນຍັນປ່ຽນ ເຖິງແມ່ນວ່າມີການນັບແລ້ວ ${data.counted_lines} ລາຍການ?`,
+            `${data.error}.\n\nຢຶນຍັນ ${mode === "append" ? "ເພີ່ມ" : "ປ່ຽນ"} ເຖິງແມ່ນວ່າມີການນັບແລ້ວ ${data.counted_lines} ລາຍການ?`,
           )
         ) {
           setSaving(false);
-          return save(true);
+          return save(mode, true);
         }
         return;
       }
@@ -243,6 +280,15 @@ export default function PendingBillsDialog({
       setSaving(false);
     }
   }
+
+  // Number of newly-checked bills that aren't yet in the pending table.
+  const appendableCount = useMemo(() => {
+    let n = 0;
+    for (const b of bills) {
+      if (selected.has(billKey(b)) && !b.selected) n++;
+    }
+    return n;
+  }, [bills, selected]);
 
   const filterChanged = q !== "" || from !== "" || to !== "";
   const selectedDelta = selected.size - serverSelectedCount;
@@ -426,6 +472,22 @@ export default function PendingBillsDialog({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={selectRecommended}
+              disabled={recommended.length === 0 || recommendedUnselected === 0}
+              title="ບິນທີ່ TMS ຍັງບໍ່ສົ່ງ ແລະ doc_date ບໍ່ເກີນ 60 ວັນ"
+              className="inline-flex items-center gap-1.5 rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm transition hover:from-emerald-600 hover:to-teal-600 disabled:cursor-not-allowed disabled:from-zinc-300 disabled:to-zinc-300 disabled:opacity-60"
+            >
+              ✨ ແນະນຳ
+              {recommended.length > 0 && (
+                <span className="rounded-full bg-white/25 px-1.5 text-[10px] font-bold tabular-nums">
+                  {recommendedUnselected > 0
+                    ? `+${recommendedUnselected}`
+                    : `${recommended.length}`}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={selectAllVisible}
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
             >
@@ -471,6 +533,11 @@ export default function PendingBillsDialog({
               {bills.map((b) => {
                 const k = billKey(b);
                 const isOn = selected.has(k);
+                const isRecommended =
+                  b.tms_shipped === 0 &&
+                  (!b.doc_date ||
+                    Date.parse(b.doc_date) >=
+                      Date.now() - 60 * 24 * 60 * 60 * 1000);
                 return (
                   <li key={k}>
                     <label
@@ -509,6 +576,14 @@ export default function PendingBillsDialog({
                             </span>
                           )}
                           <TmsBadge bill={b} />
+                          {isRecommended && (
+                            <span
+                              title="ແນະນຳ: TMS ຍັງບໍ່ສົ່ງ ແລະ ບໍ່ເກີນ 60 ວັນ"
+                              className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0 text-[9px] font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50"
+                            >
+                              ✨ ແນະນຳ
+                            </span>
+                          )}
                         </div>
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[11px] text-zinc-500 dark:text-zinc-400">
                           {b.cust_code && <span>{b.cust_code}</span>}
@@ -568,11 +643,23 @@ export default function PendingBillsDialog({
             </button>
             <button
               type="button"
-              onClick={() => save()}
+              onClick={() => save("append")}
+              disabled={saving || appendableCount === 0}
+              title="ເພີ່ມບິນທີ່ເລືອກໃໝ່ເຂົ້າຕາລາງ ໂດຍບໍ່ລົບບິນທີ່ມີຢູ່"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {saving
+                ? "ກຳລັງ..."
+                : `+ ເພີ່ມເຂົ້າຕາລາງ${appendableCount > 0 ? ` (${appendableCount})` : ""}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => save("replace")}
               disabled={saving || selectedDelta === 0}
+              title="ບັນທຶກລາຍການທີ່ໝາຍແທນບິນເກົ່າ"
               className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-50"
             >
-              {saving ? "ກຳລັງບັນທຶກ..." : "ບັນທຶກ"}
+              {saving ? "ກຳລັງບັນທຶກ..." : "ບັນທຶກ (ແທນ)"}
               <ChevronRightIcon className="h-3.5 w-3.5" />
             </button>
           </div>

@@ -90,3 +90,9 @@ body {
     0 10px 24px -8px rgb(0 0 0 / 0.1),
     0 4px 8px -4px rgb(0 0 0 / 0.05);
 }
+
+/* Rotate the balance-tree chevron when its own <details> is open (reliable
+   across nesting, unlike Tailwind group-open). */
+details[open] > summary .wms-chevron {
+  transform: rotate(90deg);
+}

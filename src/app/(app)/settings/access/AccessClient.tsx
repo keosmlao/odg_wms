@@ -161,7 +161,7 @@ export default function AccessClient({
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {e.role === "manager" ? (
+                    {e.role === "manager" && e.warehouses.length === 0 ? (
                       <span className="text-xs text-zinc-500 dark:text-zinc-400">
                         ທຸກສາງ
                       </span>
@@ -264,7 +264,7 @@ function EditDrawer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: role || null,
-          warehouses: role === "manager" ? [] : Array.from(selected),
+          warehouses: role === "" ? [] : Array.from(selected),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -289,7 +289,8 @@ function EditDrawer({
     }
   }
 
-  const showWarehousePicker = role === "supervisor" || role === "keeper";
+  const showWarehousePicker =
+    role === "manager" || role === "supervisor" || role === "keeper";
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -346,8 +347,8 @@ function EditDrawer({
           </div>
 
           {role === "manager" && (
-            <p className="rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:bg-violet-950 dark:text-violet-300">
-              ຜູ້ຈັດການເບິ່ງເຫັນທຸກສາງ — ບໍ່ຕ້ອງເລືອກສາງ.
+            <p className="mb-3 rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:bg-violet-950 dark:text-violet-300">
+              ຜູ້ຈັດການ: ປ່ອຍວ່າງ = ເຫັນ <strong>ທຸກສາງ</strong>. ເລືອກສະເພາະ = ຈຳກັດໃຫ້ເຫັນສະເພາະສາງທີ່ເລືອກເທົ່ານັ້ນ.
             </p>
           )}
 

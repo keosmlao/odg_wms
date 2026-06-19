@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import ItemMovementsDrawer from "./ItemMovementsDrawer";
+import SerialDrawer from "./SerialDrawer";
 
 type BalanceItem = {
   ic_code: string | null;
   ic_name: string | null;
   ic_unit_code: string | null;
   balance_qty: string | null;
+  area_m2: string | null;
 };
 
 type SelectedItem = { code: string; name: string | null };
@@ -31,6 +33,7 @@ export default function BalanceLocationItems({
   location = "",
   pallet = "",
   buttonLabel = "ໂຫຼດລາຍການສິນຄ້າ",
+  q = "",
 }: {
   warehouse: string;
   /** rack code (shelf_code). "" = items at warehouse-level only */
@@ -40,11 +43,13 @@ export default function BalanceLocationItems({
   /** pallet code. "" = items not on a pallet */
   pallet?: string;
   buttonLabel?: string;
+  q?: string;
 }) {
   const [items, setItems] = useState<BalanceItem[]>([]);
   const [total, setTotal] = useState(0);
   const [state, setState] = useState<LoadState>("idle");
   const [selected, setSelected] = useState<SelectedItem | null>(null);
+  const [snItem, setSnItem] = useState<SelectedItem | null>(null);
 
   async function load(offset = 0) {
     setState("loading");
@@ -57,6 +62,9 @@ export default function BalanceLocationItems({
         limit: String(PAGE_SIZE),
         offset: String(offset),
       });
+      if (q) {
+        params.set("q", q);
+      }
       const res = await fetch(`/api/movements/balance-items?${params}`);
       const data = (await res.json()) as {
         items?: BalanceItem[];
@@ -99,22 +107,22 @@ export default function BalanceLocationItems({
   return (
     <>
     <div className="mt-2 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <div className="grid grid-cols-[minmax(220px,1fr)_120px_90px] gap-3 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500 dark:bg-zinc-800/60 dark:text-zinc-400">
+      <div className="grid grid-cols-[minmax(160px,1fr)_96px_56px_72px_48px] gap-3 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-500 dark:bg-zinc-800/60 dark:text-zinc-400">
         <div>ສິນຄ້າ</div>
         <div className="text-right">ຄົງເຫຼືອ</div>
-        <div>ຫົວໜ່ວຍ</div>
+        <div>ໜ່ວຍ</div>
+        <div className="text-right">ພື້ນທີ່ m²</div>
+        <div className="text-right">SN</div>
       </div>
       <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
         {items.map((item) => (
-          <button
-            type="button"
+          <div
             key={item.ic_code ?? `${item.ic_name}-${items.indexOf(item)}`}
-            disabled={!item.ic_code}
             onClick={() =>
               item.ic_code &&
               setSelected({ code: item.ic_code, name: item.ic_name })
             }
-            className="grid w-full grid-cols-[minmax(220px,1fr)_120px_90px] gap-3 px-3 py-2 text-left text-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-zinc-800/50"
+            className="grid w-full cursor-pointer grid-cols-[minmax(160px,1fr)_96px_56px_72px_48px] gap-3 px-3 py-2 text-left text-sm transition hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
             title="ກົດເພື່ອເບິ່ງປະຫວັດການເຄື່ອນໄຫວ"
           >
             <div className="min-w-0">
@@ -134,7 +142,25 @@ export default function BalanceLocationItems({
             <div className="text-xs text-zinc-600 dark:text-zinc-400">
               {item.ic_unit_code ?? "-"}
             </div>
-          </button>
+            <div className="text-right font-mono text-xs tabular-nums text-indigo-600 dark:text-indigo-400">
+              {item.area_m2 ? `~${formatQty(item.area_m2)}` : "—"}
+            </div>
+            <div className="text-right">
+              {item.ic_code && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSnItem({ code: item.ic_code!, name: item.ic_name });
+                  }}
+                  title="ເບິ່ງ serial number ຂອງສິນຄ້ານີ້"
+                  className="inline-flex items-center rounded-md bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300"
+                >
+                  SN
+                </button>
+              )}
+            </div>
+          </div>
         ))}
       </div>
       <div className="flex items-center justify-between border-t border-zinc-200 px-3 py-2 dark:border-zinc-800">
@@ -161,6 +187,14 @@ export default function BalanceLocationItems({
       warehouse={warehouse}
       location={location || rack || ""}
       onClose={() => setSelected(null)}
+    />
+    <SerialDrawer
+      open={snItem !== null}
+      itemCode={snItem?.code ?? ""}
+      itemName={snItem?.name ?? null}
+      warehouse={warehouse}
+      scope={{ rack, location, pallet }}
+      onClose={() => setSnItem(null)}
     />
     </>
   );

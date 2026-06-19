@@ -8,6 +8,7 @@ export type BalanceItemRow = {
   ic_name: string | null;
   ic_unit_code: string | null;
   balance_qty: string | null;
+  area_m2: string | null;
   total_count: number;
 };
 
@@ -54,6 +55,8 @@ export async function GET(request: Request) {
   const limit = clampLimit(url.searchParams.get("limit"));
   const offset = offsetValue(url.searchParams.get("offset"));
 
+  const q = url.searchParams.get("q")?.trim() ?? "";
+
   if (!warehouse) {
     return NextResponse.json(
       { error: "warehouse ຈຳເປັນຕ້ອງມີ" },
@@ -67,6 +70,24 @@ export async function GET(request: Request) {
     );
   }
 
+  const queryArgs: unknown[] = [warehouse, rack, location, pallet];
+  const filters = [
+    "(t.status = 0 OR t.status IS NULL)",
+    "t.wh_code = $1",
+    "COALESCE(NULLIF(TRIM(t.shelf_code), ''), '') = $2",
+    "COALESCE(NULLIF(TRIM(t.shelf_code1), ''), '') = $3",
+    "COALESCE(NULLIF(TRIM(t.pallet), ''), '') = $4",
+  ];
+
+  if (q) {
+    queryArgs.push(`%${q}%`);
+    filters.push(`(t.item_code ILIKE $5 OR t.item_name ILIKE $5)`);
+  }
+
+  queryArgs.push(limit, offset);
+  const limitIdx = queryArgs.length - 1;
+  const offsetIdx = queryArgs.length;
+
   const rows = await query<BalanceItemRow>(
     `WITH agg AS (
        SELECT
@@ -75,24 +96,30 @@ export async function GET(request: Request) {
          MAX(t.unit_code) AS unit_code,
          SUM(t.qty * t.calc_flag)::numeric AS balance_qty
        FROM public.odg_wms_trans_detail t
-       WHERE (t.status = 0 OR t.status IS NULL)
-         AND t.wh_code = $1
-         AND COALESCE(NULLIF(TRIM(t.shelf_code), ''), '') = $2
-         AND COALESCE(NULLIF(TRIM(t.shelf_code1), ''), '') = $3
-         AND COALESCE(NULLIF(TRIM(t.pallet), ''), '') = $4
+       WHERE ${filters.join(" AND ")}
        GROUP BY t.item_code
        HAVING SUM(t.qty * t.calc_flag) <> 0
+     ),
+     dim AS (
+       SELECT DISTINCT ON (ic_code) ic_code,
+              (NULLIF(width,0)::numeric * NULLIF(length,0)::numeric / 10000) foot,
+              NULLIF(stack,0)::numeric stack
+       FROM public.odg_wms_product_dimension ORDER BY ic_code, roworder
      )
      SELECT
-       item_code AS ic_code,
-       item_name AS ic_name,
-       unit_code AS ic_unit_code,
-       balance_qty::text AS balance_qty,
+       agg.item_code AS ic_code,
+       agg.item_name AS ic_name,
+       agg.unit_code AS ic_unit_code,
+       agg.balance_qty::text AS balance_qty,
+       CASE WHEN d.foot > 0 AND agg.balance_qty > 0
+            THEN round((ceil(agg.balance_qty / COALESCE(NULLIF(d.stack,0),1)) * d.foot)::numeric, 2)::text
+            ELSE NULL END AS area_m2,
        COUNT(*) OVER()::int AS total_count
      FROM agg
-     ORDER BY item_code
-     LIMIT $5 OFFSET $6`,
-    [warehouse, rack, location, pallet, limit, offset],
+     LEFT JOIN dim d ON d.ic_code = agg.item_code
+     ORDER BY agg.item_code
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+    queryArgs,
   );
 
   return NextResponse.json({

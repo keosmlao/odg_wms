@@ -1,6 +1,48 @@
+import { scryptSync, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import type { WmsRole } from "@/lib/session-shared";
+
+/**
+ * Verify a login password against the value stored in odg_employee.password.
+ * Supports two formats found in the data:
+ *   - plaintext PIN (e.g. "12345")        → exact match
+ *   - scrypt hash  "scrypt$<salt>$<key>"  → Node crypto.scrypt (base64url)
+ * For the scrypt form we try the salt both as the raw string and as its
+ * base64url-decoded bytes, to be robust to how the hash was generated.
+ */
+function verifyPassword(stored: string, input: string): boolean {
+  if (stored.startsWith("scrypt$")) {
+    const parts = stored.split("$");
+    if (parts.length !== 3) return false;
+    const salt = parts[1];
+    let expected: Buffer;
+    try {
+      expected = Buffer.from(parts[2], "base64url");
+    } catch {
+      return false;
+    }
+    if (expected.length === 0) return false;
+    const saltVariants: Array<string | Buffer> = [salt];
+    try {
+      saltVariants.push(Buffer.from(salt, "base64url"));
+    } catch {
+      /* ignore */
+    }
+    for (const s of saltVariants) {
+      try {
+        const actual = scryptSync(input, s, expected.length);
+        if (actual.length === expected.length && timingSafeEqual(actual, expected)) {
+          return true;
+        }
+      } catch {
+        /* try next variant */
+      }
+    }
+    return false;
+  }
+  return stored === input;
+}
 
 type EmployeeRow = {
   employee_id: number;
@@ -46,7 +88,7 @@ export async function POST(request: Request) {
 
   const user = rows[0];
 
-  if (!user || user.password == null || user.password !== password) {
+  if (!user || user.password == null || !verifyPassword(user.password, password)) {
     return NextResponse.json(
       { error: "ລະຫັດພະນັກງານ ຫຼື ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ" },
       { status: 401 },

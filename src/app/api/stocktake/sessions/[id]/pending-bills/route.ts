@@ -143,12 +143,15 @@ export async function POST(
   let body: {
     selected?: Array<{ doc_no?: unknown; trans_flag?: unknown }>;
     force?: boolean;
+    mode?: "replace" | "append";
   } = {};
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "ຂໍ້ມູນບໍ່ຖືກຕ້ອງ" }, { status: 400 });
   }
+  const mode: "replace" | "append" =
+    body.mode === "append" ? "append" : "replace";
 
   const selected = Array.isArray(body.selected) ? body.selected : [];
   const cleaned: Array<{ doc_no: string; trans_flag: number }> = [];
@@ -160,6 +163,12 @@ export async function POST(
         : Number.parseInt(String(s.trans_flag ?? ""), 10);
     if (!docNo || !Number.isFinite(flag)) continue;
     cleaned.push({ doc_no: docNo, trans_flag: flag });
+  }
+  if (mode === "append" && cleaned.length === 0) {
+    return NextResponse.json(
+      { error: "ບໍ່ມີບິນທີ່ຈະເພີ່ມ" },
+      { status: 400 },
+    );
   }
 
   const client = await pool.connect();
@@ -183,25 +192,28 @@ export async function POST(
       );
     }
 
-    await client.query(
-      `DELETE FROM public.wms_stocktake_pending_bill WHERE session_id = $1`,
-      [sessionId],
-    );
+    let addedRowCount = 0;
+    if (mode === "replace") {
+      await client.query(
+        `DELETE FROM public.wms_stocktake_pending_bill WHERE session_id = $1`,
+        [sessionId],
+      );
+    }
 
     if (cleaned.length > 0) {
-      // Bulk insert via UNNEST to keep it a single round-trip.
       const docNos = cleaned.map((c) => c.doc_no);
       const flags = cleaned.map((c) => c.trans_flag);
-      await client.query(
+      const insRes = await client.query(
         `INSERT INTO public.wms_stocktake_pending_bill (session_id, doc_no, trans_flag)
          SELECT $1, x.doc_no, x.trans_flag
          FROM UNNEST($2::varchar[], $3::smallint[]) AS x(doc_no, trans_flag)
          ON CONFLICT DO NOTHING`,
         [sessionId, docNos, flags],
       );
+      addedRowCount = insRes.rowCount ?? 0;
     }
 
-    // Rebuild pending snapshot from the new selection.
+    // Rebuild pending snapshot from the current selection.
     await client.query(
       `DELETE FROM public.wms_stocktake_pending WHERE session_id = $1`,
       [sessionId],
@@ -210,11 +222,17 @@ export async function POST(
       sessionId,
       guard.row.wh_code,
     ]);
+    const totalBillsRes = await client.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM public.wms_stocktake_pending_bill WHERE session_id = $1`,
+      [sessionId],
+    );
 
     await client.query("COMMIT");
     return NextResponse.json({
       ok: true,
-      selected_bills: cleaned.length,
+      mode,
+      added_bills: addedRowCount,
+      selected_bills: totalBillsRes.rows[0]?.n ?? 0,
       pending_items: pend.rowCount ?? 0,
     });
   } catch (err) {

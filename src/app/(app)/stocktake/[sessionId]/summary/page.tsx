@@ -58,6 +58,7 @@ type GroupSummary = {
   matchedCount: number;
   varianceCount: number;
   countedQty: number;
+  pendingQty: number;
   referenceQty: number;
   varianceQty: number;
   absVarianceQty: number;
@@ -77,17 +78,6 @@ type CounterStat = {
   qty_sum: string;
   first_counted_at: string | null;
   last_counted_at: string | null;
-};
-
-type PendingBillLine = {
-  doc_no: string;
-  trans_flag: number;
-  doc_date: string | null;
-  cust_code: string | null;
-  item_code: string;
-  item_name: string | null;
-  unit_code: string | null;
-  qty: string;
 };
 
 type LabelDetailStat = {
@@ -135,6 +125,7 @@ function buildGroupSummary(
         matchedCount: 0,
         varianceCount: 0,
         countedQty: 0,
+        pendingQty: 0,
         referenceQty: 0,
         varianceQty: 0,
         absVarianceQty: 0,
@@ -142,12 +133,14 @@ function buildGroupSummary(
       map.set(key, summary);
     }
     const countedQty = Number.parseFloat(row.counted_qty) || 0;
+    const pendingQty = Number.parseFloat(row.pending_qty) || 0;
     summary.itemCount++;
     if (countedQty > 0) {
       summary.countedItemCount++;
       if (row.variance === 0) summary.countedMatchedCount++;
     }
     summary.countedQty += countedQty;
+    summary.pendingQty += pendingQty;
     summary.referenceQty += row.reference_qty;
     summary.varianceQty += row.variance;
     summary.absVarianceQty += row.absVar;
@@ -223,7 +216,7 @@ export default async function SessionSummaryPage({
     );
   }
 
-  const [rows, labelStatRows, counterRows, pendingLines, labelDetailRows] =
+  const [rows, labelStatRows, counterRows, labelDetailRows] =
     await Promise.all([
     query<VarianceRow>(
       `WITH counted AS (
@@ -298,29 +291,6 @@ export default async function SessionSummaryPage({
        ORDER BY line_count DESC, counted_employee NULLS LAST`,
       [sid],
     ),
-    query<PendingBillLine>(
-      `SELECT
-         pb.doc_no,
-         pb.trans_flag,
-         t.doc_date::text AS doc_date,
-         t.cust_code,
-         d.item_code,
-         d.item_name,
-         d.unit_code,
-         d.qty::text AS qty
-       FROM public.wms_stocktake_pending_bill pb
-       JOIN public.ic_trans t
-         ON t.doc_no = pb.doc_no AND t.trans_flag = pb.trans_flag
-       JOIN public.ic_trans_detail d
-         ON d.doc_no = pb.doc_no AND d.trans_flag = pb.trans_flag
-       WHERE pb.session_id = $1
-         AND d.wh_code = $2
-         AND (d.status = 0 OR d.status IS NULL)
-         AND d.item_code IS NOT NULL
-         AND d.item_code <> ''
-       ORDER BY t.doc_date DESC, pb.doc_no, d.item_code`,
-      [sid, info.wh_code],
-    ),
     query<LabelDetailStat>(
       `SELECT
          l.label_id,
@@ -354,36 +324,6 @@ export default async function SessionSummaryPage({
       [sid],
     ),
   ]);
-
-  const billGroups: Array<{
-    doc_no: string;
-    trans_flag: number;
-    doc_date: string | null;
-    cust_code: string | null;
-    lines: PendingBillLine[];
-    total_qty: number;
-  }> = [];
-  {
-    const idx = new Map<string, (typeof billGroups)[number]>();
-    for (const l of pendingLines) {
-      const key = `${l.doc_no}::${l.trans_flag}`;
-      let g = idx.get(key);
-      if (!g) {
-        g = {
-          doc_no: l.doc_no,
-          trans_flag: l.trans_flag,
-          doc_date: l.doc_date,
-          cust_code: l.cust_code,
-          lines: [],
-          total_qty: 0,
-        };
-        idx.set(key, g);
-        billGroups.push(g);
-      }
-      g.lines.push(l);
-      g.total_qty += Number.parseFloat(l.qty) || 0;
-    }
-  }
 
   const labelStat = labelStatRows[0] ?? {
     label_count: 0,
@@ -1279,94 +1219,6 @@ export default async function SessionSummaryPage({
           </section>
         )}
 
-        {/* Pending bills breakdown */}
-        {billGroups.length > 0 && (
-          <section className="summary-card overflow-hidden rounded-2xl bg-white p-6 shadow-card ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-            <div className="mb-4 flex items-baseline justify-between gap-2">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
-                ບິນຄ້າງຈ່າຍທີ່ຮວມໃນຍອດອ້າງອີງ
-              </h2>
-              <span className="text-xs text-zinc-500">
-                {billGroups.length.toLocaleString("en-US")} ບິນ ·{" "}
-                {pendingLines.length.toLocaleString("en-US")} ລາຍການ
-              </span>
-            </div>
-            <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
-              <table className="w-full text-xs">
-                <thead className="bg-zinc-50 uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/40">
-                  <tr>
-                    <th className="px-3 py-2 text-left">doc_no</th>
-                    <th className="px-3 py-2 text-left">flag</th>
-                    <th className="px-3 py-2 text-left">ວັນທີ</th>
-                    <th className="px-3 py-2 text-left">ລູກຄ້າ</th>
-                    <th className="px-3 py-2 text-left">ສິນຄ້າ</th>
-                    <th className="px-3 py-2 text-right">qty</th>
-                    <th className="px-3 py-2 text-left">ຫົວໜ່ວຍ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {billGroups.flatMap((g) => [
-                    <tr
-                      key={`${g.doc_no}::${g.trans_flag}::header`}
-                      className="bg-amber-50/40 dark:bg-amber-950/15"
-                    >
-                      <td className="px-3 py-1.5 font-mono font-bold text-zinc-900 dark:text-zinc-50">
-                        {g.doc_no}
-                      </td>
-                      <td className="px-3 py-1.5 text-zinc-500">
-                        {g.trans_flag}
-                      </td>
-                      <td className="px-3 py-1.5 text-zinc-600 dark:text-zinc-300">
-                        {g.doc_date ?? "—"}
-                      </td>
-                      <td
-                        className="px-3 py-1.5 text-zinc-600 dark:text-zinc-300"
-                        colSpan={2}
-                      >
-                        {g.cust_code ?? "—"}
-                      </td>
-                      <td className="px-3 py-1.5 text-right font-mono font-bold tabular-nums text-amber-700 dark:text-amber-400">
-                        +{formatQty(g.total_qty)}
-                      </td>
-                      <td className="px-3 py-1.5 text-zinc-400">
-                        {g.lines.length} ລາຍ
-                      </td>
-                    </tr>,
-                    ...g.lines.map((l, i) => (
-                      <tr
-                        key={`${g.doc_no}::${g.trans_flag}::${l.item_code}::${i}`}
-                      >
-                        <td className="px-3 py-1" colSpan={4} />
-                        <td className="px-3 py-1">
-                          <div className="flex flex-col">
-                            <span className="font-mono font-semibold">
-                              {l.item_code}
-                            </span>
-                            {l.item_name && (
-                              <span
-                                className="max-w-[300px] truncate text-zinc-500"
-                                title={l.item_name}
-                              >
-                                {l.item_name}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-1 text-right font-mono tabular-nums text-amber-700 dark:text-amber-400">
-                          +{formatQty(Number.parseFloat(l.qty) || 0)}
-                        </td>
-                        <td className="px-3 py-1 text-zinc-500">
-                          {l.unit_code ?? ""}
-                        </td>
-                      </tr>
-                    )),
-                  ])}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
         {/* Counters */}
         {counterRows.length > 0 && (
           <section className="summary-card overflow-hidden rounded-2xl bg-white p-6 shadow-card ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
@@ -1451,6 +1303,7 @@ function GroupSummaryTable({
     (sum, row) => sum + row.countedItemCount,
     0,
   );
+  const totalPendingQty = rows.reduce((sum, row) => sum + row.pendingQty, 0);
   const totalVariance = rows.reduce((sum, row) => sum + row.varianceQty, 0);
 
   return (
@@ -1466,17 +1319,24 @@ function GroupSummaryTable({
             {totalCountedItems.toLocaleString("en-US")} ນັບແລ້ວ
           </div>
         </div>
-        <div
-          className={`font-mono text-sm font-bold tabular-nums ${
-            totalVariance === 0
-              ? "text-zinc-500"
-              : totalVariance > 0
-                ? "text-emerald-700 dark:text-emerald-400"
-                : "text-red-700 dark:text-red-400"
-          }`}
-        >
-          {totalVariance > 0 ? "+" : ""}
-          {formatQty(totalVariance)}
+        <div className="text-right">
+          <div
+            className={`font-mono text-sm font-bold tabular-nums ${
+              totalVariance === 0
+                ? "text-zinc-500"
+                : totalVariance > 0
+                  ? "text-emerald-700 dark:text-emerald-400"
+                  : "text-red-700 dark:text-red-400"
+            }`}
+          >
+            {totalVariance > 0 ? "+" : ""}
+            {formatQty(totalVariance)}
+          </div>
+          {totalPendingQty > 0 && (
+            <div className="mt-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+              ຄ້າງສົ່ງ +{formatQty(totalPendingQty)}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1486,7 +1346,7 @@ function GroupSummaryTable({
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[780px] text-xs">
+          <table className="w-full min-w-[860px] text-xs">
             <thead className="bg-white uppercase tracking-wider text-zinc-500 dark:bg-zinc-900">
               <tr>
                 <th className="px-3 py-2 text-left">ກຸ່ມ</th>
@@ -1494,6 +1354,7 @@ function GroupSummaryTable({
                 <th className="px-3 py-2 text-right">ນັບແລ້ວ</th>
                 <th className="px-3 py-2 text-right">ນັບແລ້ວກົງ</th>
                 <th className="px-3 py-2 text-right">qty ນັບໄດ້</th>
+                <th className="px-3 py-2 text-right">ບິນຄ້າງສົ່ງ</th>
                 <th className="px-3 py-2 text-right">ອ້າງອີງ</th>
                 <th className="px-3 py-2 text-right">ສ່ວນຕ່າງ</th>
               </tr>
@@ -1549,6 +1410,10 @@ function GroupSummaryTable({
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">
                       {formatQty(row.countedQty)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-amber-700 dark:text-amber-400">
+                      {row.pendingQty > 0 ? "+" : ""}
+                      {formatQty(row.pendingQty)}
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">
                       {formatQty(row.referenceQty)}

@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { getSession } from "@/lib/session";
 import { query } from "@/lib/db";
-import { ROLE_LABEL_LO } from "@/lib/session-shared";
+import { ROLE_LABEL_LO, accessibleWarehouses } from "@/lib/session-shared";
 import BootstrapManagerButton from "./BootstrapManagerButton";
+import WarehouseCapacity from "@/components/WarehouseCapacity";
 import { Hero, KpiCard, Notice, Chip } from "@/components/ui/Card";
 import {
   AlertIcon,
@@ -12,7 +13,6 @@ import {
   ChevronRightIcon,
   HomeIcon,
   ListIcon,
-  PackageIcon,
   ShieldIcon,
   TrendIcon,
 } from "@/components/ui/Icons";
@@ -49,16 +49,17 @@ export default async function Home() {
     canBootstrap = !managers[0]?.exists;
   }
 
-  // Today's stats — scoped by role
-  const accessClause = role && role !== "manager" && session
-    ? session.warehouses.length > 0
-      ? `AND wh_code = ANY($2)`
-      : `AND FALSE`
-    : "";
+  // Today's stats — scoped by warehouse access (null = all, [] = none, [..] = list).
+  // A manager with an explicit warehouse list is scoped like anyone else.
+  const accessible = accessibleWarehouses(session);
+  const accessClause =
+    accessible === null
+      ? ""
+      : accessible.length > 0
+        ? `AND wh_code = ANY($2)`
+        : `AND FALSE`;
   const accessArgs =
-    role && role !== "manager" && session && session.warehouses.length > 0
-      ? [session.warehouses]
-      : [];
+    accessible && accessible.length > 0 ? [accessible] : [];
 
   const [receiveStats, issueStats] = role
     ? await Promise.all([
@@ -92,19 +93,15 @@ export default async function Home() {
   const receiveCount = receiveStats[0]?.movement_count ?? 0;
   const issueCount = Math.abs(Number.parseFloat(issueStats[0]?.total_qty ?? "0"));
   const issueRows = issueStats[0]?.movement_count ?? 0;
-  const totalWarehouses =
-    role === "manager"
-      ? null
-      : (session?.warehouses.length ?? 0);
+  const totalWarehouses = accessible === null ? null : accessible.length;
 
-  const scopeText =
-    role === "manager"
+  const scopeText = !role
+    ? "—"
+    : accessible === null
       ? "ເບິ່ງທຸກສາງ"
-      : role
-        ? session && session.warehouses.length > 0
-          ? `${session.warehouses.length} ສາງ ທີ່ຮັບຜິດຊອບ`
-          : "ຍັງບໍ່ມີສາງທີ່ມອບໝາຍ"
-        : "—";
+      : accessible.length > 0
+        ? `${accessible.length} ສາງ ທີ່ຮັບຜິດຊອບ`
+        : "ຍັງບໍ່ມີສາງທີ່ມອບໝາຍ";
 
   const menu = [
     {
@@ -242,6 +239,8 @@ export default async function Home() {
         </section>
       )}
 
+      {session && <WarehouseCapacity session={session} />}
+
       <section>
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
@@ -284,19 +283,6 @@ export default async function Home() {
                 </div>
               </Link>
             ))}
-        </div>
-      </section>
-
-      <section>
-        <div className="rounded-2xl border border-dashed border-zinc-300 bg-white px-6 py-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
-          <PackageIcon className="mx-auto h-10 w-10 text-zinc-400" />
-          <div className="mt-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-            ສະຫຼຸບເພີ່ມເຕີມຈະຖືກເພີ່ມໃນອະນາຄົດ
-          </div>
-          <p className="mx-auto mt-1 max-w-md text-xs text-zinc-500 dark:text-zinc-400">
-            ຕົວຢ່າງ: graph ການເຄື່ອນໄຫວ 7 ມື້ຍ້ອນຫຼັງ, ສິນຄ້າທີ່ມີ stock ຕິດລົບ,
-            top 10 ສິນຄ້າທີ່ເຄື່ອນໄຫວສູງສຸດ
-          </p>
         </div>
       </section>
     </div>

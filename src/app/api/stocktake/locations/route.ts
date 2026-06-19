@@ -14,6 +14,13 @@ type LocationRow = {
   rack_code: string;
 };
 
+type PalletRow = {
+  code: string;
+  name: string | null;
+  location: string | null;
+  rack: string | null;
+};
+
 /**
  * Returns racks + locations for the given warehouse. Used by the counter UI
  * to let the user select where the counted item was found.
@@ -41,7 +48,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const [racks, locations] = await Promise.all([
+  const [racks, locations, pallets] = await Promise.all([
     query<RackRow>(
       `SELECT code, name_1 AS name
        FROM public.odg_wms_location
@@ -56,7 +63,14 @@ export async function GET(request: Request) {
        ORDER BY code`,
       [wh],
     ),
+    query<PalletRow>(
+      `SELECT code, name_1 AS name, location, rack
+       FROM public.odg_wms_pallet
+       WHERE wh_code = $1
+       ORDER BY code`,
+      [wh],
+    ),
   ]);
 
-  return NextResponse.json({ racks, locations });
+  return NextResponse.json({ racks, locations, pallets });
 }

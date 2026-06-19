@@ -33,12 +33,22 @@ const topItems: NavLink[] = [
   {
     label: "ໜ້າຫຼັກ",
     href: "/",
-    icon: <HomeIcon className="h-4 w-4" />,
+    icon: <HomeIcon className="h-4.5 w-4.5" />,
   },
   {
     label: "ຄົງເຫຼືອ",
     href: "/movements/balance",
-    icon: <ListIcon className="h-4 w-4" />,
+    icon: <ListIcon className="h-4.5 w-4.5" />,
+  },
+  {
+    label: "Serial Number",
+    href: "/serials",
+    icon: <PackageIcon className="h-4.5 w-4.5" />,
+  },
+  {
+    label: "SN Samsung",
+    href: "/samsung-serials",
+    icon: <ListIcon className="h-4.5 w-4.5" />,
   },
 ];
 
@@ -46,7 +56,7 @@ const groups: Group[] = [
   {
     label: "ການເຄື່ອນໄຫວ",
     basePath: "/movements",
-    icon: <ArrowLeftRightIcon className="h-4 w-4" />,
+    icon: <ArrowLeftRightIcon className="h-4.5 w-4.5" />,
     items: [
       {
         label: "ຮັບສິນຄ້າ",
@@ -68,7 +78,7 @@ const groups: Group[] = [
   {
     label: "ກວດນັບສິນຄ້າ",
     basePath: "/stocktake",
-    icon: <CheckIcon className="h-4 w-4" />,
+    icon: <CheckIcon className="h-4.5 w-4.5" />,
     items: [
       {
         label: "ຮອບກວດນັບ",
@@ -85,7 +95,7 @@ const groups: Group[] = [
   {
     label: "ຮັບຝາກເຄື່ອງ",
     basePath: "/deposits",
-    icon: <PackageIcon className="h-4 w-4" />,
+    icon: <PackageIcon className="h-4.5 w-4.5" />,
     items: [
       {
         label: "ລາຍການຝາກ",
@@ -102,7 +112,7 @@ const groups: Group[] = [
   {
     label: "ການຕັ້ງຄ່າ",
     basePath: "/settings",
-    icon: <SettingsIcon className="h-4 w-4" />,
+    icon: <SettingsIcon className="h-4.5 w-4.5" />,
     items: [
       {
         label: "ສາງ / Rack / Location",
@@ -158,7 +168,7 @@ export default function Sidebar({ session }: { session: Session | null }) {
       <button
         type="button"
         onClick={() => setIsMobileOpen(true)}
-        className="fixed left-3 top-3 z-[60] inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white/80 text-zinc-700 shadow-lg shadow-zinc-900/5 backdrop-blur-sm transition hover:bg-white md:hidden dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-200"
+        className="fixed left-3 top-3 z-[60] inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200/80 bg-white/80 text-zinc-700 shadow-lg shadow-zinc-900/5 backdrop-blur-sm transition hover:bg-white md:hidden dark:border-zinc-800/80 dark:bg-zinc-900/80 dark:text-zinc-200"
         aria-label="ເປີດແຜ່ນນຳ"
       >
         <ListIcon className="h-5 w-5" />
@@ -174,27 +184,27 @@ export default function Sidebar({ session }: { session: Session | null }) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-zinc-200/70 bg-white/90 backdrop-blur-md transition-all duration-300 dark:border-zinc-800/70 dark:bg-zinc-900/90 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-zinc-200/40 bg-white/80 backdrop-blur-xl shadow-xl shadow-zinc-200/30 transition-all duration-300 dark:border-zinc-800/40 dark:bg-zinc-950/80 dark:shadow-none ${
           isCollapsed ? "w-[72px]" : "w-60"
         } ${
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         } md:static md:translate-x-0`}
       >
-        <div className="flex items-center justify-between gap-2 border-b border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+        <div className="flex items-center justify-between gap-2 border-b border-zinc-200/40 px-3 py-3.5 dark:border-zinc-800/40">
           <Link
             href="/"
             onClick={closeMobile}
-            className="flex items-center gap-2.5 overflow-hidden rounded-lg px-1 py-0.5"
+            className="flex items-center gap-2.5 overflow-hidden rounded-xl px-1.5 py-0.5"
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-xs font-bold tracking-tight text-white shadow-md shadow-indigo-500/30">
-              ODG
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 text-[10px] font-black tracking-wider text-white shadow-[0_0_12px_rgba(99,102,241,0.45)] dark:shadow-[0_0_12px_rgba(99,102,241,0.2)]">
+              WMS
             </div>
             {!isCollapsed && (
               <div className="truncate">
-                <div className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-                  ODG WMS
+                <div className="text-sm font-bold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-1">
+                  ODG <span className="bg-gradient-to-r from-indigo-500 to-pink-500 bg-clip-text text-transparent font-black">WMS</span>
                 </div>
-                <div className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                <div className="text-[10px] text-zinc-400 dark:text-zinc-500">
                   ຄຸ້ມຄອງຄັງສິນຄ້າ
                 </div>
               </div>
@@ -203,7 +213,7 @@ export default function Sidebar({ session }: { session: Session | null }) {
           <button
             type="button"
             onClick={() => setIsCollapsed((prev) => !prev)}
-            className="hidden h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 md:inline-flex dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+            className="hidden h-7 w-7 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 md:inline-flex dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-50 transition-colors"
             aria-label={isCollapsed ? "ຂະຫຍາຍເມນູ" : "ຍຸບເມນູ"}
           >
             <ChevronRightIcon
@@ -215,7 +225,7 @@ export default function Sidebar({ session }: { session: Session | null }) {
           <button
             type="button"
             onClick={closeMobile}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100 md:hidden dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200/50 text-zinc-600 transition hover:bg-zinc-100 md:hidden dark:border-zinc-800/50 dark:text-zinc-300 dark:hover:bg-zinc-800"
             aria-label="ປິດແຜ່ນນຳ"
           >
             <ChevronRightIcon className="h-4 w-4 rotate-180" />
@@ -231,13 +241,13 @@ export default function Sidebar({ session }: { session: Session | null }) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="ຄົ້ນຫາເມນູ..."
-                className="w-full rounded-lg border border-zinc-200 bg-white/70 py-1.5 pl-7 pr-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                className="w-full rounded-xl border border-zinc-200/60 bg-zinc-50/50 py-1.5 pl-7 pr-2 text-xs text-zinc-900 placeholder:text-zinc-400 transition-all focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:border-zinc-800/60 dark:bg-zinc-950/40 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:bg-zinc-950"
               />
             </div>
           </div>
         )}
 
-        <nav className="flex-1 overflow-y-auto px-2 py-3">
+        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
           <div className="space-y-0.5">
             {filteredTop.map((item) => (
               <NavLeaf
@@ -253,7 +263,7 @@ export default function Sidebar({ session }: { session: Session | null }) {
           </div>
 
           {filteredGroups.length > 0 && (
-            <div className="mt-3 space-y-1.5">
+            <div className="mt-4 space-y-2">
               {filteredGroups.map((group) => (
                 <NavGroup
                   key={group.basePath}
@@ -268,15 +278,16 @@ export default function Sidebar({ session }: { session: Session | null }) {
           )}
 
           {q && filteredTop.length === 0 && filteredGroups.length === 0 && (
-            <div className="px-3 py-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
+            <div className="px-3 py-6 text-center text-xs text-zinc-400 dark:text-zinc-500">
               ບໍ່ພົບເມນູ &quot;{search}&quot;
             </div>
           )}
         </nav>
 
         {!isCollapsed && (
-          <div className="border-t border-zinc-200/70 px-4 py-2.5 text-[10px] text-zinc-400 dark:border-zinc-800/70 dark:text-zinc-500">
-            © ODG WMS
+          <div className="border-t border-zinc-200/40 px-4 py-3 text-[10px] text-zinc-400 flex items-center justify-between dark:border-zinc-800/40 dark:text-zinc-500 bg-zinc-50/30 dark:bg-zinc-950/10">
+            <span>© ODG WMS</span>
+            <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 shadow-sm dark:shadow-none">v1.2.0</span>
           </div>
         )}
       </aside>
@@ -306,26 +317,26 @@ function NavLeaf({
       href={href}
       onClick={onNavigate}
       title={collapsed ? label : undefined}
-      className={`group relative flex items-center gap-3 rounded-lg py-2 text-sm transition-all ${
-        collapsed ? "justify-center px-2" : indent ? "pl-6 pr-3" : "px-3"
+      className={`group relative flex items-center gap-3 rounded-xl py-2 text-sm transition-all duration-200 ${
+        collapsed ? "justify-center px-2" : indent ? "pl-6 pr-3 hover:translate-x-1" : "px-3 hover:translate-x-1"
       } ${
         isActive
-          ? "bg-indigo-50 font-semibold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-200"
-          : "font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+          ? "bg-gradient-to-r from-indigo-50/80 to-transparent font-semibold text-indigo-700 dark:from-indigo-500/10 dark:to-transparent dark:text-indigo-200 shadow-sm dark:shadow-none"
+          : "font-medium text-zinc-600 hover:bg-zinc-50/60 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900/30 dark:hover:text-zinc-200"
       }`}
     >
       {isActive && (
         <span
           aria-hidden="true"
-          className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-r-full bg-indigo-600 dark:bg-indigo-400"
+          className="absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full bg-gradient-to-b from-indigo-500 to-purple-600"
         />
       )}
       {icon && (
         <span
-          className={`shrink-0 ${
+          className={`shrink-0 transition-colors ${
             isActive
               ? "text-indigo-600 dark:text-indigo-300"
-              : "text-zinc-500 dark:text-zinc-400"
+              : "text-zinc-400 group-hover:text-zinc-700 dark:text-zinc-500 dark:group-hover:text-zinc-300"
           }`}
         >
           {icon}
@@ -382,22 +393,22 @@ function NavGroup({
   }
 
   return (
-    <div>
+    <div className="space-y-1">
       <button
         type="button"
         onClick={() => setExpanded((p) => !p)}
         aria-expanded={isExpanded}
-        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-all ${
+        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold transition-all duration-200 ${
           groupActive
-            ? "text-indigo-700 dark:text-indigo-200"
-            : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+            ? "bg-gradient-to-r from-indigo-50/50 to-transparent text-indigo-700 dark:from-indigo-500/5 dark:to-transparent dark:text-indigo-200"
+            : "text-zinc-700 hover:bg-zinc-50/50 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900/30 dark:hover:text-zinc-200 hover:translate-x-0.5"
         }`}
       >
         <span
-          className={`shrink-0 ${
+          className={`shrink-0 transition-colors ${
             groupActive
               ? "text-indigo-600 dark:text-indigo-300"
-              : "text-zinc-500 dark:text-zinc-400"
+              : "text-zinc-400 dark:text-zinc-500"
           }`}
         >
           {group.icon}

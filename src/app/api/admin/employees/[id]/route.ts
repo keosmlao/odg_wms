@@ -57,8 +57,10 @@ export async function PUT(
     );
   }
 
-  // Manager sees all; clear any explicit assignments.
-  const finalWarehouses = role === "manager" ? [] : warehouses;
+  // Warehouses are persisted for every role (including manager). An empty list
+  // for a manager keeps the "all warehouses" default; a non-empty list narrows
+  // their scope. Role "none" carries no warehouses.
+  const finalWarehouses = role === null ? [] : warehouses;
 
   const client = await pool.connect();
   try {

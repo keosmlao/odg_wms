@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { EyeIcon, EyeOffIcon, UserIcon } from "@/components/ui/Icons";
+import { CheckIcon, EyeIcon, EyeOffIcon, UserIcon } from "@/components/ui/Icons";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,12 +15,10 @@ export default function LoginPage() {
   async function handleSubmit(e: { preventDefault: () => void }) {
     e.preventDefault();
     setError(null);
-
     if (!username.trim() || !password) {
       setError("ກະລຸນາປ້ອນລະຫັດພະນັກງານ ແລະ ລະຫັດຜ່ານ");
       return;
     }
-
     setSubmitting(true);
     try {
       const res = await fetch("/api/login", {
@@ -28,10 +26,7 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password }),
       });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        ok?: boolean;
-      };
+      const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
       if (!res.ok) {
         setError(data.error ?? "ເຂົ້າສູ່ລະບົບບໍ່ສຳເລັດ");
         return;
@@ -46,43 +41,63 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-zinc-50 px-4 py-12 dark:bg-zinc-950">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-40 -left-40 h-96 w-96 rounded-full bg-gradient-to-br from-indigo-300/40 via-violet-300/30 to-transparent blur-3xl dark:from-indigo-600/20 dark:via-violet-600/15"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-40 -bottom-40 h-96 w-96 rounded-full bg-gradient-to-tl from-pink-300/30 via-rose-300/20 to-transparent blur-3xl dark:from-pink-600/15 dark:via-rose-600/10"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute top-1/2 left-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-emerald-200/20 to-cyan-200/20 blur-3xl dark:from-emerald-600/10 dark:to-cyan-600/10"
-      />
+    <div className="grid flex-1 lg:grid-cols-2">
+      {/* Brand panel (desktop) */}
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 p-12 text-white lg:flex">
+        <div aria-hidden className="pointer-events-none absolute -top-32 -right-24 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-40 -left-24 h-[28rem] w-[28rem] rounded-full bg-fuchsia-400/20 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(white_1px,transparent_1px),linear-gradient(90deg,white_1px,transparent_1px)] [background-size:40px_40px]" />
 
-      <div className="relative w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-base font-bold tracking-tight text-white shadow-xl shadow-indigo-500/40">
+        <div className="relative flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-sm font-bold tracking-tight ring-1 ring-white/30 backdrop-blur">
             ODG
           </div>
-          <h1 className="bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-700 bg-clip-text text-3xl font-semibold tracking-tight text-transparent dark:from-zinc-50 dark:via-zinc-100 dark:to-zinc-300">
-            ເຂົ້າສູ່ລະບົບ
-          </h1>
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-            ລະບົບຄຸ້ມຄອງຄັງສິນຄ້າ ODG WMS
-          </p>
+          <span className="text-lg font-semibold tracking-tight">ODG WMS</span>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="shadow-card-lg rounded-2xl bg-white/80 p-7 ring-1 ring-zinc-200/70 backdrop-blur-xl dark:bg-zinc-900/80 dark:ring-zinc-800/70"
-        >
-          <div className="space-y-4">
+        <div className="relative">
+          <h2 className="max-w-md text-4xl font-bold leading-tight tracking-tight">
+            ຄຸ້ມຄອງຄັງສິນຄ້າ<br />ຢ່າງມືອາຊີບ
+          </h2>
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-indigo-100">
+            ຕິດຕາມຄົງເຫຼືອ, ປັບປຸງສະຕ໋ອກ ແລະ ບໍລິຫານ serial number — ທຸກຢ່າງໃນລະບົບດຽວ.
+          </p>
+          <ul className="mt-8 space-y-3 text-sm">
+            {[
+              "ຕິດຕາມສິນຄ້າຄົງເຫຼືອຕາມ location",
+              "ປັບປຸງສະຕ໋ອກ ພ້ອມຫຼັກຖານ",
+              "ບໍລິຫານ & ຄົ້ນຫາ Serial Number",
+            ].map((f) => (
+              <li key={f} className="flex items-center gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25">
+                  <CheckIcon className="h-3.5 w-3.5" />
+                </span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="relative text-xs text-indigo-200/80">
+          © {new Date().getFullYear()} ODG WMS · ສະຫງວນລິຂະສິດ
+        </div>
+      </div>
+
+      {/* Form panel */}
+      <div className="flex items-center justify-center bg-zinc-50 px-6 py-12 dark:bg-zinc-950">
+        <div className="w-full max-w-sm">
+          {/* mobile brand */}
+          <div className="mb-8 text-center lg:text-left">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/30 lg:hidden">
+              ODG
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">ເຂົ້າສູ່ລະບົບ</h1>
+            <p className="mt-1.5 text-sm text-zinc-500 dark:text-zinc-400">ປ້ອນລະຫັດພະນັກງານ ເພື່ອເຂົ້າໃຊ້ ODG WMS</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label
-                htmlFor="username"
-                className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300"
-              >
+              <label htmlFor="username" className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                 ລະຫັດພະນັກງານ
               </label>
               <div className="relative">
@@ -93,82 +108,83 @@ export default function LoginPage() {
                   id="username"
                   type="text"
                   autoComplete="username"
+                  autoFocus
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full rounded-xl bg-white py-2.5 pl-9 pr-3 text-sm text-zinc-900 shadow-sm ring-1 ring-zinc-200 outline-none transition placeholder:text-zinc-400 hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800 dark:hover:ring-zinc-700 dark:focus:ring-indigo-400"
+                  className="w-full rounded-xl bg-white py-3 pl-9 pr-3 text-sm text-zinc-900 shadow-sm ring-1 ring-zinc-200 outline-none transition placeholder:text-zinc-400 hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-800 dark:focus:ring-indigo-400"
                   placeholder="ປ້ອນລະຫັດພະນັກງານ"
                 />
               </div>
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300"
-              >
+              <label htmlFor="password" className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                 ລະຫັດຜ່ານ
               </label>
               <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+                  <LockIcon className="h-4 w-4" />
+                </span>
                 <input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-xl bg-white px-3 py-2.5 pr-10 text-sm text-zinc-900 shadow-sm ring-1 ring-zinc-200 outline-none transition placeholder:text-zinc-400 hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800 dark:hover:ring-zinc-700 dark:focus:ring-indigo-400"
+                  className="w-full rounded-xl bg-white py-3 pl-9 pr-10 text-sm text-zinc-900 shadow-sm ring-1 ring-zinc-200 outline-none transition placeholder:text-zinc-400 hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-800 dark:focus:ring-indigo-400"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
                   aria-label={showPassword ? "ເຊື່ອງລະຫັດ" : "ສະແດງລະຫັດ"}
                 >
-                  {showPassword ? (
-                    <EyeOffIcon className="h-4 w-4" />
-                  ) : (
-                    <EyeIcon className="h-4 w-4" />
-                  )}
+                  {showPassword ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
             <div className="flex items-center justify-between text-xs">
-              <label className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
-                <input
-                  type="checkbox"
-                  className="h-3.5 w-3.5 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-700"
-                />
+              <label className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+                <input type="checkbox" className="h-3.5 w-3.5 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-700" />
                 ຈື່ຂ້ອຍໄວ້
               </label>
-              <a
-                href="#"
-                className="font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-              >
-                ລືມລະຫັດຜ່ານ?
-              </a>
             </div>
 
             {error && (
-              <div className="rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-700 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-400 dark:ring-red-900/50">
-                {error}
+              <div className="flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-700 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-400 dark:ring-red-900/50">
+                <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 9v4m0 4h.01" strokeLinecap="round" /><circle cx="12" cy="12" r="9" /></svg>
+                <span>{error}</span>
               </div>
             )}
 
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-xl bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:shadow-xl hover:shadow-indigo-500/40 active:from-indigo-600 active:via-violet-600 active:to-purple-700 disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:shadow-xl hover:shadow-indigo-500/40 active:scale-[0.99] disabled:opacity-60"
             >
+              {submitting && (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              )}
               {submitting ? "ກຳລັງເຂົ້າສູ່ລະບົບ..." : "ເຂົ້າສູ່ລະບົບ"}
             </button>
-          </div>
-        </form>
+          </form>
 
-        <p className="mt-6 text-center text-xs text-zinc-500 dark:text-zinc-500">
-          © {new Date().getFullYear()} ODG WMS · ສະຫງວນລິຂະສິດ
-        </p>
+          <p className="mt-8 text-center text-xs text-zinc-400 lg:hidden">
+            © {new Date().getFullYear()} ODG WMS
+          </p>
+        </div>
       </div>
     </div>
+  );
+}
+
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
   );
 }
