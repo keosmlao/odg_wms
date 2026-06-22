@@ -7,21 +7,19 @@ import { Notice } from "@/components/ui/Card";
 import { AlertIcon } from "@/components/ui/Icons";
 import PrintButton from "@/components/ui/PrintButton";
 import { DOC_TYPE } from "@/lib/receive";
+import { phDimensionLateralJoin } from "@/lib/ph-dimension";
+import { estimatePalletPositions } from "@/lib/capacity";
 
 type HeaderRow = {
   doc_no: string; doc_date: string | null; status: number | null;
   wh_code: string | null; wh_name: string | null; supplier_code: string | null;
   po_no: string | null; pack_no: string | null; remark: string | null; creator: string | null;
 };
-type LineRow = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; foot: string | null; stack: string | null; sn_count: number };
+type LineRow = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; pallet: string | null; stack: string | null; sn_count: number };
 
 function fmt(v: string | number | null | undefined) {
   const n = typeof v === "number" ? v : Number.parseFloat(v ?? "");
   return Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
-}
-function areaM2(qty: number, foot: number, stack: number): number {
-  if (!(foot > 0) || qty <= 0) return 0;
-  return Math.ceil(qty / (stack > 0 ? stack : 1)) * foot;
 }
 
 export default async function CountPrintPage({ params }: { params: Promise<{ doc: string }> }) {
@@ -53,17 +51,26 @@ export default async function CountPrintPage({ params }: { params: Promise<{ doc
 
   const lines = await query<LineRow>(
     `SELECT d.item_code, d.item_name, d.unit_code, d.qty::text AS qty,
-            dm.foot::text AS foot, dm.stack::text AS stack,
+            ph.pallet::text AS pallet, ph.stack::text AS stack,
             COALESCE(sn.n,0)::int AS sn_count
      FROM public.wms_product_receive_detail d
-     LEFT JOIN (SELECT DISTINCT ON (ic_code) ic_code, (NULLIF(width,0)::numeric*NULLIF(length,0)::numeric/10000) foot, NULLIF(stack,0)::numeric stack FROM public.odg_wms_product_dimension ORDER BY ic_code, roworder) dm ON dm.ic_code = d.item_code
+     LEFT JOIN public.ic_inventory inv ON inv.code = d.item_code
+     ${phDimensionLateralJoin("inv")}
      LEFT JOIN (SELECT item_code, count(*) n FROM public.wms_product_receive_serial_detail WHERE ref_rec_doc = $1 AND COALESCE(ignore_sync,0) <> 2 GROUP BY item_code) sn ON sn.item_code = d.item_code
      WHERE d.doc_no = $1 ORDER BY d.roworder`,
     [docNo],
   );
 
   const totalQty = lines.reduce((s, l) => s + (Number.parseFloat(l.qty) || 0), 0);
-  const totalArea = lines.reduce((s, l) => s + areaM2(Number.parseFloat(l.qty) || 0, Number.parseFloat(l.foot ?? "") || 0, Number.parseFloat(l.stack ?? "") || 0), 0);
+  const totalPallets = lines.reduce(
+    (sum, line) =>
+      sum +
+      estimatePalletPositions(
+        Number.parseFloat(line.qty) || 0,
+        Number.parseFloat(line.pallet ?? "") || 0,
+      ),
+    0,
+  );
 
   return (
     <>
@@ -113,13 +120,16 @@ export default async function CountPrintPage({ params }: { params: Promise<{ doc
                 <th className="py-2 pr-2">ສິນຄ້າ</th>
                 <th className="py-2 pr-2 text-right">ກວດນັບ</th>
                 <th className="py-2 pr-2 text-center">SN</th>
-                <th className="py-2 pl-2 text-right">ພື້ນທີ່ m²</th>
+                <th className="py-2 pl-2 text-right">ພາເລດ</th>
               </tr>
             </thead>
             <tbody>
               {lines.map((l, i) => {
                 const q = Number.parseFloat(l.qty) || 0;
-                const a = areaM2(q, Number.parseFloat(l.foot ?? "") || 0, Number.parseFloat(l.stack ?? "") || 0);
+                const pallets = estimatePalletPositions(
+                  q,
+                  Number.parseFloat(l.pallet ?? "") || 0,
+                );
                 return (
                   <tr key={l.item_code} className="border-b border-zinc-200 align-top">
                     <td className="py-1.5 pr-2 text-zinc-500">{i + 1}</td>
@@ -129,7 +139,7 @@ export default async function CountPrintPage({ params }: { params: Promise<{ doc
                     </td>
                     <td className="py-1.5 pr-2 text-right font-mono font-semibold">{fmt(q)}<span className="ml-1 text-xs text-zinc-500">{l.unit_code}</span></td>
                     <td className="py-1.5 pr-2 text-center font-mono">{l.sn_count > 0 ? l.sn_count : "—"}</td>
-                    <td className="py-1.5 pl-2 text-right font-mono">{a > 0 ? `~${a.toFixed(2)}` : "—"}</td>
+                    <td className="py-1.5 pl-2 text-right font-mono">{pallets > 0 ? `~${pallets}` : "—"}</td>
                   </tr>
                 );
               })}
@@ -139,7 +149,7 @@ export default async function CountPrintPage({ params }: { params: Promise<{ doc
                 <td className="py-2 pr-2" colSpan={2}>ລວມ {lines.length} ລາຍການ</td>
                 <td className="py-2 pr-2 text-right font-mono">{fmt(totalQty)}</td>
                 <td className="py-2 pr-2" />
-                <td className="py-2 pl-2 text-right font-mono">~{totalArea.toFixed(2)}</td>
+                <td className="py-2 pl-2 text-right font-mono">~{totalPallets}</td>
               </tr>
             </tfoot>
           </table>

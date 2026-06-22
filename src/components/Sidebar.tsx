@@ -41,6 +41,11 @@ const topItems: NavLink[] = [
     icon: <ListIcon className="h-4.5 w-4.5" />,
   },
   {
+    label: "ແຜນຜັງ Rack",
+    href: "/rack-visualization",
+    icon: <LayersIcon className="h-4.5 w-4.5" />,
+  },
+  {
     label: "Serial Number",
     href: "/serials",
     icon: <PackageIcon className="h-4.5 w-4.5" />,
@@ -118,6 +123,11 @@ const groups: Group[] = [
         label: "ສາງ / Rack / Location",
         href: "/settings/warehouses",
         icon: <LayersIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ກວດສອບ PH Dimension",
+        href: "/settings/ph-dimensions",
+        icon: <PackageIcon className="h-3.5 w-3.5" />,
       },
       {
         label: "ຈັດການສິດເຂົ້າເຖິງ",

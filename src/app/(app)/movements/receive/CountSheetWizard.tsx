@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertIcon, CheckIcon } from "@/components/ui/Icons";
+import { estimatePalletPositions } from "@/lib/capacity";
 
 type PoInfo = { wh_code: string; wh_name: string | null; cust_code: string | null; cust_name: string | null };
 type PackCandidate = { pack_no: string; pack_date: string | null; line_count: number; total_qty: string };
@@ -13,7 +14,7 @@ type PoLine = {
   ordered: string;
   remaining: string;
   is_isn: boolean;
-  foot?: string | null;
+  pallet?: string | null;
   stack?: string | null;
 };
 type WorkLine = {
@@ -28,18 +29,13 @@ type WorkLine = {
   mfd: string;
   expire: string;
   showSn: boolean;
-  foot: number; // unit floor footprint (m²)
-  stack: number; // stackable count
+  pallet: number; // units per pallet from PH
+  stack: number;
 };
 
 function fmt(v: string | number | null | undefined) {
   const n = typeof v === "number" ? v : Number.parseFloat(v ?? "");
   return Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: 4 }) : "0";
-}
-// Floor area (m²) a qty needs = ceil(qty / stack) × unit footprint.
-function areaM2(qty: number, foot: number, stack: number): number {
-  if (!(foot > 0) || qty <= 0) return 0;
-  return Math.ceil(qty / (stack > 0 ? stack : 1)) * foot;
 }
 function parsedQty(raw: string): number | null {
   if (raw.trim() === "") return null;
@@ -69,7 +65,7 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
     return src.map((l) => {
       const ordered = Number.parseFloat(l.ordered) || 0;
       const remaining = Number.parseFloat(l.remaining) || 0;
-      return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, ordered, remaining, isIsn: l.is_isn, qty: String(remaining > 0 ? remaining : 0), serials: [], mfd: "", expire: "", showSn: false, foot: Number.parseFloat(l.foot ?? "") || 0, stack: Number.parseFloat(l.stack ?? "") || 0 };
+      return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, ordered, remaining, isIsn: l.is_isn, qty: String(remaining > 0 ? remaining : 0), serials: [], mfd: "", expire: "", showSn: false, pallet: Number.parseFloat(l.pallet ?? "") || 0, stack: Number.parseFloat(l.stack ?? "") || 0 };
     });
   }
 
@@ -111,7 +107,7 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
         const remaining = Number.parseFloat(l.remaining) || 0;
         const packQty = Number.parseFloat(l.pack_qty ?? l.remaining) || 0;
         const dflt = remaining > 0 ? Math.min(packQty, remaining) : packQty;
-        return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, ordered, remaining, isIsn: l.is_isn, qty: String(dflt), serials: [], mfd: "", expire: "", showSn: false, foot: Number.parseFloat(l.foot ?? "") || 0, stack: Number.parseFloat(l.stack ?? "") || 0 };
+        return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, ordered, remaining, isIsn: l.is_isn, qty: String(dflt), serials: [], mfd: "", expire: "", showSn: false, pallet: Number.parseFloat(l.pallet ?? "") || 0, stack: Number.parseFloat(l.stack ?? "") || 0 };
       }));
       showToast("ok", `ດຶງຈາກ ${p} ແລ້ວ`);
     } catch (e) {
@@ -235,7 +231,7 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
                   <th className="px-4 py-2.5 text-right">ສັ່ງ</th>
                   <th className="px-4 py-2.5 text-right">ຄ້າງ</th>
                   <th className="px-4 py-2.5 text-center">ກວດນັບ</th>
-                  <th className="px-4 py-2.5 text-right">ພື້ນທີ່ m²</th>
+                  <th className="px-4 py-2.5 text-right">ພາເລດ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -259,7 +255,9 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
                         {over && <div className="mt-0.5 text-center text-[10px] text-red-500">ເກີນຄ້າງ</div>}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-indigo-600 dark:text-indigo-400">
-                        {areaM2(q ?? 0, l.foot, l.stack) > 0 ? `~${areaM2(q ?? 0, l.foot, l.stack).toFixed(2)}` : "—"}
+                        {estimatePalletPositions(q ?? 0, l.pallet) > 0
+                          ? `~${estimatePalletPositions(q ?? 0, l.pallet)}`
+                          : "—"}
                       </td>
                     </tr>
                   );
@@ -267,9 +265,9 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
               </tbody>
               <tfoot>
                 <tr className="border-t border-zinc-200 bg-zinc-50 text-xs font-semibold dark:border-zinc-700 dark:bg-zinc-800/50">
-                  <td className="px-4 py-2 text-zinc-600 dark:text-zinc-300" colSpan={4}>ໃຊ້ພື້ນທີ່ລວມ</td>
+                  <td className="px-4 py-2 text-zinc-600 dark:text-zinc-300" colSpan={4}>ພາເລດທີ່ຕ້ອງໃຊ້ລວມ</td>
                   <td className="px-4 py-2 text-right font-mono tabular-nums text-indigo-600 dark:text-indigo-400">
-                    ~{lines.reduce((s, l) => s + areaM2(parsedQty(l.qty) ?? 0, l.foot, l.stack), 0).toFixed(2)} m²
+                    ~{lines.reduce((s, l) => s + estimatePalletPositions(parsedQty(l.qty) ?? 0, l.pallet), 0)} ພາເລດ
                   </td>
                 </tr>
               </tfoot>

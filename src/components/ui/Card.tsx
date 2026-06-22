@@ -79,6 +79,7 @@ export function Hero({
   tone = "neutral",
   chips,
   right,
+  compact = false,
 }: {
   title: string;
   description?: string;
@@ -86,6 +87,7 @@ export function Hero({
   tone?: AccentTone;
   chips?: ReactNode;
   right?: ReactNode;
+  compact?: boolean;
 }) {
   const a = accentClasses(tone);
   return (
@@ -93,27 +95,35 @@ export function Hero({
       <div
         className={`pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-gradient-to-br ${a.heroGradient} blur-3xl`}
       />
-      <div className="relative flex flex-wrap items-start justify-between gap-6 p-7">
+      <div
+        className={`relative flex flex-wrap items-start justify-between gap-6 ${compact ? "p-4" : "p-7"}`}
+      >
         <div className="min-w-0">
-          <div className="flex items-center gap-3.5">
+          <div className={`flex items-center ${compact ? "gap-2.5" : "gap-3.5"}`}>
             <div
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset ${a.iconBg} ${a.iconColor} ring-current/10`}
+              className={`flex shrink-0 items-center justify-center rounded-xl ring-1 ring-inset ${a.iconBg} ${a.iconColor} ring-current/10 ${compact ? "h-9 w-9" : "h-12 w-12"}`}
             >
               {icon}
             </div>
             <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+              <h1
+                className={`font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 ${compact ? "text-lg" : "text-2xl"}`}
+              >
                 {title}
               </h1>
               {description && (
-                <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                <p
+                  className={`mt-0.5 text-zinc-500 dark:text-zinc-400 ${compact ? "text-xs" : "text-sm"}`}
+                >
                   {description}
                 </p>
               )}
             </div>
           </div>
           {chips && (
-            <div className="mt-4 flex flex-wrap items-center gap-1.5 text-xs">
+            <div
+              className={`flex flex-wrap items-center gap-1.5 text-xs ${compact ? "mt-2.5" : "mt-4"}`}
+            >
               {chips}
             </div>
           )}
@@ -163,6 +173,7 @@ export function KpiCard({
   sub,
   tone = "neutral",
   highlight = false,
+  compact = false,
 }: {
   icon: ReactNode;
   label: string;
@@ -170,19 +181,22 @@ export function KpiCard({
   sub?: string;
   tone?: AccentTone;
   highlight?: boolean;
+  compact?: boolean;
 }) {
   const a = accentClasses(tone);
   return (
-    <div className="shadow-card hover:shadow-card-hover group relative overflow-hidden rounded-2xl bg-white p-5 ring-1 ring-zinc-200 transition-all hover:-translate-y-0.5 hover:ring-zinc-300 dark:bg-zinc-900 dark:ring-zinc-800 dark:hover:ring-zinc-700">
+    <div
+      className={`shadow-card hover:shadow-card-hover group relative overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 transition-all hover:-translate-y-0.5 hover:ring-zinc-300 dark:bg-zinc-900 dark:ring-zinc-800 dark:hover:ring-zinc-700 ${compact ? "p-3.5" : "p-5"}`}
+    >
       {highlight && (
         <div
           className={`pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-gradient-to-br ${a.heroGradient} opacity-60 blur-2xl transition-opacity group-hover:opacity-100`}
         />
       )}
       <div className="relative">
-        <div className="flex items-center gap-2.5">
+        <div className={`flex items-center ${compact ? "gap-2" : "gap-2.5"}`}>
           <span
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${highlight ? `${a.iconBg} ${a.iconColor}` : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}
+            className={`flex shrink-0 items-center justify-center rounded-xl ${highlight ? `${a.iconBg} ${a.iconColor}` : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"} ${compact ? "h-7 w-7" : "h-9 w-9"}`}
           >
             {icon}
           </span>
@@ -191,7 +205,7 @@ export function KpiCard({
           </span>
         </div>
         <div
-          className={`mt-3 font-mono text-2xl font-semibold tracking-tight tabular-nums ${highlight ? a.valueColor : "text-zinc-900 dark:text-zinc-50"}`}
+          className={`font-mono font-semibold tracking-tight tabular-nums ${highlight ? a.valueColor : "text-zinc-900 dark:text-zinc-50"} ${compact ? "mt-1.5 text-lg" : "mt-3 text-2xl"}`}
         >
           {typeof value === "number" ? value.toLocaleString("en-US") : value}
         </div>

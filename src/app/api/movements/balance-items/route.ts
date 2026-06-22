@@ -2,13 +2,16 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import { phDimensionLateralJoin } from "@/lib/ph-dimension";
 
 export type BalanceItemRow = {
   ic_code: string | null;
   ic_name: string | null;
   ic_unit_code: string | null;
   balance_qty: string | null;
-  area_m2: string | null;
+  pallet_positions: string | null;
+  units_per_pallet: string | null;
+  stack: string | null;
   total_count: number;
 };
 
@@ -99,24 +102,21 @@ export async function GET(request: Request) {
        WHERE ${filters.join(" AND ")}
        GROUP BY t.item_code
        HAVING SUM(t.qty * t.calc_flag) <> 0
-     ),
-     dim AS (
-       SELECT DISTINCT ON (ic_code) ic_code,
-              (NULLIF(width,0)::numeric * NULLIF(length,0)::numeric / 10000) foot,
-              NULLIF(stack,0)::numeric stack
-       FROM public.odg_wms_product_dimension ORDER BY ic_code, roworder
      )
      SELECT
        agg.item_code AS ic_code,
        agg.item_name AS ic_name,
        agg.unit_code AS ic_unit_code,
        agg.balance_qty::text AS balance_qty,
-       CASE WHEN d.foot > 0 AND agg.balance_qty > 0
-            THEN round((ceil(agg.balance_qty / COALESCE(NULLIF(d.stack,0),1)) * d.foot)::numeric, 2)::text
-            ELSE NULL END AS area_m2,
+       CASE WHEN ph.pallet > 0 AND agg.balance_qty > 0
+            THEN round((agg.balance_qty / ph.pallet)::numeric, 3)::text
+            ELSE NULL END AS pallet_positions,
+       ph.pallet::text AS units_per_pallet,
+       ph.stack::text AS stack,
        COUNT(*) OVER()::int AS total_count
      FROM agg
-     LEFT JOIN dim d ON d.ic_code = agg.item_code
+     LEFT JOIN public.ic_inventory inv ON inv.code = agg.item_code
+     ${phDimensionLateralJoin("inv")}
      ORDER BY agg.item_code
      LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
     queryArgs,

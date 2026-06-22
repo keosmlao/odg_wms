@@ -3,6 +3,7 @@ import { type Session, accessibleWarehouses } from "@/lib/session-shared";
 import { AlertIcon, PackageIcon, SearchIcon } from "@/components/ui/Icons";
 import PendingBillCard, { type Bill } from "./PendingBillCard";
 import OtherPendingList from "./OtherPendingList";
+import { phDimensionLateralJoin } from "@/lib/ph-dimension";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 function pickStr(v: string | string[] | undefined): string {
@@ -57,11 +58,7 @@ async function getAllRemain(): Promise<RemainRow[]> {
   globalThis.__poRemainAllCache = { rows, ts: Date.now() };
   return rows;
 }
-type Dim = { pallet: number; vol: number; foot: number; stack: number };
-
-// Standard pallet floor footprint (m²) — used to estimate pallets from area when
-// an item has no explicit units-per-pallet in odg_wms_product_dimension.
-const PALLET_AREA_M2 = 1.2;
+type PhRule = { pallet: number; stack: number };
 
 /**
  * Pending-receipt list: every PO (ໃບສັ່ງຊື້) with goods still owed, across all
@@ -86,7 +83,7 @@ export default async function PendingList({
 
   // Cached view (~1.2s, shared 5-min TTL) + cheap WMS-received aggregation (~7ms,
   // always fresh so a new receipt reflects immediately).
-  const [allRemain, rcv, countSheets, dims] = await Promise.all([
+  const [allRemain, rcv, countSheets] = await Promise.all([
     getAllRemain(),
     query<{ po_no: string; item_code: string; received: string }>(
       `SELECT h.ref_doc_no AS po_no, d.item_code, SUM(d.qty)::text AS received
@@ -100,36 +97,35 @@ export default async function PendingList({
       `SELECT ref_doc_no AS po, warehouse_code AS wh, doc_no
        FROM public.wms_product_receive WHERE doc_type = 2 AND status = 9`,
     ),
-    // Per-item dimensions for estimating incoming pallets / volume.
-    query<{ ic_code: string; unit_code: string | null; pallet: string | null; w: string | null; l: string | null; h: string | null; stack: string | null }>(
-      `SELECT ic_code, ic_unit_code AS unit_code,
-              NULLIF(pallet,0)::text AS pallet, NULLIF(width,0)::text AS w,
-              NULLIF(length,0)::text AS l, NULLIF(height,0)::text AS h, NULLIF(stack,0)::text AS stack
-       FROM public.odg_wms_product_dimension`,
-    ),
   ]);
+  const itemCodes = Array.from(new Set(allRemain.map((row) => row.item_code)));
+  const phRows = itemCodes.length
+    ? await query<{
+        ic_code: string;
+        pallet: string | null;
+        stack: string | null;
+      }>(
+        `SELECT i.code AS ic_code,
+                ph.pallet::text AS pallet,
+                ph.stack::text AS stack
+         FROM public.ic_inventory i
+         ${phDimensionLateralJoin("i")}
+         WHERE i.code = ANY($1)`,
+        [itemCodes],
+      )
+    : [];
   const remain = allowed ? allRemain.filter((r) => allowed.has(r.wh_code)) : allRemain;
 
   const receivedBy = new Map<string, number>();
   for (const r of rcv) receivedBy.set(`${r.po_no} ${r.item_code}`, Number.parseFloat(r.received) || 0);
 
-  // Dimension lookup: prefer the row matching the line's unit, fall back to any.
-  const dimByKey = new Map<string, Dim>();
-  const dimByCode = new Map<string, Dim>();
-  for (const d of dims) {
-    const pallet = d.pallet ? Number.parseFloat(d.pallet) : 0;
-    const w = d.w ? Number.parseFloat(d.w) : 0;
-    const l = d.l ? Number.parseFloat(d.l) : 0;
-    const h = d.h ? Number.parseFloat(d.h) : 0;
-    const vol = w && l && h ? (w * l * h) / 1_000_000 : 0; // cm³ → m³
-    const foot = w && l ? (w * l) / 10_000 : 0; // cm² → m² (unit footprint)
-    const stack = d.stack ? Number.parseFloat(d.stack) : 0;
-    const dim: Dim = { pallet, vol, foot, stack };
-    dimByKey.set(`${d.ic_code}|${d.unit_code ?? ""}`, dim);
-    if (!dimByCode.has(d.ic_code)) dimByCode.set(d.ic_code, dim);
+  const phByCode = new Map<string, PhRule>();
+  for (const row of phRows) {
+    phByCode.set(row.ic_code, {
+      pallet: Number.parseFloat(row.pallet ?? "") || 0,
+      stack: Number.parseFloat(row.stack ?? "") || 0,
+    });
   }
-  const getDim = (code: string, unit: string | null): Dim | null =>
-    dimByKey.get(`${code}|${unit ?? ""}`) ?? dimByCode.get(code) ?? null;
 
   // Open count sheet per (PO|warehouse) → flag pending docs already counted.
   const countByKey = new Map(countSheets.map((c) => [`${c.po}|${c.wh}`, c.doc_no]));
@@ -148,28 +144,26 @@ export default async function PendingList({
     const key = `${p.po_no}|${p.wh_code}`;
     let g = byPo.get(key);
     if (!g) {
-      g = { po_no: p.po_no, cust_code: p.cust_code, cust_name: p.cust_name, wh_code: p.wh_code, wh_name: p.wh_name, doc_date: p.doc_date, send_date: p.send_date, creator_name: p.creator_name, transport_name: p.transport_name, lines: [], totalRemaining: 0, pallets: 0, volumeM3: 0, floorM2: 0, dimMissing: 0 };
+      g = { po_no: p.po_no, cust_code: p.cust_code, cust_name: p.cust_name, wh_code: p.wh_code, wh_name: p.wh_name, doc_date: p.doc_date, send_date: p.send_date, creator_name: p.creator_name, transport_name: p.transport_name, lines: [], totalRemaining: 0, pallets: 0, phMissing: 0 };
       byPo.set(key, g);
     }
-    const dim = getDim(p.item_code, p.unit_code);
-    // Per-item floor footprint = (stacks of this item) × unit footprint; stack =
-    // how many can be piled vertically (1 if unknown).
-    let lineM2 = 0;
-    if (dim && dim.foot > 0) {
-      const stacks = dim.stack > 0 ? Math.ceil(remaining / dim.stack) : remaining;
-      lineM2 = stacks * dim.foot;
-    }
-    g.lines.push({ item_code: p.item_code, item_name: p.item_name, unit_code: p.unit_code, remaining, m2: lineM2 });
+    const ph = phByCode.get(p.item_code);
+    const linePallets =
+      ph && ph.pallet > 0 ? Math.ceil(remaining / ph.pallet) : 0;
+    g.lines.push({
+      item_code: p.item_code,
+      item_name: p.item_name,
+      unit_code: p.unit_code,
+      remaining,
+      pallets: linePallets,
+      unitsPerPallet: ph?.pallet ?? 0,
+      stack: ph?.stack ?? 0,
+    });
     g.totalRemaining += remaining;
-    if (dim && (dim.pallet > 0 || dim.vol > 0 || dim.foot > 0)) {
-      // Pallets: use real units-per-pallet where known, else estimate from the
-      // item's floor footprint (area ÷ standard pallet area).
-      if (dim.pallet > 0) g.pallets += remaining / dim.pallet;
-      else if (lineM2 > 0) g.pallets += lineM2 / PALLET_AREA_M2;
-      if (dim.vol > 0) g.volumeM3 += remaining * dim.vol;
-      g.floorM2 += lineM2;
+    if (linePallets > 0) {
+      g.pallets += linePallets;
     } else {
-      g.dimMissing += 1;
+      g.phMissing += 1;
     }
   }
 

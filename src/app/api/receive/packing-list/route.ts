@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import { phDimensionLateralJoin } from "@/lib/ph-dimension";
 
 /**
  * Resolve receive lines for a PO, to build a count sheet (ໃບກວດນັບ).
@@ -21,7 +22,7 @@ type PackLine = {
   ordered: string;
   remaining: string;
   is_isn: boolean;
-  foot: string | null;
+  pallet: string | null;
   stack: string | null;
 };
 type PoLine = {
@@ -31,7 +32,7 @@ type PoLine = {
   ordered: string;
   remaining: string;
   is_isn: boolean;
-  foot: string | null;
+  pallet: string | null;
   stack: string | null;
 };
 
@@ -77,11 +78,11 @@ export async function GET(request: Request) {
                    WHERE rh.ref_doc_no = $1 AND rd.item_code = p.item_code AND (rh.status = 0 OR rh.status IS NULL)${wh ? " AND rh.warehouse_code = $2" : ""}
                  ), 0))::text AS remaining,
                 COALESCE(inv.is_isn,0) = 1 AS is_isn,
-                dm.foot::text AS foot, dm.stack::text AS stack
+                ph.pallet::text AS pallet, ph.stack::text AS stack
          FROM public.odg_po_remain p
          JOIN public.ic_warehouse w ON w.name_1 = p.warehouse${wh ? " AND w.code = $2" : ""}
          LEFT JOIN public.ic_inventory inv ON inv.code = p.item_code
-         LEFT JOIN (SELECT DISTINCT ON (ic_code) ic_code, (NULLIF(width,0)::numeric*NULLIF(length,0)::numeric/10000) foot, NULLIF(stack,0)::numeric stack FROM public.odg_wms_product_dimension ORDER BY ic_code, roworder) dm ON dm.ic_code = p.item_code
+         ${phDimensionLateralJoin("inv")}
          WHERE p.doc_no = $1 AND p.qty_balance > 0
          ORDER BY p.item_code`,
         wh ? [po, wh] : [po],
@@ -118,10 +119,10 @@ export async function GET(request: Request) {
             COALESCE(rem.ordered, 0)::text  AS ordered,
             COALESCE(rem.balance, 0)::text  AS remaining,
             COALESCE(inv.is_isn, 0) = 1     AS is_isn,
-            dm.foot::text AS foot, dm.stack::text AS stack
+            ph.pallet::text AS pallet, ph.stack::text AS stack
      FROM public.odg_packing_list_detail d
      LEFT JOIN public.ic_inventory inv ON inv.code = d.item_code
-     LEFT JOIN (SELECT DISTINCT ON (ic_code) ic_code, (NULLIF(width,0)::numeric*NULLIF(length,0)::numeric/10000) foot, NULLIF(stack,0)::numeric stack FROM public.odg_wms_product_dimension ORDER BY ic_code, roworder) dm ON dm.ic_code = d.item_code
+     ${phDimensionLateralJoin("inv")}
      LEFT JOIN LATERAL (
        SELECT MAX(p.qty)::numeric AS ordered,
               (MAX(p.qty_balance) - COALESCE((

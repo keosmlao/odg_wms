@@ -5,23 +5,20 @@ import { useRouter } from "next/navigation";
 import { AlertIcon, ArrowDownIcon, CheckIcon } from "@/components/ui/Icons";
 import RSelect, { type ROption } from "@/components/ui/RSelect";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import { estimatePalletPositions } from "@/lib/capacity";
 
 type Header = { doc_no: string; doc_date: string | null; doc_time: string | null; status: number | null; wh_code: string | null; wh_name: string | null; supplier_code: string | null; po_no: string | null; pack_no: string | null; remark: string | null };
-type LineRow = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; is_isn: boolean; foot?: string | null; stack?: string | null };
+type LineRow = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; is_isn: boolean; pallet?: string | null; stack?: string | null };
 type SerialRow = { item_code: string; serial_number: string; mfd_date: string | null; expire_date: string | null };
 type RackOption = { code: string; name: string | null };
 type LocationOption = { code: string; name: string | null; rack_code: string };
 type PalletOption = { code: string; name: string | null; location: string | null; rack: string | null };
 type DestType = "location" | "pallet";
-type WorkLine = { item_code: string; item_name: string | null; unit_code: string | null; isIsn: boolean; qty: string; received: string; serials: string[]; recvSerials: string[]; cancelSerials: string[]; mfd: string; expire: string; showSn: boolean; foot: number; stack: number; destType: DestType; rack: string; location: string; pallet: string };
+type WorkLine = { item_code: string; item_name: string | null; unit_code: string | null; isIsn: boolean; qty: string; received: string; serials: string[]; recvSerials: string[]; cancelSerials: string[]; mfd: string; expire: string; showSn: boolean; palletCapacity: number; stack: number; destType: DestType; rack: string; location: string; pallet: string };
 
 function fmt(v: string | number | null | undefined) {
   const n = typeof v === "number" ? v : Number.parseFloat(v ?? "");
   return Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: 4 }) : "0";
-}
-function areaM2(qty: number, foot: number, stack: number): number {
-  if (!(foot > 0) || qty <= 0) return 0;
-  return Math.ceil(qty / (stack > 0 ? stack : 1)) * foot;
 }
 function parsedQty(raw: string): number | null {
   if (raw.trim() === "") return null;
@@ -100,7 +97,7 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
           // Default: every reserved serial is received (full). Unselect → held;
           // mark again → cancelled.
           const recvSerials = serials.filter((s) => s.trim() !== "");
-          return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, isIsn: l.is_isn, qty: l.qty, received: "", serials, recvSerials, cancelSerials: [], mfd: manual[0]?.mfd_date ?? "", expire: manual[0]?.expire_date ?? "", showSn: false, foot: Number.parseFloat(l.foot ?? "") || 0, stack: Number.parseFloat(l.stack ?? "") || 0, destType: "location" as DestType, rack: "", location: "", pallet: "" };
+          return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, isIsn: l.is_isn, qty: l.qty, received: "", serials, recvSerials, cancelSerials: [], mfd: manual[0]?.mfd_date ?? "", expire: manual[0]?.expire_date ?? "", showSn: false, palletCapacity: Number.parseFloat(l.pallet ?? "") || 0, stack: Number.parseFloat(l.stack ?? "") || 0, destType: "location" as DestType, rack: "", location: "", pallet: "" };
         }));
         if (data.header.wh_code) {
           const lr = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(data.header.wh_code)}`);
@@ -314,7 +311,7 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
                 <th className="px-4 py-2.5">ສິນຄ້າ</th>
                 <th className="px-4 py-2.5 text-center">ກວດນັບ</th>
                 <th className="px-4 py-2.5 text-center">ຮັບຈິງ</th>
-                <th className="px-4 py-2.5 text-right">ພື້ນທີ່ m²</th>
+                <th className="px-4 py-2.5 text-right">ພາເລດ</th>
                 {mode === "line" && <><th className="px-3 py-2.5">ປະເພດ</th><th className="px-3 py-2.5">ບ່ອນເກັບ</th></>}
               </tr>
             </thead>
@@ -384,7 +381,9 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
                       </div>
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-indigo-600 dark:text-indigo-400">
-                      {areaM2(q ?? 0, l.foot, l.stack) > 0 ? `~${areaM2(q ?? 0, l.foot, l.stack).toFixed(2)}` : "—"}
+                      {estimatePalletPositions(q ?? 0, l.palletCapacity) > 0
+                        ? `~${estimatePalletPositions(q ?? 0, l.palletCapacity)}`
+                        : "—"}
                     </td>
                     {mode === "line" && (
                       <>
@@ -404,9 +403,9 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
             </tbody>
             <tfoot>
               <tr className="border-t border-zinc-200 bg-zinc-50 text-xs font-semibold dark:border-zinc-700 dark:bg-zinc-800/50">
-                <td className="px-4 py-2 text-zinc-600 dark:text-zinc-300" colSpan={3}>ໃຊ້ພື້ນທີ່ລວມ</td>
+                <td className="px-4 py-2 text-zinc-600 dark:text-zinc-300" colSpan={3}>ພາເລດທີ່ຕ້ອງໃຊ້ລວມ</td>
                 <td className="px-4 py-2 text-right font-mono tabular-nums text-indigo-600 dark:text-indigo-400">
-                  ~{lines.reduce((s, l) => s + areaM2(parsedQty(l.qty) ?? 0, l.foot, l.stack), 0).toFixed(2)} m²
+                  ~{lines.reduce((s, l) => s + estimatePalletPositions(parsedQty(l.qty) ?? 0, l.palletCapacity), 0)} ພາເລດ
                 </td>
                 {mode === "line" && <td colSpan={2} />}
               </tr>

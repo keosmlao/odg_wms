@@ -1,24 +1,32 @@
 import { query } from "@/lib/db";
 import { type Session, accessibleWarehouses } from "@/lib/session-shared";
 import { BuildingIcon, PackageIcon } from "@/components/ui/Icons";
+import { phDimensionLateralJoin } from "@/lib/ph-dimension";
 
 type PalletRow = { wh: string; nm: string | null; total: number; used: number };
-type AreaRow = { wh: string; nm: string | null; m2: number; palletsNeeded: number; noDim: number; items: number };
-type Row = { wh: string; nm: string | null; total: number; used: number; m2: number; palletsNeeded: number; noDim: number; items: number };
+type NeedRow = {
+  wh: string;
+  nm: string | null;
+  palletsNeeded: number;
+  noPh: number;
+  items: number;
+};
+type Row = PalletRow & { palletsNeeded: number; noPh: number; items: number };
 
-// Warehouse storage overview: pallet positions (capacity vs occupied) + the
-// floor area (m²) and pallets the on-hand stock needs, estimated from item
-// dimensions. Cached 5 min — the area query aggregates a large movement table.
+// Warehouse storage overview: configured pallet positions versus the positions
+// required by current stock, using the canonical PH units-per-pallet matcher.
 declare global {
   // eslint-disable-next-line no-var
-  var __whCapacityCacheV2: { pallets: PalletRow[]; areas: AreaRow[]; ts: number } | undefined;
+  var __whCapacityCacheV3:
+    | { pallets: PalletRow[]; needs: NeedRow[]; ts: number }
+    | undefined;
 }
 const TTL_MS = 5 * 60_000;
 
-async function getData(): Promise<{ pallets: PalletRow[]; areas: AreaRow[] }> {
-  const hit = globalThis.__whCapacityCacheV2;
+async function getData(): Promise<{ pallets: PalletRow[]; needs: NeedRow[] }> {
+  const hit = globalThis.__whCapacityCacheV3;
   if (hit && Date.now() - hit.ts < TTL_MS) return hit;
-  const [pallets, areaRaw] = await Promise.all([
+  const [pallets, needRaw] = await Promise.all([
     query<PalletRow>(
       `WITH cap AS (
          SELECT wh_code, count(*)::int total FROM public.odg_wms_pallet GROUP BY wh_code
@@ -36,34 +44,39 @@ async function getData(): Promise<{ pallets: PalletRow[]; areas: AreaRow[] }> {
        LEFT JOIN used ON used.wh_code = w.code
        ORDER BY w.code`,
     ),
-    query<{ wh: string; nm: string | null; m2: string; pallets_needed: number; no_dim: number; items: number }>(
+    query<{
+      wh: string;
+      nm: string | null;
+      pallets_needed: string;
+      no_ph: number;
+      items: number;
+    }>(
       `WITH bal AS (
          SELECT wh_code, item_code, SUM(qty * COALESCE(calc_flag,1)) bal
          FROM public.odg_wms_trans_detail WHERE (status = 0 OR status IS NULL)
          GROUP BY wh_code, item_code HAVING SUM(qty * COALESCE(calc_flag,1)) > 0
-       ),
-       dim AS (
-         SELECT DISTINCT ON (ic_code) ic_code,
-                (NULLIF(width,0)::numeric * NULLIF(length,0)::numeric / 10000) foot,
-                NULLIF(stack,0)::numeric stack,
-                NULLIF(pallet,0)::numeric pallet
-         FROM public.odg_wms_product_dimension ORDER BY ic_code, roworder
        )
        SELECT b.wh_code AS wh,
               max(w.name_1) AS nm,
-              round(SUM(CASE WHEN d.foot > 0 THEN ceil(b.bal / COALESCE(NULLIF(d.stack,0),1)) * d.foot ELSE 0 END)::numeric, 1)::text AS m2,
-              SUM(CASE WHEN d.pallet > 0 THEN ceil(b.bal / d.pallet) ELSE 0 END)::int AS pallets_needed,
-              count(*) FILTER (WHERE d.foot IS NULL OR d.foot <= 0)::int AS no_dim,
+              round(SUM(CASE WHEN ph.pallet > 0 THEN b.bal / ph.pallet ELSE 0 END)::numeric, 1)::numeric AS pallets_needed,
+              count(*) FILTER (WHERE ph.pallet IS NULL)::int AS no_ph,
               count(*)::int AS items
        FROM bal b
-       LEFT JOIN dim d ON d.ic_code = b.item_code
+       LEFT JOIN public.ic_inventory inv ON inv.code = b.item_code
+       ${phDimensionLateralJoin("inv")}
        LEFT JOIN public.ic_warehouse w ON w.code = b.wh_code
        GROUP BY b.wh_code`,
     ),
   ]);
-  const areas: AreaRow[] = areaRaw.map((a) => ({ wh: a.wh, nm: a.nm, m2: Number.parseFloat(a.m2) || 0, palletsNeeded: a.pallets_needed, noDim: a.no_dim, items: a.items }));
-  globalThis.__whCapacityCacheV2 = { pallets, areas, ts: Date.now() };
-  return { pallets, areas };
+  const needs: NeedRow[] = needRaw.map((row) => ({
+    wh: row.wh,
+    nm: row.nm,
+    palletsNeeded: Number.parseFloat(row.pallets_needed) || 0,
+    noPh: row.no_ph,
+    items: row.items,
+  }));
+  globalThis.__whCapacityCacheV3 = { pallets, needs, ts: Date.now() };
+  return { pallets, needs };
 }
 
 export default async function WarehouseCapacity({ session }: { session: Session }) {
@@ -72,25 +85,39 @@ export default async function WarehouseCapacity({ session }: { session: Session 
   const allowed = Array.isArray(accessible) ? new Set(accessible) : null;
   const inScope = (wh: string) => !allowed || allowed.has(wh);
 
-  const { pallets, areas } = await getData();
+  const { pallets, needs } = await getData();
 
   // Show warehouses the user is responsible for that have pallet capacity OR stock.
   const byWh = new Map<string, Row>();
   for (const r of pallets) {
     if (!inScope(r.wh)) continue;
-    byWh.set(r.wh, { wh: r.wh, nm: r.nm, total: r.total, used: r.used, m2: 0, palletsNeeded: 0, noDim: 0, items: 0 });
+    byWh.set(r.wh, {
+      ...r,
+      palletsNeeded: 0,
+      noPh: 0,
+      items: 0,
+    });
   }
-  for (const a of areas) {
-    if (!inScope(a.wh)) continue;
-    const g = byWh.get(a.wh) ?? { wh: a.wh, nm: a.nm, total: 0, used: 0, m2: 0, palletsNeeded: 0, noDim: 0, items: 0 };
-    g.nm = g.nm ?? a.nm;
-    g.m2 = a.m2; g.palletsNeeded = a.palletsNeeded; g.noDim = a.noDim; g.items = a.items;
-    byWh.set(a.wh, g);
+  for (const need of needs) {
+    if (!inScope(need.wh)) continue;
+    const row = byWh.get(need.wh) ?? {
+      wh: need.wh,
+      nm: need.nm,
+      total: 0,
+      used: 0,
+      palletsNeeded: 0,
+      noPh: 0,
+      items: 0,
+    };
+    row.nm = row.nm ?? need.nm;
+    row.palletsNeeded = need.palletsNeeded;
+    row.noPh = need.noPh;
+    row.items = need.items;
+    byWh.set(need.wh, row);
   }
   const rows = [...byWh.values()].sort((a, b) => a.wh.localeCompare(b.wh));
   if (rows.length === 0) return null;
 
-  const grandM2 = rows.reduce((s, r) => s + r.m2, 0);
   const grandPallets = rows.reduce((s, r) => s + r.palletsNeeded, 0);
   const nf = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
@@ -100,9 +127,9 @@ export default async function WarehouseCapacity({ session }: { session: Session 
         <span className="flex items-center gap-2 text-base font-semibold text-zinc-800 dark:text-zinc-100">
           <BuildingIcon className="h-5 w-5 text-indigo-500" /> ຄວາມຈຸ &amp; ພື້ນທີ່ຈັດເກັບ
         </span>
-        {(grandM2 > 0 || grandPallets > 0) && (
+        {grandPallets > 0 && (
           <span className="ml-auto rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300 dark:ring-indigo-900/50">
-            ສິນຄ້າຄົງເຫຼືອລວມ {grandM2 > 0 ? `~${nf(grandM2)} m²` : ""}{grandM2 > 0 && grandPallets > 0 ? " · " : ""}{grandPallets > 0 ? `~${nf(grandPallets)} ພາເລທ` : ""}
+            ສິນຄ້າຄົງເຫຼືອຕ້ອງໃຊ້ ~{nf(grandPallets)} ພາເລດ
           </span>
         )}
       </div>
@@ -134,9 +161,18 @@ export default async function WarehouseCapacity({ session }: { session: Session 
               ) : (
                 <div className="mt-1 text-[11px] text-zinc-400">ບໍ່ໄດ້ຕັ້ງຄ່າຕຳແໜ່ງພາເລທ</div>
               )}
-              {(r.m2 > 0 || r.palletsNeeded > 0) && (
-                <div className="mt-1.5 flex items-center gap-1 border-t border-zinc-200 pt-1.5 text-[11px] font-semibold text-indigo-600 dark:border-zinc-700 dark:text-indigo-400" title={r.noDim > 0 ? `${r.noDim}/${r.items} ລາຍການບໍ່ມີຂໍ້ມູນຂະໜາດ` : undefined}>
-                  <PackageIcon className="h-3 w-3" />ສິນຄ້າຄົງເຫຼືອ {r.m2 > 0 ? `~${r.m2.toLocaleString("en-US", { maximumFractionDigits: 1 })} m²` : ""}{r.m2 > 0 && r.palletsNeeded > 0 ? " · " : ""}{r.palletsNeeded > 0 ? `~${nf(r.palletsNeeded)} ພາເລທ` : ""}{r.noDim > 0 ? " *" : ""}
+              {r.palletsNeeded > 0 && (
+                <div
+                  className="mt-1.5 flex items-center gap-1 border-t border-zinc-200 pt-1.5 text-[11px] font-semibold text-indigo-600 dark:border-zinc-700 dark:text-indigo-400"
+                  title={
+                    r.noPh > 0
+                      ? `${r.noPh}/${r.items} SKU ຈັບຄູ່ PH ບໍ່ໄດ້`
+                      : undefined
+                  }
+                >
+                  <PackageIcon className="h-3 w-3" />
+                  ຕ້ອງໃຊ້ ~{nf(r.palletsNeeded)} ພາເລດ
+                  {r.noPh > 0 ? " *" : ""}
                 </div>
               )}
             </div>

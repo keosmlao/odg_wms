@@ -7,7 +7,9 @@ export type BillLine = {
   item_name: string | null;
   unit_code: string | null;
   remaining: number;
-  m2: number; // floor area this line's qty needs (m²)
+  pallets: number;
+  unitsPerPallet: number;
+  stack: number;
 };
 export type Bill = {
   po_no: string;
@@ -22,9 +24,7 @@ export type Bill = {
   lines: BillLine[];
   totalRemaining: number;
   pallets: number;
-  volumeM3: number;
-  floorM2: number;
-  dimMissing: number;
+  phMissing: number;
 };
 
 function fmt(v: string | number | null) {
@@ -36,10 +36,6 @@ export default function PendingBillCard({ b, days, defaultOpen, countSheetNo = n
   const within7 = days !== null && days >= 0 && days <= 7;
   const overdue = days !== null && days < 0;
   const palletsCeil = Math.ceil(b.pallets);
-  const spaceParts = [
-    b.floorM2 > 0 ? `~${b.floorM2.toFixed(1)} m²` : null,
-    palletsCeil >= 1 ? `~${palletsCeil} ພາເລທ` : null,
-  ].filter(Boolean);
 
   return (
     <details open={defaultOpen} className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
@@ -66,9 +62,9 @@ export default function PendingBillCard({ b, days, defaultOpen, countSheetNo = n
             {b.wh_code && <span className="inline-flex items-center gap-1"><BuildingIcon className="h-3 w-3" />{b.wh_code}{b.wh_name ? ` · ${b.wh_name}` : ""}</span>}
             {b.creator_name && <span className="inline-flex items-center gap-1"><UsersIcon className="h-3 w-3" />ຜູ້ສ້າງ: {b.creator_name}</span>}
             {b.transport_name && <span className="inline-flex items-center gap-1"><ArrowLeftRightIcon className="h-3 w-3" />{b.transport_name}</span>}
-            {spaceParts.length > 0 && (
-              <span className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400" title={b.dimMissing > 0 ? `${b.dimMissing} ລາຍການບໍ່ມີຂໍ້ມູນຂະໜາດ` : undefined}>
-                <PackageIcon className="h-3 w-3" />ໃຊ້ພື້ນທີ່ {spaceParts.join(" · ")}{b.dimMissing > 0 ? " *" : ""}
+            {palletsCeil > 0 && (
+              <span className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400" title={b.phMissing > 0 ? `${b.phMissing} ລາຍການຈັບຄູ່ PH ບໍ່ໄດ້` : undefined}>
+                <PackageIcon className="h-3 w-3" />ຕ້ອງໃຊ້ ~{palletsCeil} ພາເລດ{b.phMissing > 0 ? " *" : ""}
               </span>
             )}
           </div>
@@ -92,7 +88,7 @@ export default function PendingBillCard({ b, days, defaultOpen, countSheetNo = n
             <tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/50">
               <th className="px-4 py-2">ສິນຄ້າ</th>
               <th className="px-4 py-2 text-right">ຄ້າງຮັບ</th>
-              <th className="px-4 py-2 text-right">ພື້ນທີ່ m²</th>
+              <th className="px-4 py-2 text-right">ພາເລດ</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -106,7 +102,7 @@ export default function PendingBillCard({ b, days, defaultOpen, countSheetNo = n
                   {fmt(l.remaining)}<span className="ml-1 text-[10px] uppercase text-zinc-400">{l.unit_code}</span>
                 </td>
                 <td className="px-4 py-2 text-right font-mono text-xs tabular-nums text-indigo-600 dark:text-indigo-400">
-                  {l.m2 > 0 ? `~${l.m2.toFixed(2)}` : "—"}
+                  {l.pallets > 0 ? `~${l.pallets}` : "—"}
                 </td>
               </tr>
             ))}

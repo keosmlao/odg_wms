@@ -3,6 +3,7 @@ import { query } from "@/lib/db";
 import { type Session, accessibleWarehouses } from "@/lib/session-shared";
 import { DOC_TYPE, RECEIVE_STATUS } from "@/lib/receive";
 import { BuildingIcon, CalendarIcon, CheckIcon, PackageIcon, UserIcon } from "@/components/ui/Icons";
+import { phDimensionLateralJoin } from "@/lib/ph-dimension";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 function fmt(v: string | number | null) {
@@ -24,7 +25,7 @@ type SheetRow = {
   creator_code: string | null;
   line_count: number;
   total_qty: string;
-  area_m2: string | null;
+  pallet_positions: string | null;
   sn_count: number;
 };
 
@@ -42,15 +43,16 @@ export default async function CountSheetList({ session }: { session: Session; pa
             h.ref_doc_no AS po_no, r.ref_doc_no AS pack_no, h.remark,
             h.creator_code, e.fullname_lo AS creator_name,
             COALESCE(agg.line_count,0) AS line_count, COALESCE(agg.total_qty,0)::text AS total_qty,
-            agg.area_m2::text AS area_m2, COALESCE(sn.sn_count,0) AS sn_count
+            agg.pallet_positions::text AS pallet_positions, COALESCE(sn.sn_count,0) AS sn_count
      FROM public.wms_product_receive h
      LEFT JOIN public.ic_warehouse w ON w.code = h.warehouse_code
      LEFT JOIN public.odg_employee e ON e.employee_code = h.creator_code
      LEFT JOIN public.wms_product_receive_ref r ON r.doc_no = h.doc_no AND r.line_order = 1
      LEFT JOIN (SELECT d.doc_no, count(*)::int AS line_count, SUM(d.qty) AS total_qty,
-                       round(SUM(CASE WHEN dm.foot>0 THEN ceil(d.qty/COALESCE(NULLIF(dm.stack,0),1))*dm.foot ELSE 0 END)::numeric,2) AS area_m2
+                       SUM(CASE WHEN ph.pallet>0 THEN ceil(d.qty/ph.pallet) ELSE 0 END)::int AS pallet_positions
                 FROM public.wms_product_receive_detail d
-                LEFT JOIN (SELECT DISTINCT ON (ic_code) ic_code, (NULLIF(width,0)::numeric*NULLIF(length,0)::numeric/10000) foot, NULLIF(stack,0)::numeric stack FROM public.odg_wms_product_dimension ORDER BY ic_code, roworder) dm ON dm.ic_code = d.item_code
+                LEFT JOIN public.ic_inventory inv ON inv.code = d.item_code
+                ${phDimensionLateralJoin("inv")}
                 GROUP BY d.doc_no) agg ON agg.doc_no = h.doc_no
      LEFT JOIN (SELECT ref_rec_doc, count(*)::int AS sn_count
                 FROM public.wms_product_receive_serial_detail WHERE COALESCE(ignore_sync,0) <> 2 GROUP BY ref_rec_doc) sn ON sn.ref_rec_doc = h.doc_no
@@ -89,7 +91,7 @@ export default async function CountSheetList({ session }: { session: Session; pa
               <span className="inline-flex items-center gap-1"><CalendarIcon className="h-3 w-3" />{s.doc_date ?? "—"}{s.doc_time ? ` ${s.doc_time}` : ""}</span>
               <span className="inline-flex items-center gap-1"><UserIcon className="h-3 w-3" />{s.creator_name ?? s.creator_code ?? "—"}</span>
               {s.wh_code && <span className="inline-flex items-center gap-1"><BuildingIcon className="h-3 w-3" />{s.wh_code}{s.wh_name ? ` · ${s.wh_name}` : ""}</span>}
-              {s.area_m2 && Number.parseFloat(s.area_m2) > 0 && <span className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400"><PackageIcon className="h-3 w-3" />ໃຊ້ພື້ນທີ່ ~{fmt(s.area_m2)} m²</span>}
+              {s.pallet_positions && Number.parseFloat(s.pallet_positions) > 0 && <span className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400"><PackageIcon className="h-3 w-3" />ຕ້ອງໃຊ້ ~{fmt(s.pallet_positions)} ພາເລດ</span>}
               {s.sn_count > 0 && <span className="inline-flex items-center gap-1"><PackageIcon className="h-3 w-3" />SN {s.sn_count}</span>}
             </div>
           </div>

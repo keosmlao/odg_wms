@@ -9,7 +9,9 @@ type BalanceItem = {
   ic_name: string | null;
   ic_unit_code: string | null;
   balance_qty: string | null;
-  area_m2: string | null;
+  pallet_positions: string | null;
+  units_per_pallet: string | null;
+  stack: string | null;
 };
 
 type SelectedItem = { code: string; name: string | null };
@@ -111,7 +113,7 @@ export default function BalanceLocationItems({
         <div>ສິນຄ້າ</div>
         <div className="text-right">ຄົງເຫຼືອ</div>
         <div>ໜ່ວຍ</div>
-        <div className="text-right">ພື້ນທີ່ m²</div>
+        <div className="text-right">ພາເລດ</div>
         <div className="text-right">SN</div>
       </div>
       <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -143,7 +145,9 @@ export default function BalanceLocationItems({
               {item.ic_unit_code ?? "-"}
             </div>
             <div className="text-right font-mono text-xs tabular-nums text-indigo-600 dark:text-indigo-400">
-              {item.area_m2 ? `~${formatQty(item.area_m2)}` : "—"}
+              {item.pallet_positions
+                ? `~${formatQty(item.pallet_positions)}`
+                : "—"}
             </div>
             <div className="text-right">
               {item.ic_code && (

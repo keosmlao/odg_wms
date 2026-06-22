@@ -3,6 +3,7 @@ import { pool, query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { DOC_TYPE, RECEIVE_STATUS, writeCountSerials } from "@/lib/receive";
+import { phDimensionLateralJoin } from "@/lib/ph-dimension";
 
 /**
  * A single count sheet (ໃບກວດນັບ, draft on wms_product_receive status=9).
@@ -57,10 +58,10 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
     query(
       `SELECT d.item_code, d.item_name, d.unit_code, d.qty::text AS qty,
               COALESCE(inv.is_isn,0) = 1 AS is_isn,
-              dm.foot::text AS foot, dm.stack::text AS stack
+              ph.pallet::text AS pallet, ph.stack::text AS stack
        FROM public.wms_product_receive_detail d
        LEFT JOIN public.ic_inventory inv ON inv.code = d.item_code
-       LEFT JOIN (SELECT DISTINCT ON (ic_code) ic_code, (NULLIF(width,0)::numeric*NULLIF(length,0)::numeric/10000) foot, NULLIF(stack,0)::numeric stack FROM public.odg_wms_product_dimension ORDER BY ic_code, roworder) dm ON dm.ic_code = d.item_code
+       ${phDimensionLateralJoin("inv")}
        WHERE d.doc_no = $1 ORDER BY d.roworder`,
       [docNo],
     ),
