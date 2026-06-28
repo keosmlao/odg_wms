@@ -57,6 +57,12 @@ export async function getIsnInfo(client: PoolClient, itemCodes: string[]): Promi
  * several count sheets are open at once. Returns the max as a numeric string.
  */
 export async function getMaxIsnSeq(client: PoolClient, prefix: string): Promise<string> {
+  // Serialize ISN generation per (category+year) prefix: two concurrent
+  // receipts/adjustments would otherwise read the same MAX under READ COMMITTED
+  // and mint DUPLICATE ISN. The xact-scoped advisory lock is held until this
+  // transaction commits — by which point its reserved rows are visible to the
+  // next waiter's MAX. (All callers run inside BEGIN…COMMIT.) 424242 = ISN class.
+  await client.query(`SELECT pg_advisory_xact_lock(424242, hashtext($1))`, [prefix]);
   const r = await client.query<{ maxseq: string }>(
     `SELECT GREATEST(
        COALESCE((SELECT MAX(CASE WHEN substring(sn  from 5) ~ '^[0-9]+$' THEN substring(sn  from 5)::bigint ELSE 0 END) FROM public.sn_trans_detail WHERE sn  LIKE $1), 0),

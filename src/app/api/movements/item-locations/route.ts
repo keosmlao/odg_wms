@@ -37,7 +37,6 @@ export async function GET(request: Request) {
 
   const args: unknown[] = [`%${escapeLike(q)}%`];
   const filters = [
-    "(t.status = 0 OR t.status IS NULL)",
     "t.wh_code IS NOT NULL AND t.wh_code <> ''",
     "(t.item_code ILIKE $1 ESCAPE '\\' OR t.item_name ILIKE $1 ESCAPE '\\')",
   ];

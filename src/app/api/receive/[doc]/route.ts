@@ -76,8 +76,11 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ doc: st
 
     // Revert serial stock + ledger.
     if (serials.length > 0) {
+      // sn_inventory stores ISN-only serials with sn NULL (identity in `isn`),
+      // while the ledger's `sn` carries the identifier — match on either so
+      // deleting a receipt of ISN-only items doesn't orphan its serial rows.
       await client.query(
-        `DELETE FROM public.sn_inventory WHERE sn = ANY($1) AND COALESCE(status,0) = 0`,
+        `DELETE FROM public.sn_inventory WHERE COALESCE(NULLIF(sn, ''), isn) = ANY($1) AND COALESCE(status,0) = 0`,
         [serials],
       );
     }

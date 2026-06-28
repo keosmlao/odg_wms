@@ -37,6 +37,12 @@
   }
 }
 
+/* Global UI scale: Tailwind sizes are rem-based, so shrinking the root font
+   tightens fonts, spacing, and component sizes everywhere at once. */
+html {
+  font-size: 87.5%; /* 14px base (default 16px) */
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -95,4 +101,16 @@ body {
    across nesting, unlike Tailwind group-open). */
 details[open] > summary .wms-chevron {
   transform: rotate(90deg);
+}
+
+/* Print isolation for the label sheet (/movements/labels) and the in-app pick
+   sheet: hide all app chrome and show only the .print-sheet. Scoped with :has()
+   so it ONLY applies on pages that actually render a .print-sheet — standalone
+   print routes (/print/wms, /print/pick) and the count/stocktake print pages
+   have no .print-sheet and must print their full content normally. */
+@media print {
+  body:has(.print-sheet) * { visibility: hidden; }
+  body:has(.print-sheet) .print-sheet,
+  body:has(.print-sheet) .print-sheet * { visibility: visible; }
+  .print-sheet { position: absolute; left: 0; top: 0; width: 100%; }
 }

@@ -11,6 +11,8 @@ export type MovementItemHit = {
   balance_qty: string | null;
   /** Total balance of this item across the whole warehouse. */
   wh_balance: string | null;
+  /** 1 = serialized item (ISN/SN tracked). */
+  is_isn: number | null;
 };
 
 /** Escape LIKE wildcards so user input "%" or "_" is treated literally. */
@@ -72,7 +74,7 @@ export async function GET(request: Request) {
   // per-item scan of the (un-indexed-on-item) movements table.
   const rows = await query<MovementItemHit>(
     `WITH hits AS (
-       SELECT i.code, i.name_1, i.unit_standard
+       SELECT i.code, i.name_1, i.unit_standard, i.is_isn
        FROM public.ic_inventory i
        WHERE (i.code ILIKE $5 ESCAPE '\\' OR i.name_1 ILIKE $5 ESCAPE '\\')
        ORDER BY CASE WHEN i.code ILIKE $6 ESCAPE '\\' THEN 0 ELSE 1 END, i.code
@@ -88,8 +90,7 @@ export async function GET(request: Request) {
              AND COALESCE(NULLIF(TRIM(t.pallet), ''), '') = $4
          ) AS node_q
        FROM public.odg_wms_trans_detail t
-       WHERE (t.status = 0 OR t.status IS NULL)
-         AND t.wh_code = $1
+       WHERE t.wh_code = $1
          AND t.item_code IN (SELECT code FROM hits)
        GROUP BY t.item_code
      )
@@ -98,7 +99,8 @@ export async function GET(request: Request) {
        h.name_1 AS item_name,
        h.unit_standard AS unit_code,
        COALESCE(m.node_q, 0)::text AS balance_qty,
-       COALESCE(m.wh_q, 0)::text AS wh_balance
+       COALESCE(m.wh_q, 0)::text AS wh_balance,
+       h.is_isn
      FROM hits h
      LEFT JOIN mov m ON m.item_code = h.code
      ORDER BY CASE WHEN h.code ILIKE $6 ESCAPE '\\' THEN 0 ELSE 1 END, h.code`,

@@ -84,6 +84,7 @@ export async function GET(request: Request) {
          LEFT JOIN public.ic_inventory inv ON inv.code = p.item_code
          ${phDimensionLateralJoin("inv")}
          WHERE p.doc_no = $1 AND p.qty_balance > 0
+           AND p.item_code NOT LIKE '97%'
          ORDER BY p.item_code`,
         wh ? [po, wh] : [po],
       ),
@@ -134,6 +135,7 @@ export async function GET(request: Request) {
        WHERE p.doc_no = $1 AND p.item_code = d.item_code
      ) rem ON true
      WHERE d.doc_no = $2 AND d.bill_no = $1
+       AND d.item_code NOT LIKE '97%'
      ORDER BY d.roworder`,
     [po, pack],
   );

@@ -59,7 +59,7 @@ export default async function SerialDetailPage({ params }: { params: Promise<{ s
     ),
     query<RegRow>(
       `SELECT isn, rack, location, pallet, to_char(create_date_time_now, 'YYYY-MM-DD') AS registered_at
-       FROM public.sn_inventory WHERE sn = $1 LIMIT 1`,
+       FROM public.sn_inventory WHERE COALESCE(NULLIF(sn, ''), isn) = $1 LIMIT 1`,
       [sn],
     ),
   ]);

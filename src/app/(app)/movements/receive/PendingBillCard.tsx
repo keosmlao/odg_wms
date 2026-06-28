@@ -38,8 +38,9 @@ export default function PendingBillCard({ b, days, defaultOpen, countSheetNo = n
   const palletsCeil = Math.ceil(b.pallets);
 
   return (
-    <details open={defaultOpen} className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+    <details open={defaultOpen} className="group shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-5 py-3.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
+        <span className="shrink-0 text-zinc-400 transition-transform group-open:rotate-90">›</span>
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 font-mono text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
           {(b.wh_code ?? "?").slice(-2)}
         </div>

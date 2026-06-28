@@ -52,8 +52,7 @@ export async function GET(request: Request) {
          count(DISTINCT t.item_code)::int              AS item_count,
          SUM(t.qty * t.calc_flag)::text                AS qty
        FROM public.odg_wms_trans_detail t
-       WHERE (t.status = 0 OR t.status IS NULL)
-         AND t.wh_code = $1
+       WHERE t.wh_code = $1
        GROUP BY rack_code, location_code, pallet_code
        HAVING SUM(t.qty * t.calc_flag) <> 0
        ORDER BY rack_code, location_code, pallet_code`,

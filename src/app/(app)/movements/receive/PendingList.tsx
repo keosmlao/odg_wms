@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { query } from "@/lib/db";
 import { type Session, accessibleWarehouses } from "@/lib/session-shared";
 import { AlertIcon, PackageIcon, SearchIcon } from "@/components/ui/Icons";
 import PendingBillCard, { type Bill } from "./PendingBillCard";
 import OtherPendingList from "./OtherPendingList";
+import WhSelect from "./WhSelect";
 import { phDimensionLateralJoin } from "@/lib/ph-dimension";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -42,18 +44,19 @@ async function getAllRemain(): Promise<RemainRow[]> {
   if (hit && Date.now() - hit.ts < REMAIN_TTL_MS) return hit.rows;
   const rows = await query<RemainRow>(
     `SELECT p.doc_no AS po_no, p.cust_code, p.cust_name,
-            w.code AS wh_code, w.name_1 AS wh_name,
+            COALESCE(w.code, p.warehouse) AS wh_code, COALESCE(w.name_1, p.warehouse) AS wh_name,
             to_char(p.doc_date,'YYYY-MM-DD')  AS doc_date,
             to_char(COALESCE(t.send_date, p.send_date),'YYYY-MM-DD') AS send_date,
             e.fullname_lo AS creator_name, tt.name_1 AS transport_name,
             p.item_code, p.item_name, p.unit_code,
             p.qty::text AS ordered, p.qty_balance::text AS erp_balance
      FROM public.odg_po_remain p
-     JOIN public.ic_warehouse w ON w.name_1 = p.warehouse
+     LEFT JOIN public.ic_warehouse w ON w.name_1 = p.warehouse
      LEFT JOIN public.ic_trans t ON t.doc_no = p.doc_no AND t.trans_flag = 6
      LEFT JOIN public.odg_employee e ON e.employee_code = t.creator_code
      LEFT JOIN public.transport_type tt ON tt.code = t.transport_code
-     WHERE p.qty_balance > 0`,
+     WHERE p.qty_balance > 0
+       AND p.item_code NOT LIKE '97%'`,
   );
   globalThis.__poRemainAllCache = { rows, ts: Date.now() };
   return rows;
@@ -174,6 +177,14 @@ export default async function PendingList({
     return da.localeCompare(db);
   });
 
+  // Warehouse options (from the bills) + optional filter.
+  const whMap = new Map<string, string>();
+  for (const b of bills) whMap.set(b.wh_code, b.wh_name ? `${b.wh_code} · ${b.wh_name}` : b.wh_code);
+  const whList = [...whMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const selWh = pickStr(params.wh);
+  const shownBills = selWh ? bills.filter((b) => b.wh_code === selWh) : bills;
+  const rk = pickStr(params.rk) === "other" ? "other" : "po"; // sub-tab: PO bills | ຮັບອື່ນໆ
+
   // Days-until arrival (send_date) for the 7-day alert.
   const todayMs = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00`).getTime();
   const daysUntil = (d: string | null): number | null => {
@@ -183,25 +194,46 @@ export default async function PendingList({
   };
   // Count of genuinely-upcoming docs (0–7 days ahead) for the alert banner only —
   // the list itself stays as one, sorted by date (no splitting into sections).
-  const within7Count = bills.filter((b) => {
+  const within7Count = shownBills.filter((b) => {
     const dd = daysUntil(b.send_date);
     return dd !== null && dd >= 0 && dd <= 7;
   }).length;
 
+  const qs = (over: Record<string, string>) => {
+    const sp = new URLSearchParams({ tab: "pending" });
+    if (selWh) sp.set("wh", selWh);
+    if (pickStr(params.q)) sp.set("q", pickStr(params.q));
+    for (const [k, v] of Object.entries(over)) v ? sp.set(k, v) : sp.delete(k);
+    return `/movements/receive?${sp}`;
+  };
+  const subTab = "rounded-lg px-4 py-2 text-sm font-bold transition";
+  const subOn = "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm";
+  const subOff = "text-zinc-500 hover:bg-white dark:text-zinc-400 dark:hover:bg-zinc-800";
+
   return (
     <div className="space-y-4">
-      <form method="get" className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-        <input type="hidden" name="tab" value="pending" />
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-            <input type="text" name="q" defaultValue={pickStr(params.q)} placeholder="ຄົ້ນຫາ PO / ສິນຄ້າ / ຜູ້ສະໜອງ..." className="w-full rounded-lg bg-white py-2 pl-9 pr-3 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-emerald-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800" />
-          </div>
-          <button type="submit" className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-5 py-2 text-sm font-semibold text-white">ກອງ</button>
+      {/* Header — same layout as goods-issue: ເລືອກສາງ (ซ้าย) · tabs (ขวา) · ค้นหา (แถวล่าง) */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <WhSelect value={selWh} options={whList} />
+        <div className="inline-flex h-11 items-center rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800/60">
+          <Link href={qs({ rk: "" })} className={`${subTab} ${rk === "po" ? subOn : subOff}`}>ບິນຊື້ (PO)</Link>
+          <Link href={qs({ rk: "other" })} className={`${subTab} ${rk === "other" ? subOn : subOff}`}>ຮັບອື່ນໆ</Link>
         </div>
-      </form>
+      </div>
 
-      {bills.length === 0 ? (
+      {rk === "po" && (
+        <form method="get" className="relative">
+          <input type="hidden" name="tab" value="pending" />
+          {selWh && <input type="hidden" name="wh" value={selWh} />}
+          <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-zinc-400" />
+          <input type="text" name="q" defaultValue={pickStr(params.q)} placeholder="ຄົ້ນຫາ PO / ສິນຄ້າ / ຜູ້ສະໜອງ..." className="w-full rounded-xl bg-zinc-50/50 py-3.5 pl-11 pr-24 text-sm ring-1 ring-zinc-250 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/30 dark:bg-zinc-950/40 dark:text-zinc-100 dark:ring-zinc-800" />
+          <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-2 text-sm font-semibold text-white">ກອງ</button>
+        </form>
+      )}
+
+      {rk === "other" ? (
+        <OtherPendingList session={session} params={params} />
+      ) : shownBills.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-zinc-200 bg-white px-6 py-14 text-center dark:border-zinc-800 dark:bg-zinc-900">
           <PackageIcon className="mx-auto h-8 w-8 text-zinc-300 dark:text-zinc-600" />
           <p className="mt-2 text-sm font-semibold text-zinc-500">ບໍ່ມີໃບສັ່ງຊື້ຄ້າງຮັບ</p>
@@ -213,13 +245,11 @@ export default async function PendingList({
               <AlertIcon className="h-4 w-4 shrink-0" />⚠️ ສິນຄ້າຈະມາພາຍໃນ 7 ວັນ — {within7Count} ໃບ
             </div>
           )}
-          {bills.map((b) => (
-            <PendingBillCard key={`${b.po_no}|${b.wh_code}`} b={b} days={daysUntil(b.send_date)} defaultOpen={bills.length <= 4} countSheetNo={countByKey.get(`${b.po_no}|${b.wh_code}`) ?? null} />
+          {shownBills.map((b) => (
+            <PendingBillCard key={`${b.po_no}|${b.wh_code}`} b={b} days={daysUntil(b.send_date)} defaultOpen={false} countSheetNo={countByKey.get(`${b.po_no}|${b.wh_code}`) ?? null} />
           ))}
         </div>
       )}
-
-      <OtherPendingList session={session} params={params} />
     </div>
   );
 }

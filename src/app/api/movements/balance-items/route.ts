@@ -9,6 +9,7 @@ export type BalanceItemRow = {
   ic_name: string | null;
   ic_unit_code: string | null;
   balance_qty: string | null;
+  is_isn: number | null;
   pallet_positions: string | null;
   units_per_pallet: string | null;
   stack: string | null;
@@ -75,7 +76,6 @@ export async function GET(request: Request) {
 
   const queryArgs: unknown[] = [warehouse, rack, location, pallet];
   const filters = [
-    "(t.status = 0 OR t.status IS NULL)",
     "t.wh_code = $1",
     "COALESCE(NULLIF(TRIM(t.shelf_code), ''), '') = $2",
     "COALESCE(NULLIF(TRIM(t.shelf_code1), ''), '') = $3",
@@ -108,6 +108,7 @@ export async function GET(request: Request) {
        agg.item_name AS ic_name,
        agg.unit_code AS ic_unit_code,
        agg.balance_qty::text AS balance_qty,
+       inv.is_isn,
        CASE WHEN ph.pallet > 0 AND agg.balance_qty > 0
             THEN round((agg.balance_qty / ph.pallet)::numeric, 3)::text
             ELSE NULL END AS pallet_positions,

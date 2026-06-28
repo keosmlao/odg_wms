@@ -8,6 +8,7 @@ import {
   ArrowDownIcon,
   ArrowLeftRightIcon,
   ArrowUpIcon,
+  BuildingIcon,
   CheckIcon,
   ChevronRightIcon,
   HomeIcon,
@@ -40,27 +41,12 @@ const topItems: NavLink[] = [
     href: "/movements/balance",
     icon: <ListIcon className="h-4.5 w-4.5" />,
   },
-  {
-    label: "ແຜນຜັງ Rack",
-    href: "/rack-visualization",
-    icon: <LayersIcon className="h-4.5 w-4.5" />,
-  },
-  {
-    label: "Serial Number",
-    href: "/serials",
-    icon: <PackageIcon className="h-4.5 w-4.5" />,
-  },
-  {
-    label: "SN Samsung",
-    href: "/samsung-serials",
-    icon: <ListIcon className="h-4.5 w-4.5" />,
-  },
 ];
 
 const groups: Group[] = [
   {
-    label: "ການເຄື່ອນໄຫວ",
-    basePath: "/movements",
+    label: "ປະຕິບັດງານປະຈຳ",
+    basePath: "/movements/ops",
     icon: <ArrowLeftRightIcon className="h-4.5 w-4.5" />,
     items: [
       {
@@ -74,8 +60,67 @@ const groups: Group[] = [
         icon: <ArrowUpIcon className="h-3.5 w-3.5" />,
       },
       {
+        label: "ໂອນສາງ",
+        href: "/movements/transfer-dashboard",
+        icon: <ArrowLeftRightIcon className="h-3.5 w-3.5" />,
+      },
+      {
         label: "ປັບປຸງ stock",
         href: "/movements/adjust",
+        icon: <CheckIcon className="h-3.5 w-3.5" />,
+      },
+    ],
+  },
+  {
+    label: "Pallet & ບ່ອນຈັດເກັບ",
+    basePath: "/movements/storage",
+    icon: <PackageIcon className="h-4.5 w-4.5" />,
+    items: [
+      {
+        label: "ປະກອບ Pallet",
+        href: "/movements/pallet-load",
+        icon: <PackageIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ຍ້າຍ Pallet",
+        href: "/movements/pallet-move",
+        icon: <LayersIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ບ່ອນວ່າງ (Putaway)",
+        href: "/movements/putaway",
+        icon: <BuildingIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ແຜນຜັງ Rack",
+        href: "/rack-visualization",
+        icon: <LayersIcon className="h-3.5 w-3.5" />,
+      },
+    ],
+  },
+  {
+    label: "Serial & ກວດສອບ",
+    basePath: "/serials-check",
+    icon: <PackageIcon className="h-4.5 w-4.5" />,
+    items: [
+      {
+        label: "Serial Number",
+        href: "/serials",
+        icon: <PackageIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "SN Samsung",
+        href: "/samsung-serials",
+        icon: <ListIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ກວດ SN vs Stock",
+        href: "/movements/sn-check",
+        icon: <PackageIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ຄວາມຖືກຕ້ອງ stock",
+        href: "/movements/accuracy",
         icon: <CheckIcon className="h-3.5 w-3.5" />,
       },
     ],
@@ -94,6 +139,33 @@ const groups: Group[] = [
         label: "ສ້າງຮອບໃໝ່",
         href: "/stocktake/new",
         icon: <CheckIcon className="h-3.5 w-3.5" />,
+      },
+    ],
+  },
+  {
+    label: "ລາຍງານ & ວິເຄາະ",
+    basePath: "/movements/reports",
+    icon: <ListIcon className="h-4.5 w-4.5" />,
+    items: [
+      {
+        label: "ສິນຄ້າຄ້າງ (Aging)",
+        href: "/movements/aging",
+        icon: <ListIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ສິນຄ້າເຄື່ອນໄຫວ (Movers)",
+        href: "/movements/movers",
+        icon: <ListIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ປະຫວັດ (Audit)",
+        href: "/movements/ledger",
+        icon: <ListIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ພິມ Label/Barcode",
+        href: "/movements/labels",
+        icon: <PackageIcon className="h-3.5 w-3.5" />,
       },
     ],
   },
@@ -276,7 +348,7 @@ export default function Sidebar({ session }: { session: Session | null }) {
             <div className="mt-4 space-y-2">
               {filteredGroups.map((group) => (
                 <NavGroup
-                  key={group.basePath}
+                  key={group.label}
                   group={group}
                   collapsed={isCollapsed}
                   pathname={pathname}
@@ -370,7 +442,7 @@ function NavGroup({
   forceExpanded: boolean;
   onNavigate?: () => void;
 }) {
-  const groupActive = pathname.startsWith(group.basePath);
+  const groupActive = group.items.some((i) => pathname === i.href || pathname.startsWith(i.href + "/"));
   const [expanded, setExpanded] = useState(groupActive);
   const isExpanded = forceExpanded || expanded;
 

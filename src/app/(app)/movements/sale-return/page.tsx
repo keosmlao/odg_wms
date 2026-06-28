@@ -1,0 +1,33 @@
+import { redirect } from "next/navigation";
+import { query } from "@/lib/db";
+import { getSession } from "@/lib/session";
+import { ROLE_LABEL_LO, accessibleWarehouses } from "@/lib/session-shared";
+import { Hero, Notice, Chip } from "@/components/ui/Card";
+import { AlertIcon, ArrowLeftRightIcon } from "@/components/ui/Icons";
+import BackButton from "@/components/BackButton";
+import SaleReturnClient, { type WarehouseOption } from "./SaleReturnClient";
+
+export default async function SaleReturnPage() {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (!session.role) return <Notice tone="amber" icon={<AlertIcon className="h-5 w-5" />} title="ບັນຊີຂອງທ່ານຍັງບໍ່ມີສິດເຂົ້າເຖິງ WMS" />;
+  const accessible = accessibleWarehouses(session);
+  if (Array.isArray(accessible) && accessible.length === 0) return <Notice tone="amber" icon={<AlertIcon className="h-5 w-5" />} title="ຍັງບໍ່ມີສາງທີ່ມອບໝາຍໃຫ້ທ່ານ" />;
+
+  const allWh = await query<WarehouseOption>(`SELECT code, name_1 AS name FROM public.ic_warehouse WHERE COALESCE(status,1)=1 ORDER BY code`);
+  const wh = accessible === null ? allWh : allWh.filter((w) => accessible.includes(w.code));
+
+  return (
+    <div className="w-full space-y-5">
+      <BackButton />
+      <Hero
+        title="ຮັບคืนจากลูกค้า (Sale Return)"
+        description="ຮັບສິນຄ້າທີ່ລູກค้าส่งคืน ກັບເຂົ້າ stock — WMS ບັນທຶກ stock + serial ຄืน. (ໃບລดหนี้/CN ทำใน SmartBiz)"
+        icon={<ArrowLeftRightIcon className="h-6 w-6" />}
+        tone="violet"
+        chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
+      />
+      <SaleReturnClient warehouses={wh} />
+    </div>
+  );
+}

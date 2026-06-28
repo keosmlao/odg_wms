@@ -5,16 +5,19 @@ import {
   AlertIcon,
   BuildingIcon,
   CheckIcon,
+  LayersIcon,
   MapPinIcon,
   PackageIcon,
   PlusIcon,
   SearchIcon,
 } from "@/components/ui/Icons";
+import AdjustSerialModal, { type SerialPlan } from "./AdjustSerialModal";
 
 export type WarehouseOption = { code: string; name: string | null };
 
 type RackOption = { code: string; name: string | null };
 type LocationOption = { code: string; name: string | null; rack_code: string };
+type PalletOption = { code: string; name: string | null; location: string | null; rack: string | null };
 
 type ItemHit = {
   item_code: string;
@@ -22,6 +25,7 @@ type ItemHit = {
   unit_code: string | null;
   balance_qty: string | null; // balance at the selected node
   wh_balance: string | null; // total balance in the warehouse
+  is_isn: number | null;
 };
 
 type WorkingItem = {
@@ -30,7 +34,12 @@ type WorkingItem = {
   unit_code: string | null;
   before_qty: number; // balance at the node (basis for delta)
   wh_balance: number | null; // total in warehouse (info only)
-  counted: string; // raw input
+  counted: string; // raw input (non-serial items)
+  serialized: boolean;
+  // Serial items adjust by serial: ISN to remove, scanned ISN to add, # to generate.
+  serialsRemove: string[];
+  serialsAdd: string[];
+  serialsGenerate: number;
 };
 
 const REASONS: { code: string; label: string }[] = [
@@ -63,7 +72,15 @@ function parsedCount(raw: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** Number of serial changes queued on a serial line. */
+function serialActivity(item: WorkingItem): number {
+  return item.serialsRemove.length + item.serialsAdd.length + item.serialsGenerate;
+}
+
 function deltaOf(item: WorkingItem): number | null {
+  if (item.serialized) {
+    return item.serialsAdd.length + item.serialsGenerate - item.serialsRemove.length;
+  }
   const c = parsedCount(item.counted);
   if (c === null) return null;
   return Math.round((c - item.before_qty) * 1e6) / 1e6;
@@ -79,6 +96,7 @@ export default function AdjustClient({
   const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
   const [racks, setRacks] = useState<RackOption[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [pallets, setPallets] = useState<PalletOption[]>([]);
   const [rackCode, setRackCode] = useState("");
   const [locationCode, setLocationCode] = useState("");
   const [palletCode, setPalletCode] = useState("");
@@ -96,6 +114,7 @@ export default function AdjustClient({
   const [hits, setHits] = useState<ItemHit[]>([]);
 
   const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [serialItem, setSerialItem] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -108,6 +127,7 @@ export default function AdjustClient({
   useEffect(() => {
     setRacks([]);
     setLocations([]);
+    setPallets([]);
     setRackCode("");
     setLocationCode("");
     setPalletCode("");
@@ -118,10 +138,11 @@ export default function AdjustClient({
     (async () => {
       try {
         const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(whCode)}`);
-        const data = (await res.json()) as { racks?: RackOption[]; locations?: LocationOption[] };
+        const data = (await res.json()) as { racks?: RackOption[]; locations?: LocationOption[]; pallets?: PalletOption[] };
         if (cancelled) return;
         setRacks(data.racks ?? []);
         setLocations(data.locations ?? []);
+        setPallets(data.pallets ?? []);
       } catch {
         if (!cancelled) showToast("err", "ບໍ່ສາມາດໂຫຼດພື້ນທີ່ຈັດເກັບ");
       }
@@ -182,7 +203,7 @@ export default function AdjustClient({
       params.set("limit", "200");
       const res = await fetch(`/api/movements/balance-items?${params}`);
       const data = (await res.json()) as {
-        items?: { ic_code: string; ic_name: string | null; ic_unit_code: string | null; balance_qty: string | null }[];
+        items?: { ic_code: string; ic_name: string | null; ic_unit_code: string | null; balance_qty: string | null; is_isn: number | null }[];
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
@@ -195,6 +216,10 @@ export default function AdjustClient({
           before_qty: before,
           wh_balance: null,
           counted: String(before),
+          serialized: (r.is_isn ?? 0) === 1,
+          serialsRemove: [],
+          serialsAdd: [],
+          serialsGenerate: 0,
         };
       });
       setItems(loadedItems);
@@ -254,6 +279,10 @@ export default function AdjustClient({
         before_qty: before,
         wh_balance: whBal,
         counted: String(before),
+        serialized: (hit.is_isn ?? 0) === 1,
+        serialsRemove: [],
+        serialsAdd: [],
+        serialsGenerate: 0,
       },
       ...prev,
     ]);
@@ -285,6 +314,7 @@ export default function AdjustClient({
   const changedItems = useMemo(
     () =>
       items.filter((i) => {
+        if (i.serialized) return serialActivity(i) > 0;
         const d = deltaOf(i);
         return d !== null && d !== 0;
       }),
@@ -308,17 +338,28 @@ export default function AdjustClient({
           pallet: palletCode,
           reason,
           note,
-          lines: changedItems.map((i) => ({
-            item_code: i.item_code,
-            item_name: i.item_name,
-            unit_code: i.unit_code,
-            counted_qty: parsedCount(i.counted),
-          })),
+          lines: changedItems.map((i) =>
+            i.serialized
+              ? {
+                  item_code: i.item_code,
+                  item_name: i.item_name,
+                  unit_code: i.unit_code,
+                  serials_remove: i.serialsRemove,
+                  serials_add: i.serialsAdd,
+                  serials_generate: i.serialsGenerate,
+                }
+              : {
+                  item_code: i.item_code,
+                  item_name: i.item_name,
+                  unit_code: i.unit_code,
+                  counted_qty: parsedCount(i.counted),
+                },
+          ),
         }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; adjust_code?: string; changed?: number };
+      const data = (await res.json()) as { ok?: boolean; error?: string; adjust_code?: string; changed?: number; sn_generated?: number };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
-      showToast("ok", `ບັນທຶກແລ້ວ ${data.adjust_code} · ${data.changed} ລາຍການ`);
+      showToast("ok", `ບັນທຶກແລ້ວ ${data.adjust_code} · ${data.changed} ລາຍການ${data.sn_generated ? ` · gen ${data.sn_generated} ISN` : ""}`);
       setNote("");
       await loadItems(); // refresh balances after posting
       setStep(2); // counts now match balances — back to counting
@@ -387,8 +428,8 @@ export default function AdjustClient({
             </div>
             <div>
               <label className={labelCls}>Location (ພື້ນທີ່)</label>
-              <select value={locationCode} onChange={(e) => setLocationCode(e.target.value)} disabled={!whCode} className={inputCls}>
-                <option value="">— ທຸກ location —</option>
+              <select value={locationCode} onChange={(e) => setLocationCode(e.target.value)} disabled={!whCode || !rackCode} className={inputCls}>
+                <option value="">{rackCode ? "— ທຸກ location —" : "ເລືອກ rack ກ່ອນ"}</option>
                 {availableLocations.map((l) => (
                   <option key={l.code} value={l.code}>
                     {l.code}
@@ -396,17 +437,35 @@ export default function AdjustClient({
                   </option>
                 ))}
               </select>
+              {locationCode && pallets.some((p) => p.location === locationCode) && (
+                <p className="mt-1 text-[10px] text-zinc-400">📦 pallet ຢູ່ບ່ອນນີ້: {pallets.filter((p) => p.location === locationCode).map((p) => p.code).join(", ")}</p>
+              )}
             </div>
             <div>
               <label className={labelCls}>Pallet (ທາງເລືອກ)</label>
-              <input
-                type="text"
+              <select
                 value={palletCode}
-                onChange={(e) => setPalletCode(e.target.value)}
+                onChange={(e) => {
+                  const code = e.target.value;
+                  setPalletCode(code);
+                  // pallet → location: a pallet lives at a fixed rack/location.
+                  const p = pallets.find((x) => x.code === code);
+                  if (p) {
+                    if (p.rack) setRackCode(p.rack);
+                    if (p.location) setLocationCode(p.location);
+                  }
+                }}
                 disabled={!whCode}
-                placeholder="ວ່າງ = ບໍ່ມີ pallet"
                 className={inputCls}
-              />
+              >
+                <option value="">— ບໍ່ມີ pallet —</option>
+                {pallets.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.code}
+                    {p.location ? ` → ${p.location}` : ""}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -521,31 +580,44 @@ export default function AdjustClient({
                           <span className="ml-1 text-[10px] uppercase text-zinc-400">{i.unit_code}</span>
                         </td>
                         <td className="px-4 py-2.5">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => stepCount(i.item_code, -1)}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-lg font-bold text-zinc-700 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-                              aria-label="ຫຼຸດ"
-                            >
-                              −
-                            </button>
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              value={i.counted}
-                              onChange={(e) => setCounted(i.item_code, e.target.value)}
-                              className="w-24 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold tabular-nums ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:ring-zinc-800"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => stepCount(i.item_code, 1)}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-lg font-bold text-zinc-700 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-                              aria-label="ເພີ່ມ"
-                            >
-                              +
-                            </button>
-                          </div>
+                          {i.serialized ? (
+                            <div className="flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={() => setSerialItem(i.item_code)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900/50"
+                              >
+                                <LayersIcon className="h-3.5 w-3.5" />
+                                {serialActivity(i) > 0 ? `ອອກ ${i.serialsRemove.length} · ເພີ່ມ ${i.serialsAdd.length + i.serialsGenerate}` : "ຈັດການ SN"}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => stepCount(i.item_code, -1)}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-lg font-bold text-zinc-700 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                                aria-label="ຫຼຸດ"
+                              >
+                                −
+                              </button>
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                value={i.counted}
+                                onChange={(e) => setCounted(i.item_code, e.target.value)}
+                                className="w-24 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold tabular-nums ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:ring-zinc-800"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => stepCount(i.item_code, 1)}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-lg font-bold text-zinc-700 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                                aria-label="ເພີ່ມ"
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
                         </td>
                         <td className={`px-4 py-2.5 text-right font-mono text-base font-bold tabular-nums ${dColor}`}>
                           {d === null ? "—" : d === 0 ? "0" : `${d > 0 ? "+" : ""}${formatQty(d)}`}
@@ -627,7 +699,7 @@ export default function AdjustClient({
                           <div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div>
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-xs tabular-nums text-zinc-500">{formatQty(i.before_qty)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-xs font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{formatQty(parsedCount(i.counted) ?? 0)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{formatQty(i.serialized ? i.before_qty + (deltaOf(i) ?? 0) : (parsedCount(i.counted) ?? 0))}</td>
                         <td className={`px-3 py-2 text-right font-mono text-xs font-bold tabular-nums ${dColor}`}>{d > 0 ? "+" : ""}{formatQty(d)}</td>
                       </tr>
                     );
@@ -670,6 +742,26 @@ export default function AdjustClient({
       )}
 
       {/* Toast */}
+      {serialItem && (() => {
+        const it = items.find((x) => x.item_code === serialItem);
+        if (!it) return null;
+        return (
+          <AdjustSerialModal
+            whCode={whCode}
+            rack={rackCode}
+            location={locationCode}
+            pallet={palletCode}
+            item={{ item_code: it.item_code, item_name: it.item_name, before: it.before_qty }}
+            initial={{ serialsRemove: it.serialsRemove, serialsAdd: it.serialsAdd, serialsGenerate: it.serialsGenerate }}
+            onClose={() => setSerialItem(null)}
+            onDone={(plan: SerialPlan) => {
+              setItems((prev) => prev.map((x) => (x.item_code === serialItem ? { ...x, ...plan } : x)));
+              setSerialItem(null);
+            }}
+          />
+        );
+      })()}
+
       {toast && (
         <div className="fixed left-1/2 top-20 z-[100] -translate-x-1/2">
           <div className={`flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-xl ${toast.kind === "ok" ? "bg-emerald-500" : "bg-rose-500"}`}>

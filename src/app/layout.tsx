@@ -60,8 +60,9 @@ export default function RootLayout({
     <html
       lang="lo"
       className={`${geistSans.variable} ${geistMono.variable} ${notoSansLao.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col overflow-x-hidden">
+      <body className="min-h-full flex flex-col overflow-x-hidden" suppressHydrationWarning>
         <PWARegister />
         {children}
       </body>

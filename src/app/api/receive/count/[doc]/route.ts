@@ -72,7 +72,37 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
       [docNo],
     ),
   ]);
-  return NextResponse.json({ header, lines, serials });
+
+  // Putaway suggestions for this warehouse:
+  //  sameLocs  = locations already holding one of this sheet's items (รวมกอง)
+  //  emptyLocs = known locations whose net balance is ≤ 0 (ว่าง)
+  const itemCodes = (lines as { item_code: string }[]).map((l) => l.item_code);
+  const wh = (header as { wh_code: string | null }).wh_code;
+  const [sameLocs, emptyLocs] = wh
+    ? await Promise.all([
+        itemCodes.length
+          ? query<{ location: string; item_code: string; qty: string }>(
+              `SELECT NULLIF(TRIM(shelf_code1), '') AS location, item_code, SUM(qty * calc_flag)::numeric::text AS qty
+               FROM public.odg_wms_trans_detail
+               WHERE wh_code = $1 AND item_code = ANY($2) AND NULLIF(TRIM(shelf_code1), '') IS NOT NULL
+                 AND (status = 0 OR status IS NULL)
+               GROUP BY 1, item_code HAVING SUM(qty * calc_flag) > 0.0001
+               ORDER BY SUM(qty * calc_flag) DESC LIMIT 30`,
+              [wh, itemCodes],
+            )
+          : Promise.resolve([]),
+        query<{ location: string }>(
+          `SELECT location FROM (
+             SELECT NULLIF(TRIM(shelf_code1), '') AS location, SUM(qty * calc_flag) AS bal
+             FROM public.odg_wms_trans_detail
+             WHERE wh_code = $1 AND NULLIF(TRIM(shelf_code1), '') IS NOT NULL AND (status = 0 OR status IS NULL)
+             GROUP BY 1
+           ) x WHERE bal <= 0.0001 ORDER BY location LIMIT 30`,
+          [wh],
+        ),
+      ])
+    : [[], []];
+  return NextResponse.json({ header, lines, serials, sameLocs, emptyLocs: (emptyLocs as { location: string }[]).map((r) => r.location) });
 }
 
 export async function PUT(request: Request, ctx: { params: Promise<{ doc: string }> }) {

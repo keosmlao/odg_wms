@@ -57,7 +57,8 @@ async function getPoRemain(wh: string, fresh: boolean): Promise<PoRow[]> {
      FROM public.odg_po_remain p
      JOIN public.ic_warehouse w ON w.name_1 = p.warehouse
      LEFT JOIN public.ic_inventory i ON i.code = p.item_code
-     WHERE p.qty_balance > 0 AND w.code = $1`,
+     WHERE p.qty_balance > 0 AND w.code = $1
+       AND p.item_code NOT LIKE '97%'`,
     [wh],
   );
   cache.set(wh, { rows, ts: Date.now() });
@@ -80,6 +81,7 @@ function getTransfer(wh: string): Promise<PoRow[]> {
      WHERE t.trans_flag = 72 AND t.wh_to = $1
        AND t.doc_date >= CURRENT_DATE - INTERVAL '90 days'
        AND abs(d.qty) > 0
+       AND d.item_code NOT LIKE '97%'
      ORDER BY t.doc_date DESC
      LIMIT 2000`,
     [wh],
@@ -102,6 +104,7 @@ function getReturn(wh: string, flag: number): Promise<PoRow[]> {
      WHERE d.trans_flag = $2 AND d.wh_code = $1 AND COALESCE(d.calc_flag,0) >= 0
        AND t.doc_date >= CURRENT_DATE - INTERVAL '90 days'
        AND abs(d.qty) > 0
+       AND d.item_code NOT LIKE '97%'
      ORDER BY t.doc_date DESC
      LIMIT 2000`,
     [wh, flag],
