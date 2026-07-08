@@ -131,7 +131,17 @@ export default async function RackVisualizationPage() {
          width::text,
          length::text,
          height::text,
-         floor,
+         -- Some warehouses (e.g. 1202) never populated the floor column; the
+         -- level is encoded in the location name instead (F0301 = level 03,
+         -- position 01). Fall back to those two digits so the elevation/3D
+         -- views can still stack locations by level. Names without the 4-digit
+         -- suffix (Z01, A-B …) have no level, so default them to 1 — a null
+         -- floor renders as nothing (the elevation only draws floors >= 1).
+         COALESCE(
+           floor,
+           NULLIF(substring(name_1 FROM '^[A-Za-z]+([0-9]{2})[0-9]{2}$'), '')::int,
+           1
+         ) AS floor,
          is_active
        FROM public.odg_wms_location1
        ${masterWhere}

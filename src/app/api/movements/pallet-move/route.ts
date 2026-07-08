@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { pool, query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 
 /**
  * Move a whole pallet (license-plate) to another location: all stock and serials
@@ -125,6 +126,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Pallet ນີ້ບໍ່ມີສິນຄ້າ/serial ໃຫ້ຍ້າຍ" }, { status: 400 });
     }
 
+    // Per-warehouse policy: when the source warehouse does not track serial
+    // locations, a location move relocates the stock only — serials stay put.
+    const moveSerials = await warehouseSnEnabled(wh, "pallet", client);
+    if (!moveSerials && items.length === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "ສາງນີ້ຕັ້ງໃຫ້ບໍ່ຍ້າຍ serial — pallet ນີ້ບໍ່ມີ stock ໃຫ້ຍ້າຍ" }, { status: 400 });
+    }
+
     const docRes = await client.query<{ doc_no: string }>(
       `SELECT 'PMV' || to_char(CURRENT_DATE, 'YYMMDD') || '-' ||
               lpad(nextval('public.odg_wms_trans_roworder_seq')::text, 5, '0') AS doc_no`,
@@ -157,8 +166,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // Serials: ledger pair + relocate (keep pallet).
-    if (serials.length > 0) {
+    // Serials: ledger pair + relocate (keep pallet). Skipped when the warehouse
+    // is configured to move stock without serials.
+    if (moveSerials && serials.length > 0) {
       await client.query(
         `INSERT INTO public.sn_trans
            (trans_flag, doc_no, doc_date, user_created, status, item_count, doc_format_code, wh_code)
@@ -194,7 +204,7 @@ export async function POST(request: Request) {
 
     await client.query("COMMIT");
     const toLabel = `${toWh}${[toRack, toLoc].filter(Boolean).length ? " · " + [toRack, toLoc].filter(Boolean).join(" / ") : " (ສาง)"}`;
-    return NextResponse.json({ ok: true, doc_no: docNo, items: items.length, serials: serials.length, to: toLabel });
+    return NextResponse.json({ ok: true, doc_no: docNo, items: items.length, serials: moveSerials ? serials.length : 0, serials_kept: moveSerials ? 0 : serials.length, to: toLabel });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     const message = err instanceof Error ? err.message : "ບໍ່ສຳເລັດ";

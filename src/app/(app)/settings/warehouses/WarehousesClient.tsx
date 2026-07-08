@@ -1,7 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { Warehouse } from "@/app/api/admin/warehouses/route";
+import type { SnFlag } from "@/lib/warehouseConfig";
+
+// Client-safe menu metadata (no server import). Order matches the row chips.
+const SN_MENUS: { key: SnFlag; label: string; full: string }[] = [
+  { key: "receive", label: "ຮັບ", full: "ຮັບເຂົ້າ" },
+  { key: "issue", label: "ຈ່າຍ", full: "ຈ່າຍອອກ" },
+  { key: "transfer", label: "ໂອນ", full: "ໂອນ (124)" },
+  { key: "pallet", label: "pallet", full: "ຍ້າຍ pallet" },
+  { key: "adjust", label: "ປັບ", full: "ປັບປຸງ" },
+  { key: "return", label: "ຄືນ", full: "ຮັບຄືນຂາຍ" },
+];
 
 type FormState = {
   code: string;
@@ -46,6 +57,32 @@ function toForm(w: Warehouse): FormState {
     longitude: w.longitude == null ? "" : String(w.longitude),
   };
 }
+
+type Rack = {
+  roworder: number;
+  code: string | null;
+  name_1: string | null;
+  is_active: number | null;
+};
+type Loc = {
+  roworder: number;
+  code: string | null;
+  name_1: string | null;
+  location_id: string | null;
+  width: string | null;
+  length: string | null;
+  height: string | null;
+  floor: number | null;
+  is_active: number | null;
+};
+type Structure = {
+  loading: boolean;
+  error: string | null;
+  racks: Rack[];
+  locations: Loc[];
+};
+
+const COL_COUNT = 9;
 
 export default function WarehousesClient({
   initialWarehouses,
@@ -102,6 +139,121 @@ export default function WarehousesClient({
     setDeleting(null);
   }
 
+  const [snSaving, setSnSaving] = useState<string | null>(null); // `${code}:${flag}`
+  const [snError, setSnError] = useState<string | null>(null);
+
+  // Flip one SN menu flag for one warehouse (optimistic).
+  async function toggleSnFlag(code: string, flag: SnFlag, next: boolean) {
+    const key = `${code}:${flag}`;
+    setSnError(null);
+    setSnSaving(key);
+    setWarehouses((prev) =>
+      prev.map((w) => (w.code === code ? { ...w, sn: { ...w.sn, [flag]: next } } : w)),
+    );
+    try {
+      const res = await fetch(`/api/admin/warehouses/${encodeURIComponent(code)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flag, value: next }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "ບັນທຶກບໍ່ສຳເລັດ");
+    } catch (e) {
+      setWarehouses((prev) =>
+        prev.map((w) => (w.code === code ? { ...w, sn: { ...w.sn, [flag]: !next } } : w)),
+      );
+      setSnError(`${code}: ${e instanceof Error ? e.message : "ບັນທຶກບໍ່ສຳເລັດ"}`);
+    } finally {
+      setSnSaving(null);
+    }
+  }
+
+  // ── Lazy structure (racks + locations) per warehouse ──────────────────────
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [structure, setStructure] = useState<Record<string, Structure>>({});
+
+  async function toggleExpand(code: string) {
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      if (n.has(code)) n.delete(code);
+      else n.add(code);
+      return n;
+    });
+    if (structure[code]) return; // cached
+    setStructure((s) => ({ ...s, [code]: { loading: true, error: null, racks: [], locations: [] } }));
+    try {
+      const res = await fetch(
+        `/api/settings/warehouse-structure?wh=${encodeURIComponent(code)}`,
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        racks?: Rack[];
+        locations?: Loc[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "ໂຫຼດໂຄງສ້າງບໍ່ສຳເລັດ");
+      setStructure((s) => ({
+        ...s,
+        [code]: { loading: false, error: null, racks: data.racks ?? [], locations: data.locations ?? [] },
+      }));
+    } catch (e) {
+      setStructure((s) => ({
+        ...s,
+        [code]: { loading: false, error: e instanceof Error ? e.message : "ໂຫຼດບໍ່ສຳເລັດ", racks: [], locations: [] },
+      }));
+    }
+  }
+
+  // ── Multi-select + bulk per-menu SN toggle ────────────────────────────────
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkMenu, setBulkMenu] = useState<SnFlag>("pallet");
+  const allFilteredSelected = filtered.length > 0 && filtered.every((w) => selected.has(w.code));
+
+  function toggleSelect(code: string) {
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(code)) n.delete(code);
+      else n.add(code);
+      return n;
+    });
+  }
+  function toggleSelectAll() {
+    setSelected((prev) =>
+      allFilteredSelected ? new Set() : new Set(filtered.map((w) => w.code)),
+    );
+  }
+
+  // Set one SN menu flag for many warehouses at once (all, or the selection).
+  async function bulkSetSn(target: "all" | "selected", value: boolean) {
+    const codes = target === "all" ? warehouses.map((w) => w.code) : [...selected];
+    if (codes.length === 0) return;
+    const flag = bulkMenu;
+    setSnError(null);
+    setBulkSaving(true);
+    const codeSet = new Set(codes);
+    const prev = warehouses;
+    setWarehouses((ws) =>
+      ws.map((w) => (codeSet.has(w.code) ? { ...w, sn: { ...w.sn, [flag]: value } } : w)),
+    );
+    try {
+      const res = await fetch(`/api/admin/warehouses`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          target === "all" ? { all: true, flag, value } : { codes, flag, value },
+        ),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
+      if (target === "selected") setSelected(new Set());
+    } catch (e) {
+      setWarehouses(prev); // revert
+      setSnError(e instanceof Error ? e.message : "ຕັ້ງຄ່າ SN ບໍ່ສຳເລັດ");
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -137,17 +289,105 @@ export default function WarehousesClient({
         </div>
       </div>
 
+      {/* Bulk SN control — set one menu's SN flag for all warehouses or the selection. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/60 px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-900/40">
+        <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+          ຕັ້ງ SN ເມນູ:
+        </span>
+        <select
+          value={bulkMenu}
+          onChange={(e) => setBulkMenu(e.target.value as SnFlag)}
+          className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-xs outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        >
+          {SN_MENUS.map((m) => (
+            <option key={m.key} value={m.key}>
+              {m.full}
+            </option>
+          ))}
+        </select>
+        <span className="text-[11px] text-zinc-500 dark:text-zinc-400">ທັງໝົດ</span>
+        <button
+          type="button"
+          disabled={bulkSaving}
+          onClick={() => bulkSetSn("all", true)}
+          className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
+        >
+          ເປີດ
+        </button>
+        <button
+          type="button"
+          disabled={bulkSaving}
+          onClick={() => bulkSetSn("all", false)}
+          className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+        >
+          ປິດ
+        </button>
+
+        <span className="mx-1 h-4 w-px bg-zinc-300 dark:bg-zinc-700" />
+
+        <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+          ທີ່ເລືອກ ({selected.size})
+        </span>
+        <button
+          type="button"
+          disabled={bulkSaving || selected.size === 0}
+          onClick={() => bulkSetSn("selected", true)}
+          className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
+        >
+          ເປີດ
+        </button>
+        <button
+          type="button"
+          disabled={bulkSaving || selected.size === 0}
+          onClick={() => bulkSetSn("selected", false)}
+          className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+        >
+          ປິດ
+        </button>
+        {selected.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="text-[11px] text-zinc-400 underline hover:text-zinc-600 dark:hover:text-zinc-200"
+          >
+            ລ້າງ
+          </button>
+        )}
+        {bulkSaving && (
+          <span className="text-[11px] text-zinc-400">ກຳລັງບັນທຶກ...</span>
+        )}
+      </div>
+
+      {snError && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          {snError}
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="max-h-[60vh] overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-800/60">
+            <thead className="sticky top-0 z-10 bg-zinc-50 dark:bg-zinc-800/60">
               <tr className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                <th className="w-10 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    aria-label="ເລືອກທັງໝົດ"
+                    checked={allFilteredSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 dark:border-zinc-700"
+                  />
+                </th>
+                <th className="w-8 px-1 py-2" />
                 <th className="px-4 py-2 font-medium">ລະຫັດ</th>
                 <th className="px-4 py-2 font-medium">ຊື່ສາງ</th>
                 <th className="px-4 py-2 font-medium">ສາຂາ</th>
                 <th className="px-4 py-2 font-medium">ນາຍສາງ</th>
                 <th className="px-4 py-2 font-medium">ໂທ</th>
                 <th className="px-4 py-2 font-medium">ສະຖານະ</th>
+                <th className="px-4 py-2 font-medium" title="ຕັ້ງ SN ເປີດ/ປິດ ຕໍ່ເມນູ (ຮັບ/ຈ່າຍ/ໂອນ/pallet/ປັບ/ຄືນ)">
+                  SN ຕໍ່ເມນູ
+                </th>
                 <th className="px-4 py-2 text-right font-medium" />
               </tr>
             </thead>
@@ -155,18 +395,39 @@ export default function WarehousesClient({
               {filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={COL_COUNT + 1}
                     className="px-4 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400"
                   >
                     ບໍ່ພົບສາງ
                   </td>
                 </tr>
               )}
-              {filtered.map((w) => (
-                <tr
-                  key={w.code}
-                  className="border-t border-zinc-100 text-zinc-800 dark:border-zinc-800 dark:text-zinc-200"
-                >
+              {filtered.map((w) => {
+                const isOpen = expanded.has(w.code);
+                const st = structure[w.code];
+                return (
+                <Fragment key={w.code}>
+                <tr className="border-t border-zinc-100 text-zinc-800 dark:border-zinc-800 dark:text-zinc-200">
+                  <td className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`ເລືອກ ${w.code}`}
+                      checked={selected.has(w.code)}
+                      onChange={() => toggleSelect(w.code)}
+                      className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 dark:border-zinc-700"
+                    />
+                  </td>
+                  <td className="px-1 py-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(w.code)}
+                      aria-expanded={isOpen}
+                      aria-label="ຂະຫຍາຍ rack / location"
+                      className="flex h-6 w-6 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                    >
+                      <span className={`transition-transform ${isOpen ? "rotate-90" : ""}`}>▸</span>
+                    </button>
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs">{w.code}</td>
                   <td className="px-4 py-3">
                     <div className="font-medium">{w.name_1 ?? "—"}</div>
@@ -195,6 +456,32 @@ export default function WarehousesClient({
                       </span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {SN_MENUS.map((m) => {
+                        const on = w.sn[m.key] !== false;
+                        const busy = snSaving === `${w.code}:${m.key}`;
+                        return (
+                          <button
+                            key={m.key}
+                            type="button"
+                            role="switch"
+                            aria-checked={on}
+                            disabled={busy}
+                            onClick={() => toggleSnFlag(w.code, m.key, !on)}
+                            title={`${m.full}: SN ${on ? "ເປີດ (ຄລິກເພື່ອປິດ)" : "ປິດ (ຄລິກເພື່ອເປີດ)"}`}
+                            className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 transition disabled:opacity-50 ${
+                              on
+                                ? "bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-900"
+                                : "bg-zinc-100 text-zinc-400 ring-zinc-200 line-through hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-500 dark:ring-zinc-700"
+                            }`}
+                          >
+                            {m.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
                       <button
@@ -214,7 +501,19 @@ export default function WarehousesClient({
                     </div>
                   </td>
                 </tr>
-              ))}
+                {isOpen && (
+                  <tr>
+                    <td
+                      colSpan={COL_COUNT + 1}
+                      className="bg-zinc-50/60 px-4 py-3 dark:bg-zinc-900/40"
+                    >
+                      <WarehouseStructure st={st} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -415,6 +714,10 @@ function EditDrawer({
             ໃຊ້ງານ
           </label>
 
+          <p className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950/40 dark:text-zinc-400">
+            ຕັ້ງຄ່າ SN ຕໍ່ເມນູ (ຮັບ / ຈ່າຍ / ໂອນ / pallet / ປັບ / ຄືນ) ໄດ້ຢູ່ຄໍລຳ “SN ຕໍ່ເມນູ” ໃນຕາຕະລາງລາຍການສາງ.
+          </p>
+
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
               {error}
@@ -520,6 +823,87 @@ function DeleteConfirm({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Lazily-loaded rack / location tree for one expanded warehouse.
+function WarehouseStructure({ st }: { st: Structure | undefined }) {
+  if (!st || st.loading) {
+    return <p className="py-1 text-xs text-zinc-500 dark:text-zinc-400">ກຳລັງໂຫຼດ rack / location...</p>;
+  }
+  if (st.error) {
+    return <p className="py-1 text-xs text-red-600 dark:text-red-400">{st.error}</p>;
+  }
+  if (st.racks.length === 0 && st.locations.length === 0) {
+    return <p className="py-1 text-xs text-zinc-500 dark:text-zinc-400">ສາງນີ້ຍັງບໍ່ມີ rack / location</p>;
+  }
+
+  const locByRack = new Map<string, Loc[]>();
+  for (const l of st.locations) {
+    const k = l.location_id ?? "";
+    const arr = locByRack.get(k) ?? [];
+    arr.push(l);
+    locByRack.set(k, arr);
+  }
+  const rackCodes = new Set(st.racks.map((r) => r.code));
+  const orphan = st.locations.filter((l) => !rackCodes.has(l.location_id));
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+        {st.racks.length} rack · {st.locations.length} location
+      </div>
+      {st.racks.map((r) => {
+        const locs = locByRack.get(r.code ?? "") ?? [];
+        return (
+          <details key={r.roworder} className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50">
+              <span className="text-zinc-400">▸</span>
+              <span className="font-mono text-xs font-semibold">{r.code ?? "-"}</span>
+              <span className="text-sm text-zinc-700 dark:text-zinc-200">{r.name_1 ?? "-"}</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  r.is_active === 1
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                }`}
+              >
+                {r.is_active === 1 ? "ເປີດ" : "ປິດ"}
+              </span>
+              <span className="ml-auto text-[11px] text-zinc-400">{locs.length} location</span>
+            </summary>
+            {locs.length > 0 && (
+              <div className="grid grid-cols-2 gap-1.5 px-3 pb-3 pt-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                {locs.map((l) => (
+                  <div key={l.roworder} className="rounded-md border border-zinc-200 px-2 py-1.5 dark:border-zinc-800">
+                    <div className="truncate font-mono text-[11px] font-semibold">{l.code ?? "-"}</div>
+                    {l.name_1 && (
+                      <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">{l.name_1}</div>
+                    )}
+                    <LocMeta l={l} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </details>
+        );
+      })}
+      {orphan.length > 0 && (
+        <div className="text-[11px] text-zinc-400">+ {orphan.length} location ບໍ່ໄດ້ຜູກ rack</div>
+      )}
+    </div>
+  );
+}
+
+function LocMeta({ l }: { l: Loc }) {
+  const size = [l.width, l.length, l.height].filter(Boolean).join("×");
+  if (!size && l.floor == null) return null;
+  return (
+    <div className="mt-0.5 text-[10px] text-zinc-400">
+      {size}
+      {size && l.floor != null ? " · " : ""}
+      {l.floor != null ? `floor ${l.floor}` : ""}
     </div>
   );
 }

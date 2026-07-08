@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { requireManager } from "@/lib/session";
 import type { Warehouse } from "../route";
+import { isSnFlag, setWarehouseSnFlag, warehouseSnFlags } from "@/lib/warehouseConfig";
 
 const SELECT_FIELDS = `
   code, name_1, name_2, address, telephone, fax,
@@ -41,7 +42,7 @@ export async function PUT(
 
   const status = body.status === 0 || body.status === false ? 0 : 1;
 
-  const rows = await query<Warehouse>(
+  const rows = await query<Omit<Warehouse, "sn">>(
     `UPDATE public.ic_warehouse
      SET name_1 = $2,
          name_2 = $3,
@@ -74,7 +75,48 @@ export async function PUT(
     return NextResponse.json({ error: "ບໍ່ພົບສາງ" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true, warehouse: rows[0] });
+  // SN menu flags are managed separately (the matrix / single PATCH), so the
+  // edit form only touches warehouse fields — return the current flags.
+  const sn = await warehouseSnFlags(code);
+  return NextResponse.json({ ok: true, warehouse: { ...rows[0], sn } });
+}
+
+/** Flip one SN menu flag for one warehouse. Body: { flag, value: boolean }. */
+export async function PATCH(
+  request: Request,
+  ctx: { params: Promise<{ code: string }> },
+) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard.response;
+
+  const { code } = await ctx.params;
+  if (!code) {
+    return NextResponse.json({ error: "ລະຫັດສາງບໍ່ຖືກຕ້ອງ" }, { status: 400 });
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "ຂໍ້ມູນບໍ່ຖືກຕ້ອງ" }, { status: 400 });
+  }
+  if (!isSnFlag(body.flag)) {
+    return NextResponse.json({ error: "flag ບໍ່ຖືກຕ້ອງ" }, { status: 400 });
+  }
+  if (typeof body.value !== "boolean") {
+    return NextResponse.json({ error: "ຕ້ອງระบุ value (true/false)" }, { status: 400 });
+  }
+
+  const exists = await query<{ code: string }>(
+    `SELECT code FROM public.ic_warehouse WHERE code = $1`,
+    [code],
+  );
+  if (exists.length === 0) {
+    return NextResponse.json({ error: "ບໍ່ພົບສາງ" }, { status: 404 });
+  }
+
+  await setWarehouseSnFlag(code, body.flag, body.value, guard.session.employee_code ?? null);
+  return NextResponse.json({ ok: true, code, flag: body.flag, value: body.value });
 }
 
 export async function DELETE(
@@ -100,6 +142,11 @@ export async function DELETE(
     // Also clear any role-assignment references to this warehouse.
     await query(
       `DELETE FROM public.wms_user_warehouse WHERE warehouse_code = $1`,
+      [code],
+    );
+    // And its WMS config row.
+    await query(
+      `DELETE FROM public.odg_wms_warehouse_config WHERE wh_code = $1`,
       [code],
     );
     return NextResponse.json({ ok: true, code });

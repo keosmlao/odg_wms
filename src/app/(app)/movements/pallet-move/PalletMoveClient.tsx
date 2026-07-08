@@ -108,9 +108,10 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ wh_code: whCode, pallet: palletCode, to_wh: toWh, to_rack: toRack, to_location: toLoc }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; doc_no?: string; items?: number; serials?: number; to?: string };
+      const data = (await res.json()) as { ok?: boolean; error?: string; doc_no?: string; items?: number; serials?: number; serials_kept?: number; to?: string };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
-      showToast("ok", `ຍ້າຍ pallet ${palletCode} → ${data.to} · ${data.doc_no} (${data.items} ສິນຄ້າ · ${data.serials} SN)`);
+      const snNote = data.serials_kept ? `${data.serials_kept} SN ຄົງບ່ອນເກົ່າ` : `${data.serials} SN`;
+      showToast("ok", `ຍ້າຍ pallet ${palletCode} → ${data.to} · ${data.doc_no} (${data.items} ສິນຄ້າ · ${snNote})`);
       await loadDetail(palletCode); // refresh
     } catch (e) {
       showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ");

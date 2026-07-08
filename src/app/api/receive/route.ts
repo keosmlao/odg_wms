@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 
 /** WMS goods-receipt against a PO. Writes WMS tables only (path A — no ERP post). */
 const RECEIVE_TRANS_FLAG = 1; // receive (calc_flag +1)
@@ -218,7 +219,10 @@ export async function POST(request: Request) {
     const yearCode = isnYearCode(new Date().getFullYear());
     let genItems = 0;
     let genQty = 0;
-    if (docType === "po" && isnLines.length > 0) {
+    // Per-warehouse policy: when the RECEIVE menu has SN off, post the stock
+    // receipt only — do not generate ISN / sn_inventory for this warehouse.
+    const snReceiveOn = await warehouseSnEnabled(wh, "receive", client);
+    if (snReceiveOn && docType === "po" && isnLines.length > 0) {
       const totalUnits = isnLines.reduce((s, l) => s + Math.round(l.qty), 0);
       // Serial-ledger header (one per receive; trans_flag 81 = goods receipt).
       await client.query(

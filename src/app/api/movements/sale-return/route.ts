@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { saveMoveNotes } from "@/lib/moveReasons";
+import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 
 /**
  * Sale return (ຮັບคืนจากลูกค้า) — WMS-stock-only. Books the returned goods back
@@ -39,12 +40,14 @@ export async function POST(request: Request) {
   if (Array.isArray(accessible) && !accessible.includes(wh)) return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
 
   if (!Array.isArray(body.lines) || body.lines.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການຮັບคืน" }, { status: 400 });
+  // Per-warehouse policy: when the RETURN menu has SN off, return stock only.
+  const snOn = await warehouseSnEnabled(wh, "return");
   const lines: { item_code: string; item_name: string | null; unit_code: string | null; qty: number; location: string | null; serials: string[] }[] = [];
   for (const raw of body.lines as Record<string, unknown>[]) {
     const item_code = str(raw.item_code);
     const qty = num(raw.qty);
     if (!item_code || qty === null || qty <= 0) continue;
-    const serials = Array.isArray(raw.serials) ? (raw.serials as unknown[]).map(str).filter(Boolean) : [];
+    const serials = snOn && Array.isArray(raw.serials) ? (raw.serials as unknown[]).map(str).filter(Boolean) : [];
     lines.push({ item_code, item_name: str(raw.item_name) || null, unit_code: str(raw.unit_code) || null, qty, location: str(raw.location) || docLoc, serials });
   }
   if (lines.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການຮັບคืน" }, { status: 400 });

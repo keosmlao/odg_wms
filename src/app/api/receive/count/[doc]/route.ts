@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { DOC_TYPE, RECEIVE_STATUS, writeCountSerials } from "@/lib/receive";
 import { phDimensionLateralJoin } from "@/lib/ph-dimension";
+import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 
 /**
  * A single count sheet (ໃບກວດນັບ, draft on wms_product_receive status=9).
@@ -160,7 +161,10 @@ export async function PUT(request: Request, ctx: { params: Promise<{ doc: string
       );
     }
     // Re-generate + reserve ISN for the edited counts (reusing held SN of this PO).
-    await writeCountSerials(client, docNo, lines.map((l) => ({ item_code: l.item_code, qty: l.qty, serials: l.serials })), header.po_no ?? undefined);
+    // Skipped when this warehouse's RECEIVE menu has SN off.
+    if (await warehouseSnEnabled(header.wh_code ?? "", "receive", client)) {
+      await writeCountSerials(client, docNo, lines.map((l) => ({ item_code: l.item_code, qty: l.qty, serials: l.serials })), header.po_no ?? undefined);
+    }
     await client.query("COMMIT");
     return NextResponse.json({ ok: true });
   } catch (err) {

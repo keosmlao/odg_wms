@@ -3,6 +3,7 @@ import { pool, query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { genDocNo, writeCountSerials, DOC_TYPE, RECEIVE_STATUS } from "@/lib/receive";
+import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 
 /**
  * Count sheets (ໃບກວດນັບ) — a draft goods-receipt built from a packing list,
@@ -152,7 +153,11 @@ export async function POST(request: Request) {
     }
     // Generate + reserve ISN now (at count-sheet save). Reuses any held SN from
     // earlier incomplete receipts of this PO before generating new numbers.
-    const sn = await writeCountSerials(client, docNo, lines.map((l) => ({ item_code: l.item_code, qty: l.qty, serials: l.serials })), po);
+    // Skipped when this warehouse's RECEIVE menu has SN off.
+    const snReceiveOn = await warehouseSnEnabled(wh, "receive", client);
+    const sn = snReceiveOn
+      ? await writeCountSerials(client, docNo, lines.map((l) => ({ item_code: l.item_code, qty: l.qty, serials: l.serials })), po)
+      : { generated: 0, manual: 0, reused: 0, serializedNoCategory: 0 };
 
     await client.query("COMMIT");
     return NextResponse.json({ ok: true, count_code: docNo, lines: lines.length, gen_isn: sn.generated, reused_sn: sn.reused, manual_sn: sn.manual });

@@ -7,6 +7,7 @@ import {
   postErpTransfer,
 } from "@/lib/erpPost";
 import { type MoveNote, saveMoveNotes } from "@/lib/moveReasons";
+import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 
 const WMS_FLAG = 72; // odg_wms_trans(_detail): ໃບໂອນສິນຄ້າ
 const SN_FLAG = 56; // sn_trans(_detail)
@@ -43,7 +44,13 @@ export async function moveFromTransit(
   p: MoveFromTransitParams,
 ): Promise<{ wmsDoc: string; erpDoc: string; serials: number }> {
   const { refDoc, whTo, locTo, user, stage, lines, notes } = p;
-  const active = lines.filter((l) => l.qty > 0);
+  // Per-warehouse policy: when the landing warehouse does not track serial
+  // locations, relocate the stock only — drop serials so the ledger, validation
+  // and sn_inventory relocation below are all skipped for this move.
+  const moveSerials = await warehouseSnEnabled(whTo, "transfer", client);
+  const active = lines
+    .filter((l) => l.qty > 0)
+    .map((l) => (moveSerials ? l : { ...l, serials: [] }));
   if (active.length === 0) throw new Error("ບໍ່ມີລາຍການໃຫ້ດຳເນີນ");
 
   // 1) Validate: qty ≤ in-transit balance for this ref; serials parked in 9903.

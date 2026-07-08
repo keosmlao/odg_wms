@@ -76,17 +76,30 @@ const RACK_PITCH_X = 1.72;
 const GROUP_GAP = 1.6;
 const AISLE_GAP = 1.15;
 
+// Occupancy → colour. Empty is a cool neutral slate so it reads clearly as
+// "nothing here"; occupancy ramps green → yellow → orange → red as it fills,
+// with full/over-full a strong red. Keep in sync with the on-screen legend
+// (LEGEND) and the flat-grid helper cellHeatBg in RackVisualization.tsx.
 function heatColor(pct: number, empty: boolean, negative: boolean) {
-  if (negative) return "#ef4444";
-  if (empty) return "#e2e8f0";
-  if (pct > 100) return "#e11d48";
-  if (pct >= 90) return "#f43f5e";
-  if (pct >= 75) return "#f97316";
+  if (negative) return "#dc2626"; // ຕິດລົບ — data problem
+  if (empty) return "#94a3b8"; // ຫວ່າງ — neutral slate, clearly not filled
+  if (pct >= 100) return "#e11d48"; // ເຕັມ
+  if (pct >= 75) return "#f97316"; // ໃກ້ເຕັມ
   if (pct >= 50) return "#f59e0b";
-  if (pct >= 25) return "#22c55e";
-  if (pct > 0) return "#14b8a6";
-  return "#34d399"; // occupied, unknown volume
+  if (pct >= 25) return "#eab308";
+  if (pct > 0) return "#22c55e"; // ໜ້ອຍ
+  return "#22c55e"; // occupied, unknown volume
 }
+
+// Swatches for the on-screen legend — mirrors heatColor's buckets.
+const LEGEND: { c: string; label: string }[] = [
+  { c: "#94a3b8", label: "ຫວ່າງ" },
+  { c: "#22c55e", label: "ໜ້ອຍ" },
+  { c: "#eab308", label: "ປານກາງ" },
+  { c: "#f97316", label: "ໃກ້ເຕັມ" },
+  { c: "#e11d48", label: "ເຕັມ 100%" },
+  { c: "#dc2626", label: "ຕິດລົບ" },
+];
 
 function shortCode(code: string) {
   return code.split("-").pop() ?? code;
@@ -324,6 +337,10 @@ function RackTowers({
               const barY = floorBaseY + 0.03 + barH / 2;
               const foot = cell.empty ? SLOT_D * 0.6 : SLOT_D * 0.66;
               const color = heatColor(cell.pct, cell.empty, cell.negative);
+              // Cells that need attention (full/over-full or negative) stay
+              // outlined and glowing even in the overview, so "which is full"
+              // reads at a glance without hovering.
+              const flag = !dimmed && (cell.negative || (!cell.empty && cell.pct >= 100));
               const key = `${floor.floor}-${p}`;
 
               return (
@@ -367,11 +384,13 @@ function RackTowers({
                       transparent={dimmed}
                       opacity={dimmed ? 0.25 : 1}
                       emissive={isSel ? "#0ea5e9" : dimmed ? "#000000" : color}
-                      emissiveIntensity={active && !dimmed ? 0.55 : dimmed ? 0 : 0.28}
+                      emissiveIntensity={active && !dimmed ? 0.55 : flag ? 0.5 : dimmed ? 0 : 0.28}
                       roughness={0.4}
                       metalness={0.05}
                     />
-                    {active && !dimmed && <Edges threshold={15} color={isSel ? "#0ea5e9" : "#1e293b"} />}
+                    {(active && !dimmed) || flag ? (
+                      <Edges threshold={15} color={isSel ? "#0ea5e9" : flag ? "#7f1d1d" : "#1e293b"} />
+                    ) : null}
                   </mesh>
 
                   {/* Cell label (ປ້າຍຫ້ອງ): persistent + clickable on the focused
@@ -650,8 +669,26 @@ export default function Warehouse3D({
         )}
       </div>
 
-      <div className="pointer-events-none absolute bottom-4 right-4 z-10 hidden rounded-xl border border-white/80 bg-white/85 px-3 py-2 text-[10px] text-slate-500 shadow-lg backdrop-blur sm:block dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-400">
-        ສູງ = ເຕັມ · ສີຮ້ອນ = ໃກ້ເຕັມ · ເລືອກ rack ແລ້ວ ໝຸນ 360° ໄດ້
+      <div className="pointer-events-none absolute bottom-4 right-4 z-10 hidden max-w-[46%] rounded-xl border border-white/80 bg-white/90 px-3 py-2 shadow-lg backdrop-blur sm:block dark:border-white/10 dark:bg-slate-900/85">
+        <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">
+          ລະດັບເຕັມ / Occupancy
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          {LEGEND.map((s) => (
+            <span key={s.label} className="flex items-center gap-1">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-sm ring-1 ring-black/10"
+                style={{ backgroundColor: s.c }}
+              />
+              <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300">
+                {s.label}
+              </span>
+            </span>
+          ))}
+        </div>
+        <div className="mt-1 text-[9px] text-slate-400 dark:text-slate-500">
+          ຕ່ຳ = ຫວ່າງ · ສູງ = ເຕັມ · ຫ້ອງເຕັມ/ຕິດລົບ ມີຂອບເຮືອງ
+        </div>
       </div>
 
       <Canvas

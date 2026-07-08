@@ -203,6 +203,26 @@ const ZONE_LAYOUTS: Record<string, ZoneConfig> = {
   },
 };
 
+// For warehouses without a curated ZONE_LAYOUTS entry, build the floor map
+// straight from the DB rack list (no zone/aisle/coordinate columns exist, so the
+// honest layout is: every rack in DB order, with a "… Z" rack pulled out as the
+// side block — matching the 1201 convention). Levels come from the location
+// codes (see the floor derivation in page.tsx).
+function autoZoneFromRacks(
+  racks: { code: string; name: string | null }[],
+): ZoneConfig | null {
+  if (racks.length === 0) return null;
+  const side = racks.find((r) => /\bz$/i.test((r.name ?? "").trim()));
+  const main = racks.filter((r) => r !== side);
+  return {
+    zoneLabel: "",
+    groups: [{ label: "", rackCodes: main.map((r) => r.code) }],
+    side: side
+      ? { label: side.name ?? "Z", rackCodes: [side.code] }
+      : undefined,
+  };
+}
+
 // Calculate rack heat percentage & state
 function rackHeat(rack: RackView) {
   const hasCapacity = rack.capacityPallets > 0;
@@ -544,7 +564,8 @@ export default function RackVisualization({
     rackViews.find((rack) => rack.code === selectedCode) ?? null;
 
   const zone = selectedWarehouse
-    ? ZONE_LAYOUTS[selectedWarehouse.code] ?? null
+    ? ZONE_LAYOUTS[selectedWarehouse.code] ??
+      autoZoneFromRacks(selectedWarehouse.racks)
     : null;
 
   const { cols3D, side3D, zoneLabel3D } = useMemo(() => {
@@ -848,10 +869,10 @@ export default function RackVisualization({
                 </span>
               </div>
             </div>
-            {selectedWarehouse && ZONE_LAYOUTS[selectedWarehouse.code] ? (
+            {zone ? (
               <ZonedFloorGrid
                 rackViews={rackViews}
-                zone={ZONE_LAYOUTS[selectedWarehouse.code]}
+                zone={zone}
                 selectedCode={selectedCode}
                 onSelect={(code) =>
                   setSelectedCode((prev) => (prev === code ? null : code))
@@ -1224,13 +1245,16 @@ function RackElevationMap({
                 ) : null,
               )}
 
-              {/* Zone label (below doors) */}
-              <div
-                style={{ gridColumn: "1 / -1", gridRow: 2 }}
-                className="rounded-md bg-zinc-100 px-2 py-1 text-center text-xs font-bold text-zinc-600 ring-1 ring-inset ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700"
-              >
-                {g.label}
-              </div>
+              {/* Zone label (below doors) — hidden for auto-built groups
+                  that have no zone name */}
+              {g.label && (
+                <div
+                  style={{ gridColumn: "1 / -1", gridRow: 2 }}
+                  className="rounded-md bg-zinc-100 px-2 py-1 text-center text-xs font-bold text-zinc-600 ring-1 ring-inset ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700"
+                >
+                  {g.label}
+                </div>
+              )}
 
               {/* Rack elevations + aisle dividers */}
               {slots.map((s, i) =>
@@ -1386,7 +1410,7 @@ function ZonedFloorGrid({
           let start = 2;
           return groups.map((g) => {
             const span = g.racks.length;
-            const el = (
+            const el = g.label ? (
               <div
                 key={g.label}
                 style={{ gridColumn: `${start} / ${start + span}`, gridRow: 2 }}
@@ -1394,7 +1418,7 @@ function ZonedFloorGrid({
               >
                 {g.label}
               </div>
-            );
+            ) : null;
             start += span;
             return el;
           });

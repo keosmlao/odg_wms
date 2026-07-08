@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { getIsnInfo, getMaxIsnSeq, isnYearCode } from "@/lib/receive";
+import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 
 /** trans_flag for WMS-internal stock adjustments in odg_wms_trans_detail. */
 const ADJUST_TRANS_FLAG = 99;
@@ -94,6 +95,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "ບໍ່ມີລາຍການໃຫ້ປັບປຸງ" }, { status: 400 });
   }
 
+  // Per-warehouse policy: when the ADJUST menu has SN off, adjust by qty only —
+  // ignore serial add/remove/generate for every line.
+  const snOn = await warehouseSnEnabled(wh, "adjust");
+
   // Normalise + validate lines (dedupe by item_code — one adjust per item/node).
   const seen = new Set<string>();
   const lines: {
@@ -117,13 +122,15 @@ export async function POST(request: Request) {
       );
     }
     seen.add(item_code);
-    const serialsRemove = strArr(raw.serials_remove);
-    const serialsAdd = strArr(raw.serials_add);
-    const serialsGenerate = Math.max(0, Math.round(num(raw.serials_generate) ?? 0));
+    const serialsRemove = snOn ? strArr(raw.serials_remove) : [];
+    const serialsAdd = snOn ? strArr(raw.serials_add) : [];
+    const serialsGenerate = snOn ? Math.max(0, Math.round(num(raw.serials_generate) ?? 0)) : 0;
     const isSerial = serialsRemove.length > 0 || serialsAdd.length > 0 || serialsGenerate > 0;
     // Non-serial lines need a counted qty; serial lines derive it from the serials.
     const counted = isSerial ? 0 : num(raw.counted_qty);
     if (!isSerial && (counted === null || counted < 0)) {
+      // SN off + a serial-only line with no counted qty → nothing to adjust; skip.
+      if (!snOn) continue;
       return NextResponse.json(
         { error: `ຈຳນວນຂອງ ${item_code} ບໍ່ຖືກຕ້ອງ` },
         { status: 400 },

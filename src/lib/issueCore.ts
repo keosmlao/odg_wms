@@ -8,6 +8,7 @@ import {
   postErpIssue,
   postErpTransfer,
 } from "@/lib/erpPost";
+import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 
 const ISSUE_STOCK_FLAG = 72; // odg_wms_trans(_detail): ໃບໂອນສິນຄ້າ (calc_flag -1)
 const ISSUE_SN_FLAG = 56; // sn_trans(_detail): ໃບເບີກເປັນສິນຄ້າ (calc_flag -1)
@@ -47,16 +48,24 @@ export async function executeIssue(client: PoolClient, p: ExecuteIssueParams): P
   // is a true consumption (serials leave: sn_inventory.status → 1).
   const isTransfer = sourceType === "transfer";
 
+  // Per-warehouse policy: when this warehouse's ISSUE menu has SN off, issue by
+  // qty only — drop serials so the requirement check, ledger and sn_inventory
+  // consumption/relocation below are all skipped. Stock −1 still posts.
+  const snOn = await warehouseSnEnabled(wh, "issue", client);
+  if (!snOn) for (const l of lines) l.serials = [];
+
   // 0) Items that actually hold in-stock serials must be issued by serial.
-  const snRes = await client.query<{ item_code: string }>(
-    `SELECT DISTINCT item_code FROM public.sn_inventory
-     WHERE wh_code = $1 AND COALESCE(status, 0) = 0 AND item_code = ANY($2)`,
-    [wh, lines.map((l) => l.item_code)],
-  );
-  const hasSerials = new Set(snRes.rows.map((r) => r.item_code));
-  for (const line of lines) {
-    if (hasSerials.has(line.item_code) && line.serials.length === 0) {
-      throw new Error(`ສິນຄ້າ ${line.item_code} ມີ serial — ຕ້ອງເລືອກ/ຍິງ serial ກ່ອນຈ່າຍ`);
+  if (snOn) {
+    const snRes = await client.query<{ item_code: string }>(
+      `SELECT DISTINCT item_code FROM public.sn_inventory
+       WHERE wh_code = $1 AND COALESCE(status, 0) = 0 AND item_code = ANY($2)`,
+      [wh, lines.map((l) => l.item_code)],
+    );
+    const hasSerials = new Set(snRes.rows.map((r) => r.item_code));
+    for (const line of lines) {
+      if (hasSerials.has(line.item_code) && line.serials.length === 0) {
+        throw new Error(`ສິນຄ້າ ${line.item_code} ມີ serial — ຕ້ອງເລືອກ/ຍິງ serial ກ່ອນຈ່າຍ`);
+      }
     }
   }
 
