@@ -27,7 +27,9 @@ import type { PoolClient } from "pg";
 export const ERP_ISSUE_FLAG = 56; // ໃບເບີກເປັນສິນຄ້າ
 export const ERP_TRANSFER_OUT = 72; // ໃບໂອນສິນຄ້າ (out leg)
 export const ERP_TRANSFER_IN = 70; // ໃບເບີກສິນຄ້າ (in leg)
+export const ERP_PURCHASE_CREDIT_FLAG = 12; // ໃບຊື້ສິນຄ້າຕິດໜີ້ (goods-in +1 AND sets AP)
 const TRANS_TYPE = 3; // stock-movement document family
+const TRANS_TYPE_PURCHASE = 1; // purchase/AP document family
 
 export type ErpItem = { item_code: string; item_name: string | null; unit_code: string | null; qty: number };
 
@@ -211,4 +213,120 @@ export async function reverseErpByWmsDoc(client: PoolClient, wmsDoc: string): Pr
   await client.query(`DELETE FROM public.ic_trans_detail WHERE doc_no = ANY($1)`, [docNos]);
   await client.query(`DELETE FROM public.ic_trans WHERE doc_no = ANY($1)`, [docNos]);
   return { reversed: docNos.length, docs: docNos };
+}
+
+// ── Goods receipt → credit purchase (ໃບຊື້ສິນຄ້າຕິດໜີ້, flag 12) ─────────────
+// Posts a purchase invoice that (a) books stock IN (+1) and (b) sets the payable
+// to the supplier. AP (fa_ap_balance / odg_ap_balance) are VIEWS that recompute
+// from ic_trans, so inserting the header + detail is enough — no AP table write.
+//
+// Prices + VAT + supplier come from the referenced PO (ic_trans flag 6). Only
+// received items that exist on the PO can be priced; others are returned in
+// `missing` (their stock is already received in WMS, just not on this AP doc).
+
+export type PurchaseReceiptLine = { item_code: string; item_name: string | null; unit_code: string | null; qty: number };
+
+/** PO doc_format_code → credit-purchase format (POT→PUIT, POH→PUIH). */
+function purchaseFormatForPo(poFormat: string): string {
+  if (poFormat === "POT") return "PUIT";
+  if (poFormat === "POH") return "PUIH";
+  return "PUIH";
+}
+
+type PoHeader = {
+  doc_format_code: string; cust_code: string | null; branch_code: string | null;
+  vat_rate: string | null; currency_code: string | null; exchange_rate: string | null;
+};
+
+export async function postErpPurchaseReceipt(
+  client: PoolClient,
+  opts: {
+    poNo: string;              // referenced PO (ic_trans flag 6) — source of price/VAT/supplier
+    items: PurchaseReceiptLine[]; // received quantities (priced at PO price)
+    wh: string;
+    location?: string | null;  // landing shelf (shelf_code)
+    user: string | null;
+    wmsDoc: string;            // WMS receipt doc → doc_ref_trans (lets a delete reverse it)
+    remark?: string | null;
+  },
+): Promise<{ docNo: string; total: number; posted: number; missing: string[] } | null> {
+  const poRes = await client.query<PoHeader>(
+    `SELECT doc_format_code, cust_code, branch_code, vat_rate, currency_code, exchange_rate
+     FROM public.ic_trans WHERE doc_no = $1 AND trans_flag = 6 LIMIT 1`,
+    [opts.poNo],
+  );
+  const po = poRes.rows[0];
+  if (!po) return null; // no PO → cannot price the payable
+
+  const priceRes = await client.query<{ item_code: string; price: string }>(
+    `SELECT item_code, MAX(COALESCE(NULLIF(price_exclude_vat, 0), price)) AS price
+     FROM public.ic_trans_detail WHERE doc_no = $1 GROUP BY item_code`,
+    [opts.poNo],
+  );
+  const priceByItem = new Map(priceRes.rows.map((r) => [r.item_code, Number.parseFloat(r.price) || 0]));
+
+  const vatRate = Number.parseFloat(po.vat_rate ?? "0") || 0;
+  const branch = po.branch_code ?? "00";
+  const priced: { it: PurchaseReceiptLine; price: number; exVat: number; vat: number }[] = [];
+  const missing: string[] = [];
+  for (const it of opts.items) {
+    if (Math.round(it.qty) <= 0) continue;
+    const price = priceByItem.get(it.item_code);
+    if (price === undefined) { missing.push(it.item_code); continue; }
+    const exVat = Math.round(it.qty * price * 100) / 100;
+    const vat = Math.round(exVat * (vatRate / 100) * 100) / 100;
+    priced.push({ it, price, exVat, vat });
+  }
+  if (priced.length === 0) return { docNo: "", total: 0, posted: 0, missing };
+
+  const totalExVat = priced.reduce((s, p) => s + p.exVat, 0);
+  const totalVat = priced.reduce((s, p) => s + p.vat, 0);
+  const totalAfterVat = Math.round((totalExVat + totalVat) * 100) / 100;
+
+  const docNo = await nextErpDocNo(client, purchaseFormatForPo(po.doc_format_code));
+
+  // Header (flag 12). credit_date defaults to today (net terms recompute in ERP).
+  await client.query(
+    `INSERT INTO public.ic_trans
+       (trans_type, trans_flag, doc_date, doc_no, doc_format_code, branch_code,
+        cust_code, vat_rate, currency_code, exchange_rate,
+        total_value, total_before_vat, total_vat_value, total_after_vat, total_amount,
+        credit_date, doc_ref, doc_ref_date, tax_doc_no, tax_doc_date,
+        remark, status, doc_success, doc_time, creator_code, doc_ref_trans, create_date_time_now)
+     VALUES ($1,$2,CURRENT_DATE,$3,$4,$5, $6,$7,$8,$9,
+             $10,$10,$11,$12,$12, CURRENT_DATE,$13,CURRENT_DATE,$3,CURRENT_DATE,
+             $14,0,0,to_char(now(),'HH24:MI'),$15,$16,now())`,
+    [
+      TRANS_TYPE_PURCHASE, ERP_PURCHASE_CREDIT_FLAG, docNo, purchaseFormatForPo(po.doc_format_code), branch,
+      po.cust_code, vatRate, po.currency_code, po.exchange_rate,
+      totalExVat, totalVat, totalAfterVat,
+      opts.remark ?? null, opts.user, opts.wmsDoc,
+    ],
+  );
+
+  let line = 0;
+  for (const { it, price, exVat, vat } of priced) {
+    await client.query(
+      `INSERT INTO public.ic_trans_detail
+         (trans_type, trans_flag, doc_date, doc_no, item_code, item_name, unit_code,
+          qty, calc_flag, wh_code, shelf_code, branch_code,
+          price, price_exclude_vat, sum_amount, sum_amount_exclude_vat, total_vat_value,
+          average_cost, ref_doc_no, line_number, stand_value, divide_value, is_get_price,
+          status, doc_time, create_date_time_now)
+       VALUES ($1,$2,CURRENT_DATE,$3,$4,$5,$6,
+               $7,1,$8,$9,$10,
+               $11,$11,$12,$13,$14,
+               $11,$15,$16,1,1,1,
+               0,to_char(now(),'HH24:MI'),now())`,
+      [
+        TRANS_TYPE_PURCHASE, ERP_PURCHASE_CREDIT_FLAG, docNo, it.item_code, it.item_name, it.unit_code,
+        it.qty, opts.wh, opts.location ?? null, branch,
+        price, exVat, exVat, vat,
+        opts.poNo, line++,
+      ],
+    );
+    // Goods enter the company → raise the global cached balance (mirror of issue).
+    await client.query(`UPDATE public.ic_inventory SET balance_qty = COALESCE(balance_qty, 0) + $1 WHERE code = $2`, [it.qty, it.item_code]);
+  }
+  return { docNo, total: totalAfterVat, posted: priced.length, missing };
 }

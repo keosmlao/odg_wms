@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
+import { postErpPurchaseReceipt } from "@/lib/erpPost";
 
 /** WMS goods-receipt against a PO. Writes WMS tables only (path A — no ERP post). */
 const RECEIVE_TRANS_FLAG = 1; // receive (calc_flag +1)
@@ -265,6 +266,22 @@ export async function POST(request: Request) {
       }
     }
 
+    // ERP: post ໃບຊື້ສິນຄ້າຕິດໜີ້ (flag 12) — books stock-in + AP to the supplier,
+    // priced from the referenced PO. Env-gated because it writes real ERP
+    // financial documents (creates a payable). Set WMS_ERP_PURCHASE_ENABLED=1.
+    let erpPurchase: Awaited<ReturnType<typeof postErpPurchaseReceipt>> = null;
+    if (docType === "po" && poNo && process.env.WMS_ERP_PURCHASE_ENABLED === "1") {
+      erpPurchase = await postErpPurchaseReceipt(client, {
+        poNo,
+        items: lines.map((l) => ({ item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code || null, qty: l.qty })),
+        wh,
+        location: null,
+        user: session.employee_code ?? null,
+        wmsDoc: docNo,
+        remark: `WMS receive ${poNo}`,
+      });
+    }
+
     await client.query("COMMIT");
     return NextResponse.json({
       ok: true,
@@ -275,6 +292,10 @@ export async function POST(request: Request) {
       // Serialized items received via transfer/return — serials were NOT generated
       // (they should already exist); operator should verify by scanning.
       serial_existing_items: serialItemsNoGen,
+      // ໃບຊື້ຕິດໜີ້ (ERP) — null when disabled or no PO match.
+      erp_purchase: erpPurchase && erpPurchase.docNo
+        ? { doc_no: erpPurchase.docNo, total: erpPurchase.total, items: erpPurchase.posted, missing: erpPurchase.missing }
+        : null,
     });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});

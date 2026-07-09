@@ -6,6 +6,7 @@ import {
   DOC_TYPE, RECEIVE_STATUS, SN_RECEIPT_FLAG, genDocNo,
   insertTransHeader, insertTransDetail,
 } from "@/lib/receive";
+import { postErpPurchaseReceipt } from "@/lib/erpPost";
 
 /**
  * Turn a count sheet (ໃບກວດນັບ, status=9) into a posted WMS goods-receipt.
@@ -210,6 +211,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
     const commit: { item_code: string; serial_number: string }[] = [];
     const held: string[] = [];
     const cancelled: string[] = [];
+    const receivedForErp: { item_code: string; item_name: string | null; unit_code: string | null; qty: number }[] = [];
 
     for (const line of lines) {
       const plan = planByItem.get(line.item_code)!;
@@ -230,6 +232,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
         docNo: recNo, docRef: poNo, wh, user,
         line: { item_code: line.item_code, item_name: line.item_name, qty: recv, unit_code: line.unit_code, rack: d.rack || null, location: d.location || null, pallet: d.pallet || null },
       });
+      receivedForErp.push({ item_code: line.item_code, item_name: line.item_name, unit_code: line.unit_code, qty: recv });
     }
 
     // Commit the received serials to the ledger (verbatim — generated at save
@@ -319,6 +322,16 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       await client.query(`UPDATE public.wms_product_receive SET status = $2 WHERE doc_no = $1`, [countNo, RECEIVE_STATUS.consumed]);
     }
 
+    // ERP: post ໃບຊື້ສິນຄ້າຕິດໜີ້ (flag 12) for the received qty — stock-in + AP,
+    // priced from the PO. Env-gated (writes real ERP financial docs).
+    let erpPurchase: Awaited<ReturnType<typeof postErpPurchaseReceipt>> = null;
+    if (poNo && receivedForErp.length > 0 && process.env.WMS_ERP_PURCHASE_ENABLED === "1") {
+      erpPurchase = await postErpPurchaseReceipt(client, {
+        poNo, items: receivedForErp, wh, location: null,
+        user: user ?? null, wmsDoc: recNo, remark: `WMS receive ${poNo}`,
+      });
+    }
+
     await client.query("COMMIT");
     return NextResponse.json({
       ok: true,
@@ -329,6 +342,9 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       remaining: remainTotal,
       held: held.length,
       cancelled: cancelled.length,
+      erp_purchase: erpPurchase && erpPurchase.docNo
+        ? { doc_no: erpPurchase.docNo, total: erpPurchase.total, items: erpPurchase.posted, missing: erpPurchase.missing }
+        : null,
     });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
