@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Box3 } from "three";
 import type { Group, Object3D } from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
@@ -22,20 +23,36 @@ const LIFT = 0.55;
 // (whole warehouse → rack → floor → location). Lives inside <Bounds>.
 function CameraFocus({
   targetKey,
+  highlightLocs,
   registry,
 }: {
   targetKey: string | null;
+  highlightLocs: Set<string>;
   registry: Registry;
 }) {
   const api = useBounds();
+  // Stable dep for the highlight set so a picked product re-frames the camera.
+  const highlightKey = useMemo(() => [...highlightLocs].sort().join(","), [highlightLocs]);
   useEffect(() => {
     const id = requestAnimationFrame(() => {
+      // 1) An explicit selection (rack / floor / location) always wins.
       const obj = targetKey ? registry.current.get(targetKey) : null;
-      if (obj) api.refresh(obj).clip().fit();
-      else api.refresh().clip().fit();
+      if (obj) { api.refresh(obj).clip().fit(); return; }
+      // 2) Otherwise, when a product is picked, frame all its locations.
+      if (highlightLocs.size > 0) {
+        const box = new Box3();
+        let any = false;
+        for (const code of highlightLocs) {
+          const o = registry.current.get(`loc:${code}`);
+          if (o) { box.expandByObject(o); any = true; }
+        }
+        if (any) { api.refresh(box).clip().fit(); return; }
+      }
+      // 3) Nothing focused → fit the whole scene.
+      api.refresh().clip().fit();
     });
     return () => cancelAnimationFrame(id);
-  }, [targetKey, api, registry]);
+  }, [targetKey, highlightKey, highlightLocs, api, registry]);
   return null;
 }
 
@@ -105,6 +122,8 @@ function shortCode(code: string) {
   return code.split("-").pop() ?? code;
 }
 
+const EMPTY_SET: Set<string> = new Set();
+
 function RackTowers({
   rack,
   x,
@@ -112,6 +131,7 @@ function RackTowers({
   rackDimmed,
   focusFloor,
   selectedLoc,
+  highlightLocs,
   registry,
   onSelectRack,
   onSelectCell,
@@ -122,6 +142,7 @@ function RackTowers({
   rackDimmed: boolean;
   focusFloor: number | null;
   selectedLoc: string | null;
+  highlightLocs: Set<string>;
   registry: Registry;
   onSelectRack: (code: string) => void;
   onSelectCell: (rackCode: string, locCode: string, floor: number) => void;
@@ -325,9 +346,14 @@ function RackTowers({
             {floor.cells.map((cell, p) => {
               const off = -lengthLen / 2 + SLOT_D * (p + 0.5);
               const isSel = selectedLoc === cell.code;
-              const locDimmed = selectedLoc != null && !isSel;
+              // Product search: this location holds the searched item → highlight it,
+              // and dim everything that doesn't match.
+              const hasHighlight = highlightLocs.size > 0;
+              const isMatch = hasHighlight && highlightLocs.has(cell.code);
+              const locDimmed =
+                (selectedLoc != null && !isSel) || (hasHighlight && !isMatch && !isSel);
               const dimmed = rackDimmed || floorDimmed || locDimmed;
-              const active = isSel || hover?.key === `${floor.floor}-${p}`;
+              const active = isSel || isMatch || hover?.key === `${floor.floor}-${p}`;
 
               const fill = cell.empty
                 ? 0
@@ -380,22 +406,23 @@ function RackTowers({
                   >
                     <boxGeometry args={[SLOT_W * 0.66, barH, foot]} />
                     <meshStandardMaterial
-                      color={isSel ? "#0284c7" : dimmed ? "#cbd5e1" : color}
+                      color={isMatch ? "#e879f9" : isSel ? "#0284c7" : dimmed ? "#cbd5e1" : color}
                       transparent={dimmed}
                       opacity={dimmed ? 0.25 : 1}
-                      emissive={isSel ? "#0ea5e9" : dimmed ? "#000000" : color}
-                      emissiveIntensity={active && !dimmed ? 0.55 : flag ? 0.5 : dimmed ? 0 : 0.28}
+                      emissive={isMatch ? "#e879f9" : isSel ? "#0ea5e9" : dimmed ? "#000000" : color}
+                      emissiveIntensity={isMatch ? 0.9 : active && !dimmed ? 0.55 : flag ? 0.5 : dimmed ? 0 : 0.28}
                       roughness={0.4}
                       metalness={0.05}
                     />
-                    {(active && !dimmed) || flag ? (
-                      <Edges threshold={15} color={isSel ? "#0ea5e9" : flag ? "#7f1d1d" : "#1e293b"} />
+                    {(active && !dimmed) || flag || isMatch ? (
+                      <Edges threshold={15} color={isMatch ? "#a21caf" : isSel ? "#0ea5e9" : flag ? "#7f1d1d" : "#1e293b"} />
                     ) : null}
                   </mesh>
 
                   {/* Cell label (ປ້າຍຫ້ອງ): persistent + clickable on the focused
-                      rack; hover-only in the overview to avoid 600 DOM labels. */}
-                  {((selected && !floorDimmed) || (active && !dimmed)) && (
+                      rack; hover-only in the overview to avoid 600 DOM labels.
+                      Search matches always show their code. */}
+                  {((selected && !floorDimmed) || (active && !dimmed) || isMatch) && (
                     <Html
                       position={[0, barY + barH / 2 + 0.13, off]}
                       center
@@ -409,9 +436,11 @@ function RackTowers({
                           onSelectCell(rack.code, cell.code, floor.floor);
                         }}
                         className={`pointer-events-auto cursor-pointer select-none whitespace-nowrap rounded px-1.5 py-0.5 font-mono text-[8px] font-bold shadow-lg transition ${
-                          isSel
-                            ? "bg-sky-600 text-white ring-1 ring-sky-300"
-                            : "bg-slate-950/85 text-white hover:bg-sky-600"
+                          isMatch
+                            ? "bg-fuchsia-600 text-white ring-1 ring-fuchsia-300"
+                            : isSel
+                              ? "bg-sky-600 text-white ring-1 ring-sky-300"
+                              : "bg-slate-950/85 text-white hover:bg-sky-600"
                         }`}
                       >
                         {shortCode(cell.code)}
@@ -466,6 +495,7 @@ export default function Warehouse3D({
   doors,
   selectedCode,
   selectedLoc,
+  highlightLocs,
   onSelectRack,
   onSelectCell,
 }: {
@@ -475,9 +505,11 @@ export default function Warehouse3D({
   doors?: Warehouse3DDoor[];
   selectedCode: string | null;
   selectedLoc: string | null;
+  highlightLocs?: Set<string>;
   onSelectRack: (code: string | null) => void;
   onSelectCell: (rackCode: string, locCode: string) => void;
 }) {
+  const highlight = highlightLocs ?? EMPTY_SET;
   const registry = useRef<Map<string, Object3D>>(new Map());
   const [focusFloor, setFocusFloor] = useState<number | null>(null);
 
@@ -796,7 +828,7 @@ export default function Warehouse3D({
         ))}
 
         <Bounds fit clip margin={0.82} maxDuration={0.85}>
-          <CameraFocus targetKey={targetKey} registry={registry} />
+          <CameraFocus targetKey={targetKey} highlightLocs={highlight} registry={registry} />
           <group>
             {layout.cols.map(({ rack, x }) => (
               <RackTowers
@@ -807,6 +839,7 @@ export default function Warehouse3D({
                 rackDimmed={selecting && rack.code !== selectedCode}
                 focusFloor={rack.code === selectedCode ? focusFloor : null}
                 selectedLoc={selectedLoc}
+                highlightLocs={highlight}
                 registry={registry}
                 onSelectRack={pickRack}
                 onSelectCell={pickCell}
@@ -821,6 +854,7 @@ export default function Warehouse3D({
                 rackDimmed={selecting && side.code !== selectedCode}
                 focusFloor={side.code === selectedCode ? focusFloor : null}
                 selectedLoc={selectedLoc}
+                highlightLocs={highlight}
                 registry={registry}
                 onSelectRack={pickRack}
                 onSelectCell={pickCell}

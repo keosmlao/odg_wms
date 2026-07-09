@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   BuildingIcon,
@@ -142,6 +142,41 @@ type RackView = Omit<RackMapRack, "locations"> & {
 
 function stockKey(warehouseCode: string, rackCode: string, locationCode: string) {
   return `${warehouseCode}::${rackCode}::${locationCode}`;
+}
+
+// Product search (/api/movements/item-locations): raw node rows + grouped result.
+type RawItemLoc = {
+  wh_code: string; rack: string | null; location: string | null; pallet: string | null;
+  item_code: string; item_name: string | null; unit_code: string | null; qty: string;
+};
+type ItemLocResult = {
+  item_code: string; item_name: string | null; unit_code: string | null;
+  totalQty: number; locations: { rack: string; location: string; qty: number }[];
+};
+
+/** Group "where is this item" rows by item, within one warehouse. */
+function groupItemLocations(rows: RawItemLoc[], whCode: string): ItemLocResult[] {
+  const byItem = new Map<string, ItemLocResult>();
+  for (const r of rows) {
+    if (r.wh_code !== whCode) continue;
+    const loc = (r.location ?? "").trim();
+    if (!loc) continue; // need a location to highlight
+    const qty = Number.parseFloat(r.qty) || 0;
+    if (qty === 0) continue;
+    let it = byItem.get(r.item_code);
+    if (!it) {
+      it = { item_code: r.item_code, item_name: r.item_name, unit_code: r.unit_code, totalQty: 0, locations: [] };
+      byItem.set(r.item_code, it);
+    }
+    it.totalQty += qty;
+    const rack = (r.rack ?? "").trim();
+    const ex = it.locations.find((x) => x.location === loc && x.rack === rack);
+    if (ex) ex.qty += qty;
+    else it.locations.push({ rack, location: loc, qty });
+  }
+  return [...byItem.values()]
+    .sort((a, b) => b.totalQty - a.totalQty)
+    .slice(0, 30);
 }
 
 function formatQty(value: number) {
@@ -337,6 +372,42 @@ export default function RackVisualization({
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   // when a single cell (ຫ້ອງ) is clicked in 3D, pre-open it in the elevation
   const [focusLoc, setFocusLoc] = useState<string | null>(null);
+
+  // ── Product search (3D): "where is this item" → highlight its locations ──────
+  const [itemQuery, setItemQuery] = useState("");
+  const [itemResults, setItemResults] = useState<ItemLocResult[]>([]);
+  const [itemLoading, setItemLoading] = useState(false);
+  const [pickedItem, setPickedItem] = useState<ItemLocResult | null>(null);
+
+  // Debounced fetch of item locations within the current warehouse.
+  useEffect(() => {
+    const q = itemQuery.trim();
+    if (q.length < 2) { setItemResults([]); setItemLoading(false); return; }
+    let cancelled = false;
+    setItemLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/movements/item-locations?q=${encodeURIComponent(q)}&limit=400`);
+        const data = (await res.json()) as { items?: RawItemLoc[] };
+        if (cancelled) return;
+        setItemResults(groupItemLocations(data.items ?? [], warehouseCode));
+      } catch {
+        if (!cancelled) setItemResults([]);
+      } finally {
+        if (!cancelled) setItemLoading(false);
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [itemQuery, warehouseCode]);
+
+  // Clear the picked item when switching warehouse or leaving.
+  useEffect(() => { setPickedItem(null); }, [warehouseCode]);
+
+  // Location codes (in the current warehouse) that hold the picked item.
+  const highlightLocs = useMemo(
+    () => new Set((pickedItem?.locations ?? []).map((l) => l.location)),
+    [pickedItem],
+  );
 
   const selectedWarehouse =
     warehouses.find((warehouse) => warehouse.code === warehouseCode) ??
@@ -600,13 +671,18 @@ export default function RackVisualization({
       };
     };
 
+    // Only racks passing the current search/status filter appear in 3D — so
+    // "ມີສິນຄ້າ" (occupied) shows just the stocked racks, "ຫວ່າງ" just the empty
+    // ones, etc. (ທັງໝົດ = all).
+    const filteredCodes = new Set(filteredRacks.map((r) => r.code));
+
     if (zone) {
       const byCode = new Map(rackViews.map((r) => [r.code, r]));
       const cols: Rack3DDatum[] = [];
       for (const g of zone.groups)
         for (const code of g.rackCodes) {
           const r = byCode.get(code);
-          if (r) {
+          if (r && filteredCodes.has(r.code)) {
             const d = mk(r, g.label, false);
             d.aisleAfter = g.aisleAfter?.includes(code) ?? false;
             cols.push(d);
@@ -617,7 +693,7 @@ export default function RackVisualization({
         cols3D: cols,
         // Keep the real rack name (e.g. RACK Z); the zone (Z03) rides on
         // groupLabel so it shows as a separate zone tag, not as the rack name.
-        side3D: sr ? mk(sr, zone.side?.label ?? null, true) : null,
+        side3D: sr && filteredCodes.has(sr.code) ? mk(sr, zone.side?.label ?? null, true) : null,
         zoneLabel3D: zone.zoneLabel,
       };
     }
@@ -922,8 +998,62 @@ export default function RackVisualization({
                   <span className="h-3 w-3 rounded bg-zinc-300 dark:bg-zinc-700" />
                   <span className="text-[11px] text-zinc-500">ຫວ່າງ</span>
                 </span>
+                <span className="flex items-center gap-1">
+                  <span className="h-3 w-3 rounded bg-fuchsia-500" />
+                  <span className="text-[11px] text-zinc-500">ສິນຄ້າທີ່ຄົ້ນຫາ</span>
+                </span>
               </div>
             </div>
+
+            {/* Product search — "where is this item" → highlight its locations in 3D. */}
+            <div className="border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
+              <div className="relative max-w-md">
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  value={itemQuery}
+                  onChange={(e) => setItemQuery(e.target.value)}
+                  placeholder="ຄົ້ນຫາສິນຄ້າ (ລະຫັດ/ຊື່) → ເບິ່ງວ່າຢູ່ location ໃດ..."
+                  className="w-full rounded-lg border border-zinc-300 bg-white py-2 pl-9 pr-8 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                />
+                {itemQuery && (
+                  <button
+                    type="button"
+                    onClick={() => { setItemQuery(""); setPickedItem(null); }}
+                    aria-label="clear"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                  >
+                    ✕
+                  </button>
+                )}
+                {itemQuery.trim().length >= 2 && !pickedItem && (
+                  <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+                    {itemLoading && <div className="px-3 py-2 text-xs text-zinc-400">ກຳລັງຄົ້ນຫາ...</div>}
+                    {!itemLoading && itemResults.length === 0 && (
+                      <div className="px-3 py-2 text-xs text-zinc-400">ບໍ່ພົບໃນສາງ {warehouseCode}</div>
+                    )}
+                    {itemResults.map((it) => (
+                      <button
+                        key={it.item_code}
+                        type="button"
+                        onClick={() => { setPickedItem(it); setSelectedCode(null); setFocusLoc(null); }}
+                        className="flex w-full items-center justify-between gap-2 border-b border-zinc-50 px-3 py-2 text-left last:border-0 hover:bg-fuchsia-50 dark:border-zinc-800 dark:hover:bg-fuchsia-950/30"
+                      >
+                        <span className="min-w-0">
+                          <span className="block font-mono text-[11px] font-semibold text-fuchsia-700 dark:text-fuchsia-400">{it.item_code}</span>
+                          <span className="block truncate text-xs text-zinc-600 dark:text-zinc-300">{it.item_name ?? "—"}</span>
+                        </span>
+                        <span className="shrink-0 text-right text-[11px] text-zinc-500">
+                          <span className="block font-semibold">{formatQty(it.totalQty)} {it.unit_code ?? ""}</span>
+                          <span className="block">{it.locations.length} ບ່ອນ</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="relative h-[60vh] min-h-[420px] w-full touch-none">
               <Warehouse3D
                 racks={cols3D}
@@ -932,6 +1062,7 @@ export default function RackVisualization({
                 doors={zone?.doors}
                 selectedCode={selectedCode}
                 selectedLoc={focusLoc}
+                highlightLocs={highlightLocs}
                 onSelectRack={(code) => {
                   setFocusLoc(null);
                   setSelectedCode(code);
@@ -941,6 +1072,43 @@ export default function RackVisualization({
                   setFocusLoc(loc);
                 }}
               />
+
+              {/* "Found here" panel — locations of the searched product. */}
+              {pickedItem && (
+                <div className="absolute right-4 top-4 z-20 max-h-[82%] w-64 overflow-y-auto rounded-xl border border-fuchsia-200 bg-white/95 p-3 shadow-xl backdrop-blur dark:border-fuchsia-900 dark:bg-zinc-900/95">
+                  <div className="mb-1 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-mono text-xs font-bold text-fuchsia-700 dark:text-fuchsia-400">📍 {pickedItem.item_code}</div>
+                      <div className="truncate text-[11px] text-zinc-600 dark:text-zinc-300" title={pickedItem.item_name ?? ""}>{pickedItem.item_name ?? "—"}</div>
+                    </div>
+                    <button type="button" onClick={() => setPickedItem(null)} aria-label="close" className="shrink-0 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">✕</button>
+                  </div>
+                  <div className="mb-2 text-[11px] text-zinc-500">
+                    ຢູ່ <b className="text-fuchsia-600 dark:text-fuchsia-400">{pickedItem.locations.length}</b> ບ່ອນ · ລວມ {formatQty(pickedItem.totalQty)} {pickedItem.unit_code ?? ""}
+                  </div>
+                  <ul className="space-y-1">
+                    {pickedItem.locations.map((l) => (
+                      <li key={`${l.rack}-${l.location}`}>
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedCode(l.rack || null); setFocusLoc(l.location); }}
+                          className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left transition ${
+                            focusLoc === l.location
+                              ? "bg-fuchsia-600 text-white"
+                              : "bg-fuchsia-50 hover:bg-fuchsia-100 dark:bg-fuchsia-950/40 dark:hover:bg-fuchsia-900/40"
+                          }`}
+                        >
+                          <span className={`font-mono text-[11px] font-semibold ${focusLoc === l.location ? "text-white" : "text-fuchsia-800 dark:text-fuchsia-300"}`}>
+                            {l.rack ? `${l.rack} / ` : ""}{l.location}
+                          </span>
+                          <span className={`text-[11px] ${focusLoc === l.location ? "text-fuchsia-100" : "text-zinc-600 dark:text-zinc-300"}`}>{formatQty(l.qty)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Popup: clicked-location size + items + volume, over the 3D scene */}
               {focusLoc &&
                 selectedRack &&
