@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { ROLE_LABEL_LO, accessibleWarehouses } from "@/lib/session-shared";
+import { warehouseSnFlagMap } from "@/lib/warehouseConfig";
 import { Hero, Notice, Chip } from "@/components/ui/Card";
 import { AlertIcon, CheckIcon, ListIcon } from "@/components/ui/Icons";
 import AdjustClient, { type WarehouseOption } from "./AdjustClient";
@@ -43,16 +44,16 @@ export default async function AdjustPage({
   const tab = rawTab === "history" ? "history" : "adjust";
 
   // Only the form tab needs the warehouse list up front.
-  const warehouses =
+  const whRows =
     tab === "adjust"
       ? accessible === null
-        ? await query<WarehouseOption>(
+        ? await query<{ code: string; name: string | null }>(
             `SELECT code, name_1 AS name
              FROM public.ic_warehouse
              WHERE COALESCE(status, 1) = 1
              ORDER BY code`,
           )
-        : await query<WarehouseOption>(
+        : await query<{ code: string; name: string | null }>(
             `SELECT code, name_1 AS name
              FROM public.ic_warehouse
              WHERE code = ANY($1)
@@ -60,6 +61,14 @@ export default async function AdjustPage({
             [accessible],
           )
       : [];
+
+  // The ADJUST menu's SN flag decides, per warehouse, whether serial items are
+  // counted by scanning SN or by typing a quantity.
+  const snAdjust = await warehouseSnFlagMap(whRows.map((w) => w.code), "adjust");
+  const warehouses: WarehouseOption[] = whRows.map((w) => ({
+    ...w,
+    sn_adjust: snAdjust[w.code] ?? true,
+  }));
 
   const tabBase =
     "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition";

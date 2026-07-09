@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/Icons";
 import AdjustSerialModal, { type SerialPlan } from "./AdjustSerialModal";
 
-export type WarehouseOption = { code: string; name: string | null };
+export type WarehouseOption = { code: string; name: string | null; sn_adjust: boolean };
 
 type RackOption = { code: string; name: string | null };
 type LocationOption = { code: string; name: string | null; rack_code: string };
@@ -34,8 +34,8 @@ type WorkingItem = {
   unit_code: string | null;
   before_qty: number; // balance at the node (basis for delta)
   wh_balance: number | null; // total in warehouse (info only)
-  counted: string; // raw input (non-serial items)
-  serialized: boolean;
+  counted: string; // raw input (qty mode)
+  serialized: boolean; // item is ISN-tracked (is_isn)
   // Serial items adjust by serial: ISN to remove, scanned ISN to add, # to generate.
   serialsRemove: string[];
   serialsAdd: string[];
@@ -77,8 +77,18 @@ function serialActivity(item: WorkingItem): number {
   return item.serialsRemove.length + item.serialsAdd.length + item.serialsGenerate;
 }
 
-function deltaOf(item: WorkingItem): number | null {
-  if (item.serialized) {
+/**
+ * A line is counted by serial only when the item is ISN-tracked AND the
+ * warehouse has SN on for the adjust menu. With SN off every line — serial
+ * items included — is counted by typing a quantity, matching what the server
+ * accepts (it drops serial payloads when the flag is off).
+ */
+function bySerial(item: WorkingItem, snOn: boolean): boolean {
+  return item.serialized && snOn;
+}
+
+function deltaOf(item: WorkingItem, snOn: boolean): number | null {
+  if (bySerial(item, snOn)) {
     return item.serialsAdd.length + item.serialsGenerate - item.serialsRemove.length;
   }
   const c = parsedCount(item.counted);
@@ -180,6 +190,12 @@ export default function AdjustClient({
 
   const whName = useMemo(
     () => warehouses.find((w) => w.code === whCode)?.name ?? null,
+    [warehouses, whCode],
+  );
+
+  /** SN handling for the adjust menu at the selected warehouse (default on). */
+  const snOn = useMemo(
+    () => warehouses.find((w) => w.code === whCode)?.sn_adjust ?? true,
     [warehouses, whCode],
   );
 
@@ -314,11 +330,11 @@ export default function AdjustClient({
   const changedItems = useMemo(
     () =>
       items.filter((i) => {
-        if (i.serialized) return serialActivity(i) > 0;
-        const d = deltaOf(i);
+        if (bySerial(i, snOn)) return serialActivity(i) > 0;
+        const d = deltaOf(i, snOn);
         return d !== null && d !== 0;
       }),
-    [items],
+    [items, snOn],
   );
 
   async function submit() {
@@ -339,7 +355,7 @@ export default function AdjustClient({
           reason,
           note,
           lines: changedItems.map((i) =>
-            i.serialized
+            bySerial(i, snOn)
               ? {
                   item_code: i.item_code,
                   item_name: i.item_name,
@@ -491,6 +507,11 @@ export default function AdjustClient({
               <MapPinIcon className="h-3.5 w-3.5 text-indigo-500" />
               <span className="font-mono">{nodeLabel}</span>
               {whName && <span className="text-zinc-400">· {whName}</span>}
+              {!snOn && (
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                  SN ປິດ · ປ້ອນຈຳນວນ
+                </span>
+              )}
             </div>
             <button
               type="button"
@@ -560,7 +581,7 @@ export default function AdjustClient({
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {items.map((i) => {
-                    const d = deltaOf(i);
+                    const d = deltaOf(i, snOn);
                     const dColor =
                       d === null || d === 0
                         ? "text-zinc-400"
@@ -580,8 +601,18 @@ export default function AdjustClient({
                           <span className="ml-1 text-[10px] uppercase text-zinc-400">{i.unit_code}</span>
                         </td>
                         <td className="px-4 py-2.5">
-                          {i.serialized ? (
-                            <div className="flex items-center justify-center">
+                          {bySerial(i, snOn) ? (
+                            // SN on → the count is whatever the serials say; the
+                            // field is locked and only the SN modal moves it.
+                            <div className="flex items-center justify-center gap-2">
+                              <input
+                                type="text"
+                                readOnly
+                                tabIndex={-1}
+                                value={formatQty(i.before_qty + (d ?? 0))}
+                                title="ນັບຈາກ ISN — ແກ້ດ້ວຍປຸ່ມ ຈັດການ SN"
+                                className="w-20 cursor-not-allowed rounded-lg bg-zinc-100 px-2 py-1.5 text-center font-mono text-sm font-semibold tabular-nums text-zinc-500 ring-1 ring-zinc-200 outline-none dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700"
+                              />
                               <button
                                 type="button"
                                 onClick={() => setSerialItem(i.item_code)}
@@ -690,7 +721,7 @@ export default function AdjustClient({
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {changedItems.map((i) => {
-                    const d = deltaOf(i) ?? 0;
+                    const d = deltaOf(i, snOn) ?? 0;
                     const dColor = d > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
                     return (
                       <tr key={i.item_code}>
@@ -699,7 +730,7 @@ export default function AdjustClient({
                           <div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div>
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-xs tabular-nums text-zinc-500">{formatQty(i.before_qty)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-xs font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{formatQty(i.serialized ? i.before_qty + (deltaOf(i) ?? 0) : (parsedCount(i.counted) ?? 0))}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{formatQty(i.before_qty + d)}</td>
                         <td className={`px-3 py-2 text-right font-mono text-xs font-bold tabular-nums ${dColor}`}>{d > 0 ? "+" : ""}{formatQty(d)}</td>
                       </tr>
                     );

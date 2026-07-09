@@ -88,6 +88,32 @@ export async function warehouseSnFlags(
   }
 }
 
+/**
+ * One SN flag for many warehouses, keyed by wh_code. Codes with no config row
+ * (or a missing table pre-migration) resolve to true.
+ */
+export async function warehouseSnFlagMap(
+  whCodes: string[],
+  flag: SnFlag,
+): Promise<Record<string, boolean>> {
+  const out: Record<string, boolean> = {};
+  for (const code of whCodes) out[code] = true;
+  if (whCodes.length === 0) return out;
+  const col = FLAG_COLUMN[flag];
+  try {
+    const rows = await query<{ wh_code: string; on: boolean | null }>(
+      `SELECT wh_code, ${col} AS on
+       FROM public.odg_wms_warehouse_config
+       WHERE wh_code = ANY($1)`,
+      [whCodes],
+    );
+    for (const r of rows) out[r.wh_code] = r.on ?? true;
+  } catch {
+    // config table / columns not present yet (pre-migration) — safe default
+  }
+  return out;
+}
+
 /** Whether a single menu/flow handles serials for this warehouse (default true). */
 export async function warehouseSnEnabled(
   whCode: string,
