@@ -214,13 +214,13 @@ export default async function DepositsListPage({
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl">
+    <div className="w-full">
       <header className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
             WMS · ຮັບຝາກເຄື່ອງ
           </p>
-          <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
+          <h1 className="mt-1.5 text-xl font-bold tracking-tight text-zinc-900 sm:text-2xl dark:text-white">
             ລາຍການຮັບຝາກ
           </h1>
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
@@ -233,7 +233,7 @@ export default async function DepositsListPage({
         </div>
         <Link
           href="/deposits/new"
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-500 sm:self-auto"
         >
           <PlusIcon className="h-4 w-4" />
           ຮັບຝາກໃໝ່
@@ -241,7 +241,7 @@ export default async function DepositsListPage({
       </header>
 
       {/* Filter pills */}
-      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-zinc-200/70 bg-white/90 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800/70 dark:bg-zinc-900/80">
+      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-zinc-200/70 bg-white/90 p-3 shadow-sm ring-1 ring-black/[0.02] sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:ring-white/[0.03]">
         <div className="flex flex-wrap items-center gap-1.5">
           {STATUS_TABS.map((t) => {
             const active = status === t.value;
@@ -268,14 +268,14 @@ export default async function DepositsListPage({
             );
           })}
         </div>
-        <form method="get" className="flex items-center gap-2">
+        <form method="get" className="flex min-w-0 items-center gap-2 sm:min-w-80">
           {status && <input type="hidden" name="status" value={status} />}
           <input
             type="text"
             name="q"
             defaultValue={q}
             placeholder="ຄົ້ນຫາ code, ລູກຄ້າ, ສາງ..."
-            className="rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 sm:w-56 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
           <button
             type="submit"
@@ -289,10 +289,10 @@ export default async function DepositsListPage({
       {filteredRows.length === 0 ? (
         <EmptyState hasFilter={!!q || !!status} />
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 dark:border-zinc-800/70 dark:bg-zinc-900/80">
-          <div className="overflow-x-auto">
+        <div className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:ring-white/[0.03]">
+          <div className="max-h-[calc(100dvh-250px)] overflow-auto overscroll-contain">
             <table className="w-full text-sm">
-              <thead className="border-b border-zinc-200/70 bg-zinc-50/60 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-400">
+              <thead className="sticky top-0 z-[1] border-b border-zinc-200/70 bg-zinc-50/95 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 dark:text-zinc-400">
                 <tr>
                   <th className="w-1 px-0" aria-hidden="true" />
                   <th className="px-4 py-3 text-left">ຮັບຝາກ</th>
@@ -443,7 +443,7 @@ export default async function DepositsListPage({
 
 function EmptyState({ hasFilter }: { hasFilter: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-zinc-200/70 bg-white/90 px-6 py-16 text-center dark:border-zinc-800/70 dark:bg-zinc-900/80">
+    <div className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-zinc-200/70 bg-white/90 px-6 py-16 text-center shadow-sm ring-1 ring-black/[0.02] lg:min-h-[calc(100dvh-265px)] dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:ring-white/[0.03]">
       <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500">
         <PackageIcon className="h-6 w-6" />
       </div>

@@ -191,7 +191,7 @@ export default async function DepositDetailPage({
     : null;
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="w-full">
       <nav className="mb-3 flex items-center gap-2 text-sm">
         <Link
           href="/deposits"
@@ -206,13 +206,13 @@ export default async function DepositDetailPage({
       </nav>
 
       {/* Hero */}
-      <section className="mb-4 overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm dark:border-zinc-800/70 dark:bg-zinc-900/80">
+      <section className="mb-4 overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:ring-white/[0.03]">
         <div className="px-5 py-4 sm:px-6">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
             ຮັບຝາກເຄື່ອງ
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
+            <h1 className="text-xl font-bold tracking-tight text-zinc-900 sm:text-2xl dark:text-white">
               {detail.deposit_code}
             </h1>
             <span
@@ -281,10 +281,10 @@ export default async function DepositDetailPage({
         </div>
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
         {/* LEFT: bills + payments */}
-        <div className="space-y-4 lg:col-span-2">
-          <section className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 dark:border-zinc-800/70 dark:bg-zinc-900/80">
+        <div className="min-w-0 space-y-4">
+          <section className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:ring-white/[0.03]">
             <div className="border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
               <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-50">
                 ບິນທີ່ຝາກ ({bills.length})
@@ -345,7 +345,7 @@ export default async function DepositDetailPage({
 
           {/* Payments */}
           {payments.length > 0 && (
-            <section className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 dark:border-zinc-800/70 dark:bg-zinc-900/80">
+            <section className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:ring-white/[0.03]">
               <div className="border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
                 <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-50">
                   ການຮັບເງິນ
@@ -388,7 +388,7 @@ export default async function DepositDetailPage({
         </div>
 
         {/* RIGHT: settle form + audit */}
-        <aside className="space-y-4">
+        <aside className="space-y-4 lg:sticky lg:top-0">
           {isActive ? (
             <SettleForm
               depositId={detail.deposit_id}
@@ -536,4 +536,3 @@ function Row({ k, v }: { k: string; v: string }) {
     </div>
   );
 }
-

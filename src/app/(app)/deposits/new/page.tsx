@@ -46,7 +46,7 @@ export default async function NewDepositPage() {
   const settings = await getDepositSettings();
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="w-full">
       <nav className="mb-3 flex items-center gap-2 text-sm">
         <Link
           href="/deposits"
@@ -60,18 +60,18 @@ export default async function NewDepositPage() {
         </span>
       </nav>
 
-      <header className="mb-5 flex items-start gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-white shadow-sm shadow-indigo-500/30">
+      <header className="mb-5 flex items-start gap-3 sm:gap-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-white shadow-lg shadow-indigo-500/20 sm:h-11 sm:w-11">
           <PlusIcon className="h-5 w-5" />
         </div>
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
             ຮັບຝາກເຄື່ອງ
           </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
+          <h1 className="mt-1 text-xl font-bold tracking-tight text-zinc-900 sm:text-2xl dark:text-white">
             ສ້າງລາຍການຮັບຝາກ
           </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-zinc-600 sm:text-sm dark:text-zinc-400">
             ເລືອກສາງ ແລະ ບິນຄ້າງຈ່າຍ ເພື່ອບັນທຶກເປັນຮັບຝາກ — ຄ່າຝາກຈະຄິດເມື່ອມີການມາຮັບ
           </p>
         </div>

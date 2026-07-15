@@ -105,7 +105,7 @@ export default async function DetailsPage({
 
   return (
     <StocktakeLayout wide>
-    <div className="mx-auto w-full max-w-5xl space-y-6 pb-8">
+    <div className="w-full space-y-6 pb-8">
       <header>
         <Link
           href={`/stocktake/${sid}`}

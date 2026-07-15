@@ -274,10 +274,10 @@ export default function NewDepositForm({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)]">
       {/* LEFT: form fields */}
-      <div className="space-y-4 lg:col-span-1">
-        <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-5 shadow-sm dark:border-zinc-800/70 dark:bg-zinc-900/80">
+      <div className="space-y-4 lg:sticky lg:top-0">
+        <section className="rounded-2xl border border-zinc-200/70 bg-white/90 p-4 shadow-sm ring-1 ring-black/[0.02] sm:p-5 dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:ring-white/[0.03]">
           <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-200">
             ຂໍ້ມູນຮັບຝາກ
           </h2>
@@ -345,7 +345,7 @@ export default function NewDepositForm({
         </section>
 
         {/* Preview totals */}
-        <section className="rounded-2xl border border-indigo-200/70 bg-indigo-50/60 p-5 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+        <section className="rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50/90 to-violet-50/60 p-4 shadow-sm sm:p-5 dark:border-indigo-900/40 dark:from-indigo-950/30 dark:to-violet-950/10">
           <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
             ສະຫຼຸບ
           </h2>
@@ -448,8 +448,8 @@ export default function NewDepositForm({
       </div>
 
       {/* RIGHT: bill picker */}
-      <section className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 dark:border-zinc-800/70 dark:bg-zinc-900/80 lg:col-span-2">
-        <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:ring-white/[0.03]">
+        <div className="flex flex-col gap-2 border-b border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
           <div>
             <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-50">
               ບິນຄ້າງຈ່າຍ
@@ -461,7 +461,7 @@ export default function NewDepositForm({
               </span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2 sm:justify-end">
             <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
               {cacheInfo?.refreshed_at
                 ? `cache: ${cacheInfo.refreshed_at.slice(0, 16)}`
@@ -484,7 +484,7 @@ export default function NewDepositForm({
             e.preventDefault();
             loadBills();
           }}
-          className="flex flex-col gap-2 border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-800 sm:flex-row sm:items-center"
+          className="grid gap-2 border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-800 sm:grid-cols-[minmax(180px,1fr)_auto_auto_auto_auto] sm:items-center"
         >
           <div className="relative flex-1">
             <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
@@ -502,7 +502,7 @@ export default function NewDepositForm({
             onChange={(e) => setFrom(e.target.value)}
             className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
-          <span className="text-xs text-zinc-400">→</span>
+          <span className="hidden text-xs text-zinc-400 sm:inline">→</span>
           <input
             type="date"
             value={to}
@@ -547,7 +547,7 @@ export default function NewDepositForm({
         </div>
 
         {/* List */}
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="max-h-[68vh] overflow-y-auto overscroll-contain lg:h-[calc(100dvh-280px)] lg:max-h-none lg:min-h-[460px]">
           {loading ? (
             <div className="py-12 text-center text-sm text-zinc-500">
               ກຳລັງໂຫລດ...

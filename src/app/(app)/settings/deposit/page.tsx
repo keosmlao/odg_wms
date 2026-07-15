@@ -19,7 +19,7 @@ export default async function DepositSettingsPage() {
   const settings = await getDepositSettings();
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4">
+    <div className="w-full space-y-4">
       <header>
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
           ການຕັ້ງຄ່າ

@@ -263,7 +263,7 @@ export default async function BalancePage({
   const hasNextTablePage = tableTotal > page * tableLimit;
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4">
+    <div className="w-full space-y-4">
       {/* Header + filters */}
       <header className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         <div className="flex flex-wrap items-start justify-between gap-4">

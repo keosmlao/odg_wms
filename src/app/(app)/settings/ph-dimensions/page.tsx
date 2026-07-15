@@ -110,7 +110,7 @@ export default async function PhDimensionsPage() {
     stockQty > 0 ? ((Number(summary.matched_qty) || 0) / stockQty) * 100 : 0;
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5">
+    <div className="w-full space-y-5">
       <Hero
         title="ກວດສອບ PH Dimension"
         description="ກວດ coverage ຂອງ pallet/stack master ທີ່ໃຊ້ຄຳນວນຄວາມຈຸທົ່ວລະບົບ"
@@ -223,4 +223,3 @@ export default async function PhDimensionsPage() {
     </div>
   );
 }
-

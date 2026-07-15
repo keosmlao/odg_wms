@@ -62,7 +62,7 @@ export default async function AccessPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5">
+    <div className="w-full space-y-5">
       <Hero
         title="ຈັດການສິດເຂົ້າເຖິງ"
         description="ກຳນົດ role ແລະ ສາງທີ່ຮັບຜິດຊອບໃຫ້ແຕ່ລະພະນັກງານ"

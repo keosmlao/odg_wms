@@ -3,10 +3,10 @@
 export const stPage = "text-zinc-900 dark:text-zinc-50";
 
 export const stContainer =
-  "mx-auto w-full max-w-6xl pb-16 sm:pb-20";
+  "w-full pb-16 sm:pb-20";
 
 export const stContainerWide =
-  "mx-auto w-full max-w-7xl pb-16 sm:pb-20";
+  "w-full pb-16 sm:pb-20";
 
 export const stPanel =
   "rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm shadow-zinc-900/[0.03] backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:shadow-none";

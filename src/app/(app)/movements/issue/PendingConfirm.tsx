@@ -319,7 +319,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
 
           {/* sticky footer */}
           <div className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 px-4 py-3 backdrop-blur md:left-64 dark:border-zinc-800 dark:bg-zinc-950/95">
-            <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <div className="flex w-full items-center justify-between gap-3">
               <span className="text-sm font-bold text-zinc-600 dark:text-zinc-300">{totalNeeded > 0 ? `${totalScanned}/${totalNeeded} ຍິງແລ້ວ` : " พร้อมจ่าย"}{shortItems.length > 0 ? " · ຈ່າຍບໍ່ຄົບ" : ""}</span>
               <button type="button" onClick={confirm} disabled={!canConfirm} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-red-500 to-orange-600 px-7 py-3 text-sm font-bold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">
                 <CheckIcon className="h-4 w-4" />{busy ? "ກຳລັງຈ່າຍ..." : shortItems.length > 0 ? "ຢືນຢັນຈ່າຍ (ບໍ່ຄົບ)" : "ຢືນຢັນຈ່າຍ"}

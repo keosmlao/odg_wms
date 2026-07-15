@@ -321,7 +321,7 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
 
         {/* sticky footer */}
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:left-64">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+          <div className="flex w-full items-center justify-between gap-3">
             <span className="text-sm font-bold text-slate-600">รధม {t.verb} {totalGot}/{totalInT}</span>
             <button onClick={submit} disabled={!canSubmit}
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-7 py-3 text-sm font-bold text-white shadow-md hover:shadow-lg active:scale-98 transition disabled:opacity-50 cursor-pointer">

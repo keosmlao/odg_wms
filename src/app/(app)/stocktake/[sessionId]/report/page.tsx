@@ -331,7 +331,7 @@ export default async function ReportPage({
 
   return (
     <StocktakeLayout wide>
-    <div className="mx-auto w-full max-w-7xl space-y-5 pb-8">
+    <div className="w-full space-y-5 pb-8">
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="grid gap-5 p-5 lg:grid-cols-[1fr_380px] lg:p-6">
           <div className="min-w-0">

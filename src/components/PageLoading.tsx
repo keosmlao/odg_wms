@@ -5,7 +5,7 @@ export default function PageLoading({
   hint?: string;
 }) {
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5">
+    <div className="w-full space-y-5">
       {/* Hero skeleton with subtle gradient blob */}
       <div className="shadow-card relative overflow-hidden rounded-2xl bg-white p-7 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 animate-pulse rounded-full bg-gradient-to-br from-indigo-500/10 via-violet-500/5 to-transparent blur-3xl dark:from-indigo-500/15" />

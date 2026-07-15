@@ -391,7 +391,7 @@ export default function Counter({
     <div className="-mx-6 -my-6 flex min-h-[calc(100dvh-3.5rem)] flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 lg:min-h-0">
       {/* ========== STICKY HEADER ========== */}
       <header className="sticky top-14 z-30 border-b border-zinc-200/70 bg-white/85 backdrop-blur-md dark:border-zinc-800/70 dark:bg-zinc-950/85">
-        <div className="mx-auto flex w-full max-w-5xl items-center gap-2 px-3 py-2 sm:px-4">
+        <div className="flex w-full items-center gap-2 px-3 py-2 sm:px-4">
           <Link
             href={`/stocktake/${sessionId}`}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 active:scale-95 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
@@ -437,7 +437,7 @@ export default function Counter({
 
         {/* Sub-row: chips (pinned/blind toggle) */}
         {(labelPinned || canRevealBalance) && (
-          <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-1.5 px-3 pb-2 sm:px-4">
+          <div className="flex w-full flex-wrap items-center gap-1.5 px-3 pb-2 sm:px-4">
             {labelPinned && (
               <span className="inline-flex max-w-[60%] items-center gap-1 truncate rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-900">
                 <MapPinIcon className="h-2.5 w-2.5 shrink-0" />
@@ -470,8 +470,8 @@ export default function Counter({
       <main
         className={
           sessionOpen
-            ? "mx-auto w-full max-w-5xl flex-1 px-3 pb-24 pt-3 sm:px-4 sm:pb-28 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] lg:gap-5 lg:pb-6"
-            : "mx-auto w-full max-w-3xl flex-1 px-3 py-3 sm:px-4 sm:py-4"
+            ? "w-full flex-1 px-3 pb-24 pt-3 sm:px-4 sm:pb-28 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] lg:gap-5 lg:pb-6"
+            : "w-full flex-1 px-3 py-3 sm:px-4 sm:py-4"
         }
       >
         {/* ===== LEFT: COUNTING ===== */}

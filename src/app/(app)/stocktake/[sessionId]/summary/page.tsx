@@ -559,7 +559,7 @@ export default async function SessionSummaryPage({
         @page { margin: 12mm; size: A4; }
       `}</style>
 
-      <div className="print-page mx-auto w-full max-w-5xl space-y-4">
+      <div className="print-page w-full space-y-4">
         <nav className="no-print flex flex-wrap items-center gap-2 text-sm">
           <Link href="/stocktake" className={stNavLink}>
             ກວດນັບສິນຄ້າ
