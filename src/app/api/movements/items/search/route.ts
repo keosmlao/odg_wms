@@ -90,7 +90,8 @@ export async function GET(request: Request) {
              AND COALESCE(NULLIF(TRIM(t.pallet), ''), '') = $4
          ) AS node_q
        FROM public.odg_wms_trans_detail t
-       WHERE t.wh_code = $1
+       WHERE (t.status = 0 OR t.status IS NULL)
+         AND t.wh_code = $1
          AND t.item_code IN (SELECT code FROM hits)
        GROUP BY t.item_code
      )

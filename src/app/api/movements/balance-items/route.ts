@@ -76,6 +76,7 @@ export async function GET(request: Request) {
 
   const queryArgs: unknown[] = [warehouse, rack, location, pallet];
   const filters = [
+    "(t.status = 0 OR t.status IS NULL)",
     "t.wh_code = $1",
     "COALESCE(NULLIF(TRIM(t.shelf_code), ''), '') = $2",
     "COALESCE(NULLIF(TRIM(t.shelf_code1), ''), '') = $3",
