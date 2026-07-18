@@ -244,13 +244,21 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(postBody),
       });
-      const data = (await res.json()) as { ok?: boolean; receive_code?: string; serials?: number; held?: number; cancelled?: number; remaining?: number; error?: string };
+      const data = (await res.json()) as {
+        ok?: boolean; receive_code?: string; serials?: number; held?: number; cancelled?: number; remaining?: number; error?: string;
+        erp_purchase?: { doc_no: string; total: number; items: number; missing: string[] } | null;
+      };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       const sn = data.serials ? ` · SN ${data.serials}` : "";
       const vd = data.held ? ` · ພັກ ${data.held}` : "";
       const cn = data.cancelled ? ` · ຍົກເລີກ ${data.cancelled}` : "";
       const rest = data.remaining ? ` · ໃບຍັງຄ້າງ ${data.remaining} (ຮັບຕໍ່ໄດ້)` : "";
-      showToast("ok", `ຮັບເຂົ້າ WMS ${data.receive_code} ສຳເລັດ${sn}${vd}${cn}${rest}`);
+      const erp = data.erp_purchase ? ` · ໃບຊື້ຕິດໜີ້ ${data.erp_purchase.doc_no}` : "";
+      showToast("ok", `ຮັບເຂົ້າ WMS ${data.receive_code} ສຳເລັດ${sn}${vd}${cn}${rest}${erp}`);
+      // Items absent from the PO are received in WMS but carry no price → no AP line.
+      if (data.erp_purchase?.missing?.length) {
+        showToast("err", `ບໍ່ມີລາຄາໃນ PO ${data.erp_purchase.missing.length} ລາຍການ: ${data.erp_purchase.missing.join(", ")}`);
+      }
       setTimeout(() => router.push("/movements/receive?tab=count"), 900);
     } catch (e) {
       showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ");

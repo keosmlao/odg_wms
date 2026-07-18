@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import { reverseErpByWmsDoc } from "@/lib/erpPost";
 
 /**
  * Void (delete) a WMS goods-receipt so it can be re-received. Reverts every
  * table the receive wrote to:
  *   odg_wms_trans(+_detail), sn_trans(+_detail), sn_inventory,
- *   wms_product_receive(+_detail, +_ref).
+ *   wms_product_receive(+_detail, +_ref),
+ *   and the ERP ໃບຊື້ຕິດໜີ້ (flag 12) the receive posted, if any.
  *
  * Blocked if any generated serial has already moved (sold/issued/transferred) —
  * i.e. it appears in sn_trans_detail under a different document — to avoid
@@ -142,8 +144,17 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ doc: st
     await client.query(`DELETE FROM public.wms_product_receive_ref WHERE doc_no = $1`, [docNo]);
     await client.query(`DELETE FROM public.wms_product_receive WHERE doc_no = $1`, [docNo]);
 
+    // Revert the ERP ໃບຊື້ຕິດໜີ້ (12) this receive posted: deletes the ic_trans /
+    // ic_trans_detail rows (found via doc_ref_trans = this receipt) and takes the
+    // received qty back off ic_inventory.balance_qty. No-op for a receive that
+    // never posted one (no PO, or ERP posting disabled).
+    const erp = await reverseErpByWmsDoc(client, docNo);
+
     await client.query("COMMIT");
-    return NextResponse.json({ ok: true, deleted: docNo, serials: serials.length });
+    return NextResponse.json({
+      ok: true, deleted: docNo, serials: serials.length,
+      erp_reversed: erp.docs.length > 0 ? erp.docs : null,
+    });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     const message = err instanceof Error ? err.message : "ລົບບໍ່ສຳເລັດ";

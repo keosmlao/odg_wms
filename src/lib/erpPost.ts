@@ -235,7 +235,7 @@ function purchaseFormatForPo(poFormat: string): string {
 
 type PoHeader = {
   doc_format_code: string; cust_code: string | null; branch_code: string | null;
-  vat_rate: string | null; currency_code: string | null; exchange_rate: string | null;
+  vat_rate: string | null; vat_type: number | null; currency_code: string | null; exchange_rate: string | null;
 };
 
 export async function postErpPurchaseReceipt(
@@ -251,22 +251,34 @@ export async function postErpPurchaseReceipt(
   },
 ): Promise<{ docNo: string; total: number; posted: number; missing: string[] } | null> {
   const poRes = await client.query<PoHeader>(
-    `SELECT doc_format_code, cust_code, branch_code, vat_rate, currency_code, exchange_rate
+    `SELECT doc_format_code, cust_code, branch_code, vat_rate, vat_type, currency_code, exchange_rate
      FROM public.ic_trans WHERE doc_no = $1 AND trans_flag = 6 LIMIT 1`,
     [opts.poNo],
   );
   const po = poRes.rows[0];
   if (!po) return null; // no PO → cannot price the payable
 
-  const priceRes = await client.query<{ item_code: string; price: string }>(
-    `SELECT item_code, MAX(COALESCE(NULLIF(price_exclude_vat, 0), price)) AS price
+  // ref_row = the item's row index on the PO (ERP links the AP line back to it).
+  // An item repeated on several PO rows collapses to one AP line here, so take
+  // its first row.
+  const priceRes = await client.query<{ item_code: string; price: string; ref_row: number | null }>(
+    `SELECT item_code, MAX(COALESCE(NULLIF(price_exclude_vat, 0), price)) AS price, MIN(line_number) AS ref_row
      FROM public.ic_trans_detail WHERE doc_no = $1 GROUP BY item_code`,
     [opts.poNo],
   );
   const priceByItem = new Map(priceRes.rows.map((r) => [r.item_code, Number.parseFloat(r.price) || 0]));
+  const refRowByItem = new Map(priceRes.rows.map((r) => [r.item_code, r.ref_row ?? 0]));
 
   const vatRate = Number.parseFloat(po.vat_rate ?? "0") || 0;
+  // VAT treatment is a property of the deal, not the rate — inherit the PO's
+  // (matches 98.6% of the ERP's own PO→PUI pairs; deriving it from vat_rate does not).
+  const vatType = po.vat_type ?? 0;
   const branch = po.branch_code ?? "00";
+  // The `_2` columns hold the amount in the SUPPLIER's currency; the plain column
+  // is local (LAK) = `_2` × exchange_rate. Dividing back recovers `_2` and is the
+  // identity for local-currency docs (rate 1), which is the common case.
+  const rate = Number.parseFloat(po.exchange_rate ?? "1") || 1;
+  const toCur = (local: number, dp: number) => Math.round((local / rate) * 10 ** dp) / 10 ** dp;
   const priced: { it: PurchaseReceiptLine; price: number; exVat: number; vat: number }[] = [];
   const missing: string[] = [];
   for (const it of opts.items) {
@@ -289,18 +301,21 @@ export async function postErpPurchaseReceipt(
   await client.query(
     `INSERT INTO public.ic_trans
        (trans_type, trans_flag, doc_date, doc_no, doc_format_code, branch_code,
-        cust_code, vat_rate, currency_code, exchange_rate,
-        total_value, total_before_vat, total_vat_value, total_after_vat, total_amount,
+        cust_code, vat_rate, vat_type, currency_code, exchange_rate,
+        total_value, total_before_vat, total_value_2, total_vat_value, total_after_vat, total_amount,
         credit_date, doc_ref, doc_ref_date, tax_doc_no, tax_doc_date,
-        remark, status, doc_success, doc_time, creator_code, doc_ref_trans, create_date_time_now)
-     VALUES ($1,$2,CURRENT_DATE,$3,$4,$5, $6,$7,$8,$9,
-             $10,$10,$11,$12,$12, CURRENT_DATE,$13,CURRENT_DATE,$3,CURRENT_DATE,
-             $14,0,0,to_char(now(),'HH24:MI'),$15,$16,now())`,
+        remark, status, doc_success, doc_time, creator_code, doc_ref_trans,
+        create_datetime, create_date_time_now)
+     VALUES ($1,$2,CURRENT_DATE,$3,$4,$5, $6,$7,$18,$8,$9,
+             $10,$10,$17,$11,$12,$12, CURRENT_DATE,$13,CURRENT_DATE,$3,CURRENT_DATE,
+             $14,0,0,to_char(now(),'HH24:MI'),$15,$16,
+             now()::timestamp,now())`,
     [
       TRANS_TYPE_PURCHASE, ERP_PURCHASE_CREDIT_FLAG, docNo, purchaseFormatForPo(po.doc_format_code), branch,
       po.cust_code, vatRate, po.currency_code, po.exchange_rate,
       totalExVat, totalVat, totalAfterVat,
-      opts.remark ?? null, opts.user, opts.wmsDoc,
+      opts.poNo, opts.remark ?? null, opts.user, opts.wmsDoc,
+      toCur(totalExVat, 2), vatType,
     ],
   );
 
@@ -309,20 +324,24 @@ export async function postErpPurchaseReceipt(
     await client.query(
       `INSERT INTO public.ic_trans_detail
          (trans_type, trans_flag, doc_date, doc_no, item_code, item_name, unit_code,
-          qty, calc_flag, wh_code, shelf_code, branch_code,
-          price, price_exclude_vat, sum_amount, sum_amount_exclude_vat, total_vat_value,
-          average_cost, ref_doc_no, line_number, stand_value, divide_value, is_get_price,
-          status, doc_time, create_date_time_now)
+          qty, calc_flag, wh_code, shelf_code, branch_code, cust_code, vat_type,
+          price, price_exclude_vat, price_2, sum_amount, sum_amount_exclude_vat, sum_amount_2, total_vat_value,
+          average_cost, average_cost_1, sum_of_cost, sum_of_cost_1,
+          ref_doc_no, ref_row, line_number, stand_value, divide_value, is_get_price,
+          status, doc_time, doc_date_calc, doc_time_calc, create_date_time_now)
        VALUES ($1,$2,CURRENT_DATE,$3,$4,$5,$6,
-               $7,1,$8,$9,$10,
-               $11,$11,$12,$13,$14,
-               $11,$15,$16,1,1,1,
-               0,to_char(now(),'HH24:MI'),now())`,
+               $7,1,$8,$9,$10,$19,$20,
+               $11,$11,$17,$12,$13,$18,$14,
+               $11,$11,$12,$12,
+               $15,$21,$16,1,1,1,
+               0,to_char(now(),'HH24:MI'),CURRENT_DATE,to_char(now(),'HH24:MI'),now())`,
       [
         TRANS_TYPE_PURCHASE, ERP_PURCHASE_CREDIT_FLAG, docNo, it.item_code, it.item_name, it.unit_code,
         it.qty, opts.wh, opts.location ?? null, branch,
         price, exVat, exVat, vat,
         opts.poNo, line++,
+        toCur(price, 4), toCur(exVat, 2),
+        po.cust_code, vatType, refRowByItem.get(it.item_code) ?? 0,
       ],
     );
     // Goods enter the company → raise the global cached balance (mirror of issue).
