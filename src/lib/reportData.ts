@@ -98,7 +98,8 @@ export async function pendingReceipts(scope: Scope, limit = 25): Promise<Pending
               ), 0) AS remaining
        FROM public.odg_po_remain p
        JOIN public.ic_warehouse w ON w.name_1 = p.warehouse
-       WHERE p.qty_balance > 0 ${clause}
+       -- Only this year's POs (from Jan 1) — old 2023-2025 balances are stale noise.
+       WHERE p.qty_balance > 0 AND p.doc_date >= date_trunc('year', CURRENT_DATE)::date ${clause}
      )
      SELECT wh_code, wh_name, po_no,
             to_char(MIN(doc_date), 'YYYY-MM-DD') AS doc_date,
@@ -229,8 +230,12 @@ const ISSUE_TYPE_LABEL: Record<number, string> = { 122: "ເບີກ", 124: "�
  * already issued (72 leg, calc_flag −1, excluding the 9903 in-transit warehouse)
  * and any created-but-unconfirmed pick — the same netting as /api/movements/issue/pending.
  */
-export async function pendingIssues(scope: Scope, days = 180, limit = 25): Promise<PendingIssueRow[]> {
-  const { clause, args } = scoped(scope, "d.wh_code", 2);
+export async function pendingIssues(scope: Scope, limit = 25): Promise<PendingIssueRow[]> {
+  // Fixed param $1 = limit; scope appended last. Floor at start of the year so
+  // stale pre-2026 documents drop off, matching the pending-receipt filter.
+  const args: unknown[] = [limit];
+  let clause = "";
+  if (scope !== null) { args.push(scope); clause = `AND d.wh_code = ANY($${args.length})`; }
   const rows = await query<{ doc_no: string; trans_flag: number; doc_date: string | null; days_waiting: number | null; cust_name: string | null; line_count: number; remaining: string }>(
     `WITH src AS (
        SELECT d.doc_no, d.trans_flag, count(*)::int AS line_count,
@@ -238,7 +243,7 @@ export async function pendingIssues(scope: Scope, days = 180, limit = 25): Promi
        FROM public.ic_trans_detail d
        WHERE d.trans_flag IN (122, 124, 44)
          AND (d.status = 0 OR d.status IS NULL)
-         AND d.doc_date >= CURRENT_DATE - ($1::int)
+         AND d.doc_date >= date_trunc('year', CURRENT_DATE)::date
          AND d.item_code NOT LIKE '97%'
          ${clause}
        GROUP BY d.doc_no, d.trans_flag
@@ -272,8 +277,8 @@ export async function pendingIssues(scope: Scope, days = 180, limit = 25): Promi
        AND (h.trans_flag <> 124 OR h.status = 1)
        AND (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0)) > 0.0001
      ORDER BY h.doc_date ASC NULLS LAST
-     LIMIT $${args.length + 2}`,
-    [days, ...args, limit],
+     LIMIT $1`,
+    args,
   );
   return rows.map((r) => ({
     doc_no: r.doc_no, type: ISSUE_TYPE_LABEL[r.trans_flag] ?? String(r.trans_flag),

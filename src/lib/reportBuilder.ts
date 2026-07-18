@@ -68,7 +68,7 @@ export async function buildReportHtml(opts: { name: string; scope: Scope; date: 
 
   if (sections.pending) {
     const rows = await pendingReceipts(scope, 25);
-    blocks.push(section("ໃບຮັບທີ່ຍັງຄ້າງ (PO ຄ້າງຮັບ — ດົນສຸດກ່ອນ)", table(
+    blocks.push(section("ໃບຮັບທີ່ຍັງຄ້າງ (PO ຄ້າງຮັບ ແຕ່ຕົ້ນປີ — ດົນສຸດກ່ອນ)", table(
       ["PO", "ສາງ", "ວັນທີ", "ຄ້າງ (ວັນ)", "ລາຍການ", "ຍັງຄ້າງ"],
       rows.map((r) => [r.po_no, r.wh_name ?? r.wh_code, r.doc_date ?? "-", String(r.days_waiting), String(r.lines), F(r.remaining)]),
       "ບໍ່ມີໃບຄ້າງຮັບ",
@@ -76,8 +76,8 @@ export async function buildReportHtml(opts: { name: string; scope: Scope; date: 
   }
 
   if (sections.issue_pending) {
-    const rows = await pendingIssues(scope, 180, 25);
-    blocks.push(section("ສິນຄ້າຄ້າງຈ່າຍ (ຄ້າງຈ່າຍອອກ — ດົນສຸດກ່ອນ)", table(
+    const rows = await pendingIssues(scope, 25);
+    blocks.push(section("ສິນຄ້າຄ້າງຈ່າຍ (ຄ້າງຈ່າຍອອກ ແຕ່ຕົ້ນປີ — ດົນສຸດກ່ອນ)", table(
       ["ເອກະສານ", "ປະເພດ", "ວັນທີ", "ຄ້າງ (ວັນ)", "ລູກຄ້າ", "ຍັງຄ້າງ"],
       rows.map((r) => [r.doc_no, r.type, r.doc_date ?? "-", String(r.days_waiting), r.cust_name ?? "-", F(r.remaining)]),
       "ບໍ່ມີສິນຄ້າຄ້າງຈ່າຍ",
