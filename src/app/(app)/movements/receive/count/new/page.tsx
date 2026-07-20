@@ -22,13 +22,13 @@ export default async function NewCountSheetPage({ searchParams }: { searchParams
   const params = await searchParams;
   const po = (Array.isArray(params.po) ? params.po[0] : params.po)?.trim() ?? "";
   const wh = (Array.isArray(params.wh) ? params.wh[0] : params.wh)?.trim() ?? "";
-  if (!po) redirect("/movements/receive");
+  if (!po && !wh) redirect("/movements/receive");
 
   return (
     <div className="w-full space-y-5">
       <Hero
         title="ສ້າງໃບກວດນັບ"
-        description="ດຶງລາຍການຈາກ PO ປ້ອນຈຳນວນ + ໃສ່ SN ແລ້ວບັນທຶກ"
+        description="ດຶງລາຍການຈາກ PO (1 ຫຼື ຫຼາຍ PO) ປ້ອນຈຳນວນ + ໃສ່ SN ແລ້ວບັນທຶກ"
         icon={<CheckIcon className="h-6 w-6" />}
         tone="emerald"
       />

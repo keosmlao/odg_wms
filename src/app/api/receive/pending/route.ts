@@ -142,11 +142,13 @@ export async function GET(request: Request) {
   const [srcRows, rcv] = await Promise.all([
     sourceP,
     query<{ po_no: string; item_code: string; received: string }>(
-      `SELECT h.ref_doc_no AS po_no, d.item_code, SUM(d.qty)::text AS received
+      // Attribute each received line to its own PO (multi-PO receipts set
+      // d.ref_doc_no per line); fall back to the header PO for legacy receipts.
+      `SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no) AS po_no, d.item_code, SUM(d.qty)::text AS received
        FROM public.wms_product_receive h
        JOIN public.wms_product_receive_detail d ON d.doc_no = h.doc_no
-       WHERE h.warehouse_code = $1 AND h.ref_doc_no IS NOT NULL AND (h.status = 0 OR h.status IS NULL)
-       GROUP BY h.ref_doc_no, d.item_code`,
+       WHERE h.warehouse_code = $1 AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no) IS NOT NULL AND (h.status = 0 OR h.status IS NULL)
+       GROUP BY COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no), d.item_code`,
       [wh],
     ),
   ]);

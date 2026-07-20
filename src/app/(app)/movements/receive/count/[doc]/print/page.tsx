@@ -49,6 +49,12 @@ export default async function CountPrintPage({ params }: { params: Promise<{ doc
     return <Notice tone="red" icon={<AlertIcon className="h-5 w-5" />} title="ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" />;
   }
 
+  const poRows = await query<{ po_no: string }>(
+    `SELECT po_no FROM public.wms_product_receive_po WHERE doc_no = $1 ORDER BY line_order, roworder`,
+    [docNo],
+  );
+  const poList = poRows.length > 0 ? poRows.map((r) => r.po_no) : header.po_no ? [header.po_no] : [];
+
   const lines = await query<LineRow>(
     `SELECT d.item_code, d.item_name, d.unit_code, d.qty::text AS qty,
             ph.pallet::text AS pallet, ph.stack::text AS stack,
@@ -155,7 +161,7 @@ export default async function CountPrintPage({ params }: { params: Promise<{ doc
           </table>
 
           <div className="mt-6 flex flex-wrap gap-x-10 gap-y-1 border-t border-zinc-200 pt-3 text-sm">
-            <div><span className="text-zinc-500">ໃບສັ່ງຊື້:</span> <b>{header.po_no ?? "—"}</b></div>
+            <div><span className="text-zinc-500">ໃບສັ່ງຊື້{poList.length > 1 ? ` (${poList.length})` : ""}:</span> <b>{poList.length > 0 ? poList.join(", ") : "—"}</b></div>
             <div><span className="text-zinc-500">ຜູ້ສ້າງ:</span> {header.creator ?? "—"}</div>
           </div>
 

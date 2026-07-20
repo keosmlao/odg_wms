@@ -92,9 +92,12 @@ export async function pendingReceipts(scope: Scope, limit = 25): Promise<Pending
               p.qty_balance - COALESCE((
                 SELECT SUM(d.qty)
                 FROM public.wms_product_receive_detail d
-                JOIN public.wms_product_receive_ref r ON r.doc_no = d.doc_no
                 JOIN public.wms_product_receive h ON h.doc_no = d.doc_no AND h.doc_type = 1
-                WHERE r.ref_doc_no = p.doc_no AND d.item_code = p.item_code
+                -- Attribute each received line to its own PO (multi-PO receipts set
+                -- d.ref_doc_no per line); fall back to the header PO for legacy receipts.
+                WHERE COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no) = p.doc_no
+                  AND d.item_code = p.item_code
+                  AND (h.status = 0 OR h.status IS NULL)
               ), 0) AS remaining
        FROM public.odg_po_remain p
        JOIN public.ic_warehouse w ON w.name_1 = p.warehouse

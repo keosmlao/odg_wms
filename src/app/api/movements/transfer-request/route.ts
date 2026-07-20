@@ -54,7 +54,8 @@ export async function POST(request: Request) {
   if (!Array.isArray(body.lines) || body.lines.length === 0) {
     return NextResponse.json({ error: "ບໍ່ມີລາຍການໃຫ້ຂໍໂອນ" }, { status: 400 });
   }
-  const lines: { item_code: string; item_name: string | null; unit_code: string | null; qty: number }[] = [];
+  // shelf_from → shelf_code (ສະພາບ/ທີ່ເກັບ ຕົ້ນທາງ), shelf_to → shelf_code_2 (ປາຍທາງ).
+  const lines: { item_code: string; item_name: string | null; unit_code: string | null; qty: number; shelf_from: string; shelf_to: string }[] = [];
   const seen = new Set<string>();
   for (const raw of body.lines as Record<string, unknown>[]) {
     const item_code = str(raw.item_code);
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
     seen.add(item_code);
     const qty = num(raw.qty);
     if (qty === null || qty <= 0) return NextResponse.json({ error: `ຈຳນວນຂອງ ${item_code} ບໍ່ຖືກຕ້ອງ` }, { status: 400 });
-    lines.push({ item_code, item_name: str(raw.item_name) || null, unit_code: str(raw.unit_code) || null, qty });
+    lines.push({ item_code, item_name: str(raw.item_name) || null, unit_code: str(raw.unit_code) || null, qty, shelf_from: str(raw.shelf_from), shelf_to: str(raw.shelf_to) });
   }
   if (lines.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການໃຫ້ຂໍໂອນ" }, { status: 400 });
 
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
             line_number, stand_value, divide_value, is_get_price, ref_row, status, doc_time, create_date_time_now)
          VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, '00',
                  $12, 1, 1, 1, -1, 0, to_char(now(),'HH24:MI'), now())`,
-        [TRANS_TYPE, FLAG, docNo, l.item_code, l.item_name, l.unit_code, l.qty, whFrom, locFrom || null, whTo, locTo || null, line++],
+        [TRANS_TYPE, FLAG, docNo, l.item_code, l.item_name, l.unit_code, l.qty, whFrom, l.shelf_from || locFrom || null, whTo, l.shelf_to || locTo || null, line++],
       );
     }
     await client.query("COMMIT");
@@ -170,7 +171,7 @@ export async function PATCH(request: Request) {
   if (!whFrom) return NextResponse.json({ error: "ກະລຸນາເລືອກສາງຕົ້ນທາງ" }, { status: 400 });
   if (!Array.isArray(body.lines) || body.lines.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການ" }, { status: 400 });
 
-  const lines: { item_code: string; item_name: string | null; unit_code: string | null; qty: number }[] = [];
+  const lines: { item_code: string; item_name: string | null; unit_code: string | null; qty: number; shelf_from: string; shelf_to: string }[] = [];
   const seen = new Set<string>();
   for (const raw of body.lines as Record<string, unknown>[]) {
     const item_code = str(raw.item_code);
@@ -178,7 +179,7 @@ export async function PATCH(request: Request) {
     seen.add(item_code);
     const qty = num(raw.qty);
     if (qty === null || qty <= 0) return NextResponse.json({ error: `ຈຳນວນຂອງ ${item_code} ບໍ່ຖືກຕ້ອງ` }, { status: 400 });
-    lines.push({ item_code, item_name: str(raw.item_name) || null, unit_code: str(raw.unit_code) || null, qty });
+    lines.push({ item_code, item_name: str(raw.item_name) || null, unit_code: str(raw.unit_code) || null, qty, shelf_from: str(raw.shelf_from), shelf_to: str(raw.shelf_to) });
   }
   if (lines.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການ" }, { status: 400 });
 
@@ -219,9 +220,9 @@ export async function PATCH(request: Request) {
            (trans_type, trans_flag, doc_date, doc_no, item_code, item_name, unit_code,
             qty, calc_flag, wh_code, shelf_code, wh_code_2, shelf_code_2, branch_code,
             line_number, stand_value, divide_value, is_get_price, ref_row, status, doc_time, create_date_time_now)
-         VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6, $7, 0, $8, NULL, $9, NULL, '00',
-                 $10, 1, 1, 1, -1, 0, to_char(now(),'HH24:MI'), now())`,
-        [TRANS_TYPE, FLAG, doc, l.item_code, l.item_name, l.unit_code, l.qty, whFrom, whTo, line++],
+         VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, '00',
+                 $12, 1, 1, 1, -1, 0, to_char(now(),'HH24:MI'), now())`,
+        [TRANS_TYPE, FLAG, doc, l.item_code, l.item_name, l.unit_code, l.qty, whFrom, l.shelf_from || null, whTo, l.shelf_to || null, line++],
       );
     }
     await client.query("COMMIT");
@@ -251,12 +252,13 @@ export async function GET(request: Request) {
   if (doc) {
     // issued = goods placed INTO the in-transit warehouse (9903); in_transit =
     // what is still parked there awaiting receive; received = landed at the dest.
-    const lines = await query<{ item_code: string; item_name: string | null; unit_code: string | null; req_qty: string; issued: string; in_transit: string; received: string; remaining: string }>(
+    const lines = await query<{ item_code: string; item_name: string | null; unit_code: string | null; req_qty: string; issued: string; in_transit: string; received: string; remaining: string; shelf_from: string | null; shelf_to: string | null }>(
       `WITH h AS (
          SELECT wh_from, wh_to FROM public.ic_trans WHERE doc_no = $1 AND trans_flag = ${FLAG} LIMIT 1
        ),
        req AS (
-         SELECT item_code, MAX(item_name) AS item_name, MAX(unit_code) AS unit_code, SUM(qty) AS req_qty
+         SELECT item_code, MAX(item_name) AS item_name, MAX(unit_code) AS unit_code, SUM(qty) AS req_qty,
+                MAX(shelf_code) AS shelf_from, MAX(shelf_code_2) AS shelf_to
          FROM public.ic_trans_detail WHERE doc_no = $1 AND trans_flag = ${FLAG} GROUP BY item_code
        ),
        mv AS (
@@ -272,7 +274,8 @@ export async function GET(request: Request) {
               COALESCE(m.issued, 0)::numeric::text AS issued,
               COALESCE(m.in_transit, 0)::numeric::text AS in_transit,
               COALESCE(m.received, 0)::numeric::text AS received,
-              (r.req_qty - COALESCE(m.issued, 0))::numeric::text AS remaining
+              (r.req_qty - COALESCE(m.issued, 0))::numeric::text AS remaining,
+              NULLIF(TRIM(r.shelf_from), '') AS shelf_from, NULLIF(TRIM(r.shelf_to), '') AS shelf_to
        FROM req r LEFT JOIN mv m ON m.item_code = r.item_code
        ORDER BY r.item_code`,
       [doc],

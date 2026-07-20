@@ -16,7 +16,31 @@ import { warehouseSnEnabled } from "@/lib/warehouseConfig";
  */
 type SerialIn = { serial_number?: unknown };
 type LineIn = { item_code?: unknown; item_name?: unknown; unit_code?: unknown; qty?: unknown; serials?: unknown };
-type Body = { po_no?: unknown; pack_no?: unknown; wh_code?: unknown; supplier_code?: unknown; remark?: unknown; lines?: unknown };
+type PoIn = { po_no?: unknown; supplier_code?: unknown };
+type Body = { po_no?: unknown; pos?: unknown; pack_no?: unknown; wh_code?: unknown; supplier_code?: unknown; remark?: unknown; lines?: unknown };
+
+/** Normalise the PO list from either `pos[]` (multi) or the legacy scalar `po_no`. */
+function readPos(body: Body): { po_no: string; supplier_code: string | null }[] {
+  const out: { po_no: string; supplier_code: string | null }[] = [];
+  const seen = new Set<string>();
+  const push = (po: string, sup: string | null) => {
+    const code = po.trim();
+    if (!code || seen.has(code)) return;
+    seen.add(code);
+    out.push({ po_no: code, supplier_code: sup });
+  };
+  if (Array.isArray(body.pos)) {
+    for (const raw of body.pos) {
+      if (typeof raw === "string") push(raw, null);
+      else if (raw && typeof raw === "object") {
+        const o = raw as PoIn;
+        push(str(o.po_no), str(o.supplier_code) || null);
+      }
+    }
+  }
+  if (typeof body.po_no === "string") push(body.po_no, str(body.supplier_code) || null);
+  return out;
+}
 
 function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
@@ -38,7 +62,9 @@ export async function GET() {
   const sheets = await query(
     `SELECT h.doc_no, to_char(h.doc_date,'YYYY-MM-DD') AS doc_date, h.doc_time,
             h.warehouse_code AS wh_code, w.name_1 AS wh_name, h.supplier_code,
-            h.ref_doc_no AS po_no, h.remark, h.creator_code, e.fullname_lo AS creator_name,
+            h.ref_doc_no AS po_no,
+            COALESCE(pos.po_list, CASE WHEN h.ref_doc_no IS NULL THEN ARRAY[]::text[] ELSE ARRAY[h.ref_doc_no] END) AS po_list,
+            h.remark, h.creator_code, e.fullname_lo AS creator_name,
             r.ref_doc_no AS pack_no,
             COALESCE(agg.line_count,0) AS line_count, COALESCE(agg.total_qty,0)::text AS total_qty,
             COALESCE(sn.sn_count,0) AS sn_count
@@ -46,6 +72,8 @@ export async function GET() {
      LEFT JOIN public.ic_warehouse w ON w.code = h.warehouse_code
      LEFT JOIN public.odg_employee e ON e.employee_code = h.creator_code
      LEFT JOIN public.wms_product_receive_ref r ON r.doc_no = h.doc_no AND r.line_order = 1
+     LEFT JOIN (SELECT doc_no, array_agg(po_no ORDER BY line_order, roworder) AS po_list
+                FROM public.wms_product_receive_po GROUP BY doc_no) pos ON pos.doc_no = h.doc_no
      LEFT JOIN (SELECT doc_no, count(*)::int AS line_count, SUM(qty) AS total_qty
                 FROM public.wms_product_receive_detail GROUP BY doc_no) agg ON agg.doc_no = h.doc_no
      LEFT JOIN (SELECT ref_rec_doc, count(*)::int AS sn_count
@@ -70,13 +98,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "ຂໍ້ມູນບໍ່ຖືກຕ້ອງ" }, { status: 400 });
   }
 
-  const po = str(body.po_no);
+  const posList = readPos(body);
   const pack = str(body.pack_no);
   const wh = str(body.wh_code);
   const supplier = str(body.supplier_code);
   const remark = str(body.remark);
-  if (!po) return NextResponse.json({ error: "ບໍ່ມີເລກ PO" }, { status: 400 });
+  if (posList.length === 0) return NextResponse.json({ error: "ບໍ່ມີເລກ PO" }, { status: 400 });
   if (!wh) return NextResponse.json({ error: "ບໍ່ມີສາງ" }, { status: 400 });
+  const poNos = posList.map((p) => p.po_no);
+  const primaryPo = poNos[0];
 
   const accessible = accessibleWarehouses(session);
   if (Array.isArray(accessible) && !accessible.includes(wh)) {
@@ -86,16 +116,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "ບໍ່ມີລາຍການກວດນັບ" }, { status: 400 });
   }
 
-  // Block duplicate: a PO must not have more than one OPEN count sheet per warehouse.
-  const dup = await query<{ doc_no: string }>(
-    `SELECT doc_no FROM public.wms_product_receive
-     WHERE doc_type = $1 AND status = $2 AND ref_doc_no = $3 AND warehouse_code = $4
-     ORDER BY doc_no DESC LIMIT 1`,
-    [DOC_TYPE.count, RECEIVE_STATUS.draft, po, wh],
+  // Block duplicate: no PO may sit on more than one OPEN count sheet per warehouse.
+  const dup = await query<{ po_no: string; doc_no: string }>(
+    `SELECT rp.po_no, h.doc_no FROM public.wms_product_receive h
+     JOIN public.wms_product_receive_po rp ON rp.doc_no = h.doc_no
+     WHERE h.doc_type = $1 AND h.status = $2 AND h.warehouse_code = $3 AND rp.po_no = ANY($4)
+     ORDER BY h.doc_no DESC LIMIT 1`,
+    [DOC_TYPE.count, RECEIVE_STATUS.draft, wh, poNos],
   );
   if (dup[0]) {
     return NextResponse.json(
-      { error: `ໃບສັ່ງຊື້ ${po} ມີໃບກວດນັບຄ້າງຢູ່ແລ້ວ: ${dup[0].doc_no}`, existing_count_no: dup[0].doc_no },
+      { error: `ໃບສັ່ງຊື້ ${dup[0].po_no} ມີໃບກວດນັບຄ້າງຢູ່ແລ້ວ: ${dup[0].doc_no}`, existing_count_no: dup[0].doc_no },
       { status: 409 },
     );
   }
@@ -128,13 +159,24 @@ export async function POST(request: Request) {
     await client.query("BEGIN");
     const docNo = await genDocNo(client, "CK");
 
+    // Header keeps the primary (first) PO in ref_doc_no for backward compat;
+    // the full PO list lives in wms_product_receive_po.
+    const primarySupplier = posList[0].supplier_code || supplier || null;
     await client.query(
       `INSERT INTO public.wms_product_receive
          (doc_no, doc_date, doc_time, status, doc_type, warehouse_code, supplier_code,
           remark, creator_code, ref_doc_no, create_datetime, create_date_time_now)
        VALUES ($1, CURRENT_DATE, to_char(now(),'HH24:MI'), $2, $3, $4, $5, $6, $7, $8, now(), now())`,
-      [docNo, RECEIVE_STATUS.draft, DOC_TYPE.count, wh, supplier || null, remark || null, session.employee_code, po],
+      [docNo, RECEIVE_STATUS.draft, DOC_TYPE.count, wh, primarySupplier, remark || null, session.employee_code, primaryPo],
     );
+    // The sheet's PO list (1 header → N POs).
+    for (let i = 0; i < posList.length; i++) {
+      await client.query(
+        `INSERT INTO public.wms_product_receive_po (doc_no, po_no, wh_code, supplier_code, line_order, create_date_time_now)
+         VALUES ($1, $2, $3, $4, $5, now())`,
+        [docNo, posList[i].po_no, wh, posList[i].supplier_code || null, i + 1],
+      );
+    }
     if (pack) {
       await client.query(
         `INSERT INTO public.wms_product_receive_ref (doc_no, ref_doc_no, line_order, create_date_time_now)
@@ -156,11 +198,11 @@ export async function POST(request: Request) {
     // Skipped when this warehouse's RECEIVE menu has SN off.
     const snReceiveOn = await warehouseSnEnabled(wh, "receive", client);
     const sn = snReceiveOn
-      ? await writeCountSerials(client, docNo, lines.map((l) => ({ item_code: l.item_code, qty: l.qty, serials: l.serials })), po)
+      ? await writeCountSerials(client, docNo, lines.map((l) => ({ item_code: l.item_code, qty: l.qty, serials: l.serials })), poNos)
       : { generated: 0, manual: 0, reused: 0, serializedNoCategory: 0 };
 
     await client.query("COMMIT");
-    return NextResponse.json({ ok: true, count_code: docNo, lines: lines.length, gen_isn: sn.generated, reused_sn: sn.reused, manual_sn: sn.manual });
+    return NextResponse.json({ ok: true, count_code: docNo, pos: poNos.length, lines: lines.length, gen_isn: sn.generated, reused_sn: sn.reused, manual_sn: sn.manual });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     return NextResponse.json({ error: err instanceof Error ? err.message : "ບໍ່ສຳເລັດ" }, { status: 500 });

@@ -6,7 +6,8 @@ import RSelect, { type ROption } from "@/components/ui/RSelect";
 
 export type WarehouseOption = { code: string; name: string | null };
 type Hit = { item_code: string; item_name: string | null; unit_code: string | null; wh_balance: string | null };
-type Line = { item_code: string; item_name: string | null; unit_code: string | null; qty: string };
+type ShelfOption = { code: string; name: string | null; is_defect: boolean; is_damage: boolean };
+type Line = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; shelfFrom: string; shelfTo: string };
 
 type ReqDoc = { doc_no: string; doc_date: string | null; doc_time: string | null; wh_from: string | null; wh_to: string | null; wh_from_name: string | null; wh_to_name: string | null; remark: string | null; status: number | null; want_date: string | null; line_count: number; pulled: number; req_qty: string; to_transit: string; in_transit: string; received: string };
 
@@ -25,7 +26,7 @@ function statusOf(d: ReqDoc): StatusInfo {
   if (d.pulled > 0) return { key: "pulled", label: "ດຶງໄປແລ້ວ", cls: "bg-violet-50 text-violet-700 ring-1 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300" };
   return { key: "wait", label: "ລໍຖ້າຈ່າຍ", cls: "bg-zinc-100 text-zinc-500 ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-400" };
 }
-type DetailLine = { item_code: string; item_name: string | null; unit_code: string | null; req_qty: string; issued: string; in_transit?: string; received?: string; remaining: string };
+type DetailLine = { item_code: string; item_name: string | null; unit_code: string | null; req_qty: string; issued: string; in_transit?: string; received?: string; remaining: string; shelf_from?: string | null; shelf_to?: string | null };
 
 function ddmm(d: string | null) { if (!d) return "—"; const [y, m, day] = d.split("-"); return day ? `${day}-${m}-${y}` : d; }
 
@@ -54,6 +55,8 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
   const [lines, setLines] = useState<Line[]>([]);
   const [search, setSearch] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
+  const [shelvesFrom, setShelvesFrom] = useState<ShelfOption[]>([]);
+  const [shelvesTo, setShelvesTo] = useState<ShelfOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [editDoc, setEditDoc] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
@@ -78,7 +81,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
     setEditDoc(d.doc_no);
     setWhTo(d.wh_to ?? ""); setWhFrom(d.wh_from ?? "");
     setWantDate(d.want_date ?? ""); setTitle(d.remark ?? "");
-    setLines(dl.map((l) => ({ item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: String(Number.parseFloat(l.req_qty) || 0) })));
+    setLines(dl.map((l) => ({ item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: String(Number.parseFloat(l.req_qty) || 0), shelfFrom: l.shelf_from ?? "", shelfTo: l.shelf_to ?? "" })));
     setMode("create");
   }
 
@@ -125,6 +128,31 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
   const toOpt = (w: WarehouseOption): ROption => ({ value: w.code, label: w.name ?? w.code, sub: w.code });
   const destOptions = useMemo(() => destWarehouses.map(toOpt), [destWarehouses]);
   const fromOptions = useMemo(() => allWarehouses.filter((w) => w.code !== whTo).map(toOpt), [allWarehouses, whTo]);
+  const shelfOpt = (s: ShelfOption): ROption => ({ value: s.code, label: s.name || s.code, sub: s.code });
+  const shelfFromOptions = useMemo(() => shelvesFrom.map(shelfOpt), [shelvesFrom]);
+  const shelfToOptions = useMemo(() => shelvesTo.map(shelfOpt), [shelvesTo]);
+
+  // Load the shelf (ສະພາບ/ທີ່ເກັບ) masters for the source + dest warehouses.
+  useEffect(() => {
+    if (!whFrom) { setShelvesFrom([]); return; }
+    let cancelled = false;
+    (async () => {
+      const res = await fetch(`/api/movements/shelves?wh=${encodeURIComponent(whFrom)}`);
+      const data = (await res.json()) as { shelves?: ShelfOption[] };
+      if (!cancelled) setShelvesFrom(data.shelves ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [whFrom]);
+  useEffect(() => {
+    if (!whTo) { setShelvesTo([]); return; }
+    let cancelled = false;
+    (async () => {
+      const res = await fetch(`/api/movements/shelves?wh=${encodeURIComponent(whTo)}`);
+      const data = (await res.json()) as { shelves?: ShelfOption[] };
+      if (!cancelled) setShelvesTo(data.shelves ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [whTo]);
 
   useEffect(() => {
     if (!search.trim() || !whFrom) { setHits([]); return; }
@@ -139,7 +167,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
   function addHit(h: Hit) {
     setHits([]); setSearch("");
     if (lines.some((l) => l.item_code === h.item_code)) { showToast("err", "ມີໃນລາຍການແລ້ວ"); return; }
-    setLines((p) => [{ item_code: h.item_code, item_name: h.item_name, unit_code: h.unit_code, qty: "1" }, ...p]);
+    setLines((p) => [{ item_code: h.item_code, item_name: h.item_name, unit_code: h.unit_code, qty: "1", shelfFrom: "", shelfTo: "" }, ...p]);
     setTimeout(() => searchRef.current?.focus(), 50);
   }
 
@@ -149,7 +177,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
     if (ready.length === 0) { showToast("err", "ກະລຸນາเพิ่มสินค้า"); return; }
     setSubmitting(true);
     try {
-      const payloadLines = ready.map((l) => ({ item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: Number.parseFloat(l.qty) }));
+      const payloadLines = ready.map((l) => ({ item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: Number.parseFloat(l.qty), shelf_from: l.shelfFrom || null, shelf_to: l.shelfTo || null }));
       const res = await fetch(`/api/movements/transfer-request`, {
         method: editDoc ? "PATCH" : "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editDoc
@@ -250,7 +278,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
                               const rcv = Number.parseFloat(ln.received ?? "0") || 0;
                               return (
                                 <tr key={ln.item_code}>
-                                  <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{ln.item_code}</span><div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{ln.item_name}</div>{notesByDoc[d.doc_no]?.[ln.item_code] && <div className="mt-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">⚠ {notesByDoc[d.doc_no][ln.item_code]}</div>}</td>
+                                  <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{ln.item_code}</span><div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{ln.item_name}</div>{(ln.shelf_from || ln.shelf_to) && <div className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-400">ສະພາບ: <span className="font-mono">{ln.shelf_from ?? "—"}</span> → <span className="font-mono">{ln.shelf_to ?? "—"}</span></div>}{notesByDoc[d.doc_no]?.[ln.item_code] && <div className="mt-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">⚠ {notesByDoc[d.doc_no][ln.item_code]}</div>}</td>
                                   <td className="px-4 py-2 text-right font-mono tabular-nums">{ln.req_qty}<span className="ml-1 text-[10px] text-zinc-400">{ln.unit_code}</span></td>
                                   <td className="px-4 py-2 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400">{ln.issued}</td>
                                   <td className={`px-4 py-2 text-right font-mono tabular-nums ${inT > 0.0001 ? "font-bold text-amber-600 dark:text-amber-400" : "text-zinc-400"}`}>{inT > 0.0001 ? inT : "—"}</td>
@@ -357,12 +385,14 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
           ) : (
             <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
               <table className="w-full text-sm">
-                <thead><tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase text-zinc-500 dark:bg-zinc-800/50"><th className="px-4 py-2.5">ສິນຄ້າ</th><th className="px-4 py-2.5 text-center">ຈຳນວນຂໍ</th><th className="w-8" /></tr></thead>
+                <thead><tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase text-zinc-500 dark:bg-zinc-800/50"><th className="px-4 py-2.5">ສິນຄ້າ</th><th className="px-4 py-2.5 text-center">ຈຳນວນຂໍ</th><th className="px-3 py-2.5">ສະພາບ (ຈາກ)</th><th className="px-3 py-2.5">ສະພາບ (ເຂົ້າ)</th><th className="w-8" /></tr></thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {lines.map((l) => (
                     <tr key={l.item_code}>
                       <td className="px-4 py-2.5"><span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{l.item_code}</span><div className="max-w-md truncate text-[13px]">{l.item_name}</div></td>
                       <td className="px-4 py-2.5 text-center"><input type="number" inputMode="decimal" value={l.qty} onChange={(e) => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, qty: e.target.value } : x))} className="w-24 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:ring-zinc-800" /><span className="ml-1 text-[10px] text-zinc-400">{l.unit_code}</span></td>
+                      <td className="px-3 py-2.5"><div className="min-w-[160px]"><RSelect size="sm" value={l.shelfFrom} options={shelfFromOptions} onChange={(v) => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, shelfFrom: v } : x))} placeholder="— ສະພາບ —" /></div></td>
+                      <td className="px-3 py-2.5"><div className="min-w-[160px]"><RSelect size="sm" value={l.shelfTo} options={shelfToOptions} onChange={(v) => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, shelfTo: v } : x))} placeholder="— ສະພາບ —" /></div></td>
                       <td className="px-2 py-2.5 text-right"><button type="button" onClick={() => setLines((p) => p.filter((x) => x.item_code !== l.item_code))} className="rounded p-1 text-zinc-300 hover:text-rose-500">✕</button></td>
                     </tr>
                   ))}

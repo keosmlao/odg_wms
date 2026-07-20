@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertIcon, CheckIcon } from "@/components/ui/Icons";
+import { AlertIcon, CheckIcon, PlusIcon, SearchIcon } from "@/components/ui/Icons";
 import { estimatePalletPositions } from "@/lib/capacity";
 
-type PoInfo = { wh_code: string; wh_name: string | null; cust_code: string | null; cust_name: string | null };
+type PoSummary = { po_no: string; cust_code: string | null; cust_name: string | null };
+type WhInfo = { wh_code: string; wh_name: string | null };
 type PackCandidate = { pack_no: string; pack_date: string | null; line_count: number; total_qty: string };
-type PoLine = {
+type LineSource = { po_no: string; ordered: string; remaining: string };
+type MergedLineIn = {
   item_code: string;
   item_name: string | null;
   unit_code: string | null;
@@ -16,6 +18,7 @@ type PoLine = {
   is_isn: boolean;
   pallet?: string | null;
   stack?: string | null;
+  sources: LineSource[];
 };
 type WorkLine = {
   item_code: string;
@@ -25,13 +28,11 @@ type WorkLine = {
   remaining: number;
   isIsn: boolean;
   qty: string;
-  serials: string[]; // manual serials (blank = auto ISN at receipt)
-  mfd: string;
-  expire: string;
-  showSn: boolean;
-  pallet: number; // units per pallet from PH
+  pallet: number;
   stack: number;
+  sources: { po_no: string; remaining: number }[];
 };
+type PendingPo = { po_no: string; cust_name: string | null };
 
 function fmt(v: string | number | null | undefined) {
   const n = typeof v === "number" ? v : Number.parseFloat(v ?? "");
@@ -43,16 +44,21 @@ function parsedQty(raw: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: string }) {
+export default function CountSheetWizard({ po = "", wh = "" }: { po?: string; wh?: string }) {
   const router = useRouter();
-  const whParam = wh ? `&wh=${encodeURIComponent(wh)}` : "";
-  const [poInfo, setPoInfo] = useState<PoInfo | null>(null);
-  const [existingCount, setExistingCount] = useState<string | null>(null);
+
+  const [poNos, setPoNos] = useState<string[]>(po ? [po] : []);
+  const [posInfo, setPosInfo] = useState<PoSummary[]>([]);
+  const [whInfo, setWhInfo] = useState<WhInfo | null>(wh ? { wh_code: wh, wh_name: null } : null);
+  const whRef = useRef<string>(wh);
+  const [lines, setLines] = useState<WorkLine[]>([]);
   const [packs, setPacks] = useState<PackCandidate[]>([]);
   const [packRef, setPackRef] = useState("");
-  const [lines, setLines] = useState<WorkLine[]>([]);
+  const [existingCounts, setExistingCounts] = useState<{ po_no: string; doc_no: string }[]>([]);
+  const [availablePos, setAvailablePos] = useState<PendingPo[]>([]);
+  const [poInput, setPoInput] = useState("");
   const [remark, setRemark] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!po);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
@@ -61,27 +67,59 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
     setTimeout(() => setToast(null), 4000);
   }
 
-  function toWorkLines(src: PoLine[]): WorkLine[] {
-    return src.map((l) => {
-      const ordered = Number.parseFloat(l.ordered) || 0;
-      const remaining = Number.parseFloat(l.remaining) || 0;
-      return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, ordered, remaining, isIsn: l.is_isn, qty: String(remaining > 0 ? remaining : 0), serials: [], mfd: "", expire: "", showSn: false, pallet: Number.parseFloat(l.pallet ?? "") || 0, stack: Number.parseFloat(l.stack ?? "") || 0 };
+  // Merge freshly-fetched lines onto existing ones, preserving typed counts.
+  const mergeLines = useCallback((incoming: MergedLineIn[]) => {
+    setLines((prev) => {
+      const prevQty = new Map(prev.map((l) => [l.item_code, l.qty]));
+      return incoming.map((l) => {
+        const remaining = Number.parseFloat(l.remaining) || 0;
+        const ordered = Number.parseFloat(l.ordered) || 0;
+        const kept = prevQty.get(l.item_code);
+        return {
+          item_code: l.item_code,
+          item_name: l.item_name,
+          unit_code: l.unit_code,
+          ordered,
+          remaining,
+          isIsn: l.is_isn,
+          qty: kept ?? String(remaining > 0 ? remaining : 0),
+          pallet: Number.parseFloat(l.pallet ?? "") || 0,
+          stack: Number.parseFloat(l.stack ?? "") || 0,
+          sources: (l.sources ?? []).map((s) => ({ po_no: s.po_no, remaining: Number.parseFloat(s.remaining) || 0 })),
+        };
+      });
     });
-  }
+  }, []);
 
-  // Pull the PO's pending lines directly on mount.
+  // Reload merged lines whenever the selected PO set changes.
   useEffect(() => {
+    if (poNos.length === 0) { setLines([]); setPosInfo([]); setPacks([]); setExistingCounts([]); setLoading(false); return; }
     let cancelled = false;
     (async () => {
+      setLoading(true);
       try {
-        const res = await fetch(`/api/receive/packing-list?po=${encodeURIComponent(po)}${whParam}`);
-        const data = (await res.json()) as { po?: PoInfo; lines?: PoLine[]; packs?: PackCandidate[]; existing_count?: string | null; error?: string };
+        const qs = new URLSearchParams();
+        poNos.forEach((p) => qs.append("po", p));
+        if (whRef.current) qs.set("wh", whRef.current);
+        const res = await fetch(`/api/receive/packing-list?${qs}`);
+        const data = (await res.json()) as {
+          wh?: WhInfo; pos?: PoSummary[]; lines?: MergedLineIn[]; packs?: PackCandidate[];
+          existing_counts?: { po_no: string; doc_no: string }[]; errors?: { po_no: string; error: string }[]; error?: string;
+        };
         if (cancelled) return;
         if (!res.ok) throw new Error(data.error ?? "ໂຫຼດບໍ່ສຳເລັດ");
-        setPoInfo(data.po ?? null);
-        setExistingCount(data.existing_count ?? null);
+        // Drop POs that aren't valid in this warehouse (e.g. different warehouse).
+        if (data.errors && data.errors.length > 0) {
+          const bad = new Set(data.errors.map((e) => e.po_no));
+          showToast("err", data.errors.map((e) => `${e.po_no}: ${e.error}`).join(" · "));
+          const good = poNos.filter((p) => !bad.has(p));
+          if (good.length !== poNos.length) { setPoNos(good); return; }
+        }
+        if (data.wh) { setWhInfo(data.wh); whRef.current = data.wh.wh_code; }
+        setPosInfo(data.pos ?? []);
         setPacks(data.packs ?? []);
-        setLines(toWorkLines(data.lines ?? []));
+        setExistingCounts(data.existing_counts ?? []);
+        mergeLines(data.lines ?? []);
       } catch (e) {
         if (!cancelled) showToast("err", e instanceof Error ? e.message : "ໂຫຼດບໍ່ສຳເລັດ");
       } finally {
@@ -89,25 +127,61 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
       }
     })();
     return () => { cancelled = true; };
-  }, [po]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poNos.join("|")]);
 
-  // Optional: replace lines with a specific packing list's lines.
+  // Once the warehouse is known, load its pending POs for the quick picker.
+  useEffect(() => {
+    const code = whInfo?.wh_code;
+    if (!code) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/receive/pending?wh=${encodeURIComponent(code)}&type=po&limit=1000`);
+        const data = (await res.json()) as { lines?: { po_no: string; cust_name: string | null }[] };
+        if (cancelled) return;
+        const seen = new Map<string, PendingPo>();
+        for (const l of data.lines ?? []) if (!seen.has(l.po_no)) seen.set(l.po_no, { po_no: l.po_no, cust_name: l.cust_name });
+        setAvailablePos(Array.from(seen.values()));
+      } catch { /* non-fatal */ }
+    })();
+    return () => { cancelled = true; };
+  }, [whInfo?.wh_code]);
+
+  function addPo(code: string) {
+    const p = code.trim();
+    if (!p) return;
+    if (poNos.includes(p)) { showToast("err", `PO ${p} ຢູ່ໃນລາຍການແລ້ວ`); return; }
+    setPackRef("");
+    setPoNos((prev) => [...prev, p]);
+    setPoInput("");
+  }
+  function removePo(code: string) {
+    setPoNos((prev) => prev.filter((p) => p !== code));
+  }
+
+  // Optional (single-PO only): replace lines from a specific packing list.
   async function loadFromPack(packNo: string) {
     const p = packNo.trim();
     setPackRef(p);
-    if (!p) return;
+    if (!p || poNos.length !== 1) return;
     try {
-      const res = await fetch(`/api/receive/packing-list?po=${encodeURIComponent(po)}&pack=${encodeURIComponent(p)}${whParam}`);
-      const data = (await res.json()) as { lines?: (PoLine & { pack_qty?: string })[]; error?: string };
+      const qs = new URLSearchParams({ po: poNos[0], pack: p });
+      if (whRef.current) qs.set("wh", whRef.current);
+      const res = await fetch(`/api/receive/packing-list?${qs}`);
+      const data = (await res.json()) as { lines?: (MergedLineIn & { pack_qty?: string })[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? "ໂຫຼດບໍ່ສຳເລັດ");
       if (!data.lines || data.lines.length === 0) { showToast("err", "ບໍ່ພົບລາຍການໃນ packing list ນີ້"); return; }
-      // packing-list lines carry pack_qty; use it as the default counted qty.
       setLines(data.lines.map((l) => {
         const ordered = Number.parseFloat(l.ordered) || 0;
         const remaining = Number.parseFloat(l.remaining) || 0;
-        const packQty = Number.parseFloat(l.pack_qty ?? l.remaining) || 0;
+        const packQty = Number.parseFloat((l as { pack_qty?: string }).pack_qty ?? l.remaining) || 0;
         const dflt = remaining > 0 ? Math.min(packQty, remaining) : packQty;
-        return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, ordered, remaining, isIsn: l.is_isn, qty: String(dflt), serials: [], mfd: "", expire: "", showSn: false, pallet: Number.parseFloat(l.pallet ?? "") || 0, stack: Number.parseFloat(l.stack ?? "") || 0 };
+        return {
+          item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, ordered, remaining, isIsn: l.is_isn,
+          qty: String(dflt), pallet: Number.parseFloat(l.pallet ?? "") || 0, stack: Number.parseFloat(l.stack ?? "") || 0,
+          sources: (l.sources ?? []).map((s) => ({ po_no: s.po_no, remaining: Number.parseFloat(s.remaining) || 0 })),
+        };
       }));
       showToast("ok", `ດຶງຈາກ ${p} ແລ້ວ`);
     } catch (e) {
@@ -121,24 +195,15 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
   function fillAll() {
     setLines((prev) => prev.map((l) => ({ ...l, qty: String(l.remaining > 0 ? l.remaining : 0) })));
   }
-  function toggleSn(l: WorkLine) {
-    const n = Math.max(0, Math.round(parsedQty(l.qty) ?? 0));
-    const serials = l.serials.length === n ? l.serials : Array.from({ length: n }, (_, i) => l.serials[i] ?? "");
-    setLine(l.item_code, { showSn: !l.showSn, serials });
-  }
-  function setSerial(itemCode: string, idx: number, value: string) {
-    setLines((prev) => prev.map((l) => (l.item_code === itemCode ? { ...l, serials: l.serials.map((s, i) => (i === idx ? value : s)) } : l)));
-  }
 
   const validLines = lines.filter((l) => (parsedQty(l.qty) ?? 0) > 0);
 
   async function submit() {
-    if (!poInfo) return;
-    if (validLines.length === 0) { showToast("err", "ບໍ່ມີລາຍການກວດນັບ"); return; }
+    if (poNos.length === 0 || !whInfo) { showToast("err", "ຍັງບໍ່ໄດ້ເລືອກ PO"); return; }
+    if (validLines.length === 0) { showToast("err", "ບໍ່ມີລາຍການກວດນັບ" ); return; }
     for (const l of validLines) {
       const q = parsedQty(l.qty)!;
       if (l.remaining > 0 && q > l.remaining + 1e-6) { showToast("err", `${l.item_code}: ກວດນັບເກີນຄ້າງ (${fmt(l.remaining)})`); return; }
-      if (l.serials.filter((s) => s.trim() !== "").length > q + 1e-6) { showToast("err", `${l.item_code}: SN ເກີນຈຳນວນ`); return; }
     }
     setSubmitting(true);
     try {
@@ -146,22 +211,17 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          po_no: po,
-          pack_no: packRef || null,
-          wh_code: poInfo.wh_code,
-          supplier_code: poInfo.cust_code,
+          pos: posInfo.length > 0 ? posInfo.map((p) => ({ po_no: p.po_no, supplier_code: p.cust_code })) : poNos.map((p) => ({ po_no: p })),
+          pack_no: poNos.length === 1 ? packRef || null : null,
+          wh_code: whInfo.wh_code,
+          supplier_code: posInfo[0]?.cust_code ?? null,
           remark,
-          lines: validLines.map((l) => ({
-            item_code: l.item_code,
-            item_name: l.item_name,
-            unit_code: l.unit_code,
-            qty: parsedQty(l.qty),
-          })),
+          lines: validLines.map((l) => ({ item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: parsedQty(l.qty) })),
         }),
       });
       const data = (await res.json()) as { ok?: boolean; count_code?: string; existing_count_no?: string; error?: string };
       if (!res.ok || !data.ok) {
-        if (data.existing_count_no) setExistingCount(data.existing_count_no);
+        if (data.existing_count_no) setExistingCounts((prev) => [...prev, { po_no: "", doc_no: data.existing_count_no! }]);
         throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       }
       showToast("ok", `ສ້າງໃບກວດນັບ ${data.count_code} ສຳເລັດ`);
@@ -177,42 +237,95 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
   const primaryBtn = "inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 transition hover:shadow-lg disabled:opacity-50";
   const ghostBtn = "inline-flex items-center justify-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800";
 
-  if (loading) return <div className="rounded-2xl bg-white px-4 py-12 text-center text-sm text-zinc-500 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">ກຳລັງໂຫຼດ...</div>;
-  if (!poInfo) return <div className="rounded-2xl bg-white px-4 py-12 text-center text-sm text-rose-500 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">ບໍ່ພົບ PO ນີ້</div>;
+  const supplierName = (code: string) => posInfo.find((p) => p.po_no === code)?.cust_name ?? null;
+  const notAddedAvailable = availablePos.filter((a) => !poNos.includes(a.po_no));
 
   return (
     <div className="space-y-5">
+      {/* Warehouse + selected POs */}
       <div className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-          <span className="font-mono font-bold text-zinc-900 dark:text-zinc-50">PO {po}</span>
-          <span className="text-zinc-600 dark:text-zinc-300">{poInfo.cust_name ?? poInfo.cust_code ?? "—"}</span>
-          <span className="text-xs text-zinc-500">ສາງ {poInfo.wh_code}{poInfo.wh_name ? ` · ${poInfo.wh_name}` : ""}</span>
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-xs font-semibold text-zinc-500">ສາງ</span>
+          <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+            {whInfo ? `${whInfo.wh_code}${whInfo.wh_name ? ` · ${whInfo.wh_name}` : ""}` : "ຈະກຳນົດຈາກ PO ທຳອິດ"}
+          </span>
+          <span className="ml-auto text-xs text-zinc-400">PO ໃນໃບ: {poNos.length}</span>
         </div>
+
+        {/* selected PO chips */}
+        <div className="flex flex-wrap gap-1.5">
+          {poNos.length === 0 && <span className="text-xs text-zinc-400">ຍັງບໍ່ໄດ້ເລືອກ PO — ເພີ່ມດ້ານລຸ່ມ</span>}
+          {poNos.map((p) => (
+            <span key={p} className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 py-1 pl-2.5 pr-1 text-xs font-semibold text-zinc-700 ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:ring-zinc-700">
+              <span className="font-mono">PO {p}</span>
+              {supplierName(p) && <span className="font-normal text-zinc-400">· {supplierName(p)}</span>}
+              <button type="button" onClick={() => removePo(p)} className="flex h-4 w-4 items-center justify-center rounded-full text-zinc-400 transition hover:bg-rose-100 hover:text-rose-600 dark:hover:bg-rose-500/20" aria-label="ເອົາ PO ອອກ">×</button>
+            </span>
+          ))}
+        </div>
+
+        {/* add PO: type/scan + quick-pick */}
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div className="relative min-w-[220px] flex-1">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+            <input
+              value={poInput}
+              onChange={(e) => setPoInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addPo(poInput)}
+              placeholder="ພິມ / ສະແກນ ເລກ PO ເພື່ອເພີ່ມ..."
+              className={`${inputCls} pl-9`}
+            />
+          </div>
+          <button type="button" onClick={() => addPo(poInput)} disabled={!poInput.trim()} className={primaryBtn}>
+            <PlusIcon className="h-4 w-4" /> ເພີ່ມ PO
+          </button>
+        </div>
+
+        {notAddedAvailable.length > 0 && (
+          <div className="mt-3">
+            <div className="mb-1 text-[11px] font-semibold text-zinc-400">PO ຄ້າງຮັບໃນສາງນີ້ ({notAddedAvailable.length}) — ກົດເພື່ອເພີ່ມ</div>
+            <div className="flex flex-wrap gap-1.5">
+              {notAddedAvailable.slice(0, 12).map((a) => (
+                <button key={a.po_no} type="button" onClick={() => addPo(a.po_no)} className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-900/50" title={a.cust_name ?? ""}>
+                  + {a.po_no}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {existingCount && (
+      {existingCounts.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/50">
           <AlertIcon className="h-4 w-4 shrink-0" />
-          ⚠️ PO ນີ້ມີໃບກວດນັບຄ້າງຢູ່ແລ້ວ: <span className="font-mono font-bold">{existingCount}</span>
-          <button type="button" onClick={() => router.push(`/movements/receive/count/${encodeURIComponent(existingCount)}`)} className="ml-auto rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white">ເປີດໃບເກົ່າ</button>
+          ⚠️ ມີໃບກວດນັບຄ້າງຢູ່ແລ້ວ:
+          {existingCounts.map((e) => (
+            <button key={e.doc_no} type="button" onClick={() => router.push(`/movements/receive/count/${encodeURIComponent(e.doc_no)}`)} className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-bold text-white">
+              {e.po_no ? `${e.po_no} → ` : ""}{e.doc_no}
+            </button>
+          ))}
         </div>
       )}
 
       <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-        {/* optional packing-list reference */}
-        <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">ເລກ packing list (ທາງເລືອກ)</label>
-            <input value={packRef} onChange={(e) => setPackRef(e.target.value)} onKeyDown={(e) => e.key === "Enter" && loadFromPack(packRef)} placeholder="ວ່າງ = ໃຊ້ລາຍການຈາກ PO" className={inputCls} />
-          </div>
-          {packRef.trim() && <button type="button" onClick={() => loadFromPack(packRef)} className={ghostBtn}>ດຶງຕາມ packing list</button>}
-        </div>
-        {packs.length > 0 && (
-          <div className="mb-4 flex flex-wrap gap-1.5">
-            {packs.slice(0, 8).map((p) => (
-              <button key={p.pack_no} type="button" onClick={() => loadFromPack(p.pack_no)} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${packRef === p.pack_no ? "bg-emerald-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300"}`}>{p.pack_no}</button>
-            ))}
-          </div>
+        {/* optional packing-list reference (single PO only) */}
+        {poNos.length === 1 && (
+          <>
+            <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">ເລກ packing list (ທາງເລືອກ)</label>
+                <input value={packRef} onChange={(e) => setPackRef(e.target.value)} onKeyDown={(e) => e.key === "Enter" && loadFromPack(packRef)} placeholder="ວ່າງ = ໃຊ້ລາຍການຈາກ PO" className={inputCls} />
+              </div>
+              {packRef.trim() && <button type="button" onClick={() => loadFromPack(packRef)} className={ghostBtn}>ດຶງຕາມ packing list</button>}
+            </div>
+            {packs.length > 0 && (
+              <div className="mb-4 flex flex-wrap gap-1.5">
+                {packs.slice(0, 8).map((p) => (
+                  <button key={p.pack_no} type="button" onClick={() => loadFromPack(p.pack_no)} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${packRef === p.pack_no ? "bg-emerald-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300"}`}>{p.pack_no}</button>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         <div className="mb-2 flex items-center justify-between">
@@ -220,8 +333,10 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
           <button type="button" onClick={fillAll} className="text-xs font-semibold text-emerald-600 hover:underline dark:text-emerald-400">ກວດນັບ = ຄ້າງ ທຸກລາຍການ</button>
         </div>
 
-        {lines.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-zinc-200 py-10 text-center text-xs text-zinc-400 dark:border-zinc-800">ບໍ່ມີລາຍການຄ້າງຮັບໃນ PO ນີ້</div>
+        {loading ? (
+          <div className="rounded-xl border border-dashed border-zinc-200 py-10 text-center text-xs text-zinc-400 dark:border-zinc-800">ກຳລັງໂຫຼດ...</div>
+        ) : lines.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-zinc-200 py-10 text-center text-xs text-zinc-400 dark:border-zinc-800">{poNos.length === 0 ? "ເພີ່ມ PO ເພື່ອດຶງລາຍການ" : "ບໍ່ມີລາຍການຄ້າງຮັບ"}</div>
         ) : (
           <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
             <table className="w-full text-sm">
@@ -238,12 +353,18 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
                 {lines.map((l) => {
                   const q = parsedQty(l.qty);
                   const over = l.remaining > 0 && q !== null && q > l.remaining + 1e-6;
+                  const multiSrc = l.sources.length > 1;
                   return (
                     <tr key={l.item_code} className="align-top">
                       <td className="px-4 py-2.5">
                         <div className="font-mono text-[11px] font-bold text-emerald-700 dark:text-emerald-400">{l.item_code}{l.isIsn && <span className="ml-1 rounded bg-violet-100 px-1 text-[9px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">SN</span>}</div>
                         <div className="max-w-md truncate text-xs text-zinc-700 dark:text-zinc-300" title={l.item_name ?? ""}>{l.item_name ?? "—"}</div>
-                        {l.isIsn && <div className="mt-0.5 text-[10px] text-violet-500">gen ISN ອັດຕະໂນมัด {Math.round(q ?? 0)} ໜ່ວຍ ຕอนບັນທຶก</div>}
+                        {multiSrc && (
+                          <div className="mt-0.5 flex flex-wrap gap-1 text-[9px] text-zinc-400">
+                            {l.sources.map((s) => <span key={s.po_no} className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">{s.po_no}: {fmt(s.remaining)}</span>)}
+                          </div>
+                        )}
+                        {l.isIsn && <div className="mt-0.5 text-[10px] text-violet-500">gen ISN ອັດຕະໂນມັດ {Math.round(q ?? 0)} ໜ່ວຍ ຕອນບັນທຶກ</div>}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-zinc-500">{fmt(l.ordered)}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold tabular-nums text-amber-600 dark:text-amber-400">{l.remaining > 0 ? fmt(l.remaining) : "—"}</td>
@@ -255,9 +376,7 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
                         {over && <div className="mt-0.5 text-center text-[10px] text-red-500">ເກີນຄ້າງ</div>}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-indigo-600 dark:text-indigo-400">
-                        {estimatePalletPositions(q ?? 0, l.pallet) > 0
-                          ? `~${estimatePalletPositions(q ?? 0, l.pallet)}`
-                          : "—"}
+                        {estimatePalletPositions(q ?? 0, l.pallet) > 0 ? `~${estimatePalletPositions(q ?? 0, l.pallet)}` : "—"}
                       </td>
                     </tr>
                   );
@@ -282,7 +401,7 @@ export default function CountSheetWizard({ po, wh = "" }: { po: string; wh?: str
 
         <div className="mt-5 flex items-center justify-between gap-2">
           <button type="button" onClick={() => router.push("/movements/receive")} className={ghostBtn}>← ຍົກເລີກ</button>
-          <button type="button" onClick={submit} disabled={submitting || validLines.length === 0} className={primaryBtn}>
+          <button type="button" onClick={submit} disabled={submitting || validLines.length === 0 || poNos.length === 0} className={primaryBtn}>
             <CheckIcon className="h-4 w-4" />{submitting ? "ກຳລັງບັນທຶກ..." : `ບັນທຶກໃບກວດນັບ ${validLines.length} ລາຍການ`}
           </button>
         </div>

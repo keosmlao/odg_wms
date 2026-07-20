@@ -31,6 +31,17 @@ async function loadHeader(docNo: string) {
   return rows[0] ?? null;
 }
 
+/** The sheet's PO list (falls back to the header's single ref_doc_no). */
+async function loadPos(docNo: string, fallbackPo?: string | null): Promise<string[]> {
+  const rows = await query<{ po_no: string }>(
+    `SELECT po_no FROM public.wms_product_receive_po WHERE doc_no = $1 ORDER BY line_order, roworder`,
+    [docNo],
+  );
+  const list = rows.map((r) => r.po_no).filter(Boolean);
+  if (list.length > 0) return list;
+  return fallbackPo ? [fallbackPo] : [];
+}
+
 export async function GET(_request: Request, ctx: { params: Promise<{ doc: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "ກະລຸນາເຂົ້າສູ່ລະບົບ" }, { status: 401 });
@@ -47,8 +58,17 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
      LEFT JOIN public.wms_product_receive_ref r ON r.doc_no = h.doc_no AND r.line_order = 1
      WHERE h.doc_no = $1 AND h.doc_type = $2`,
     [docNo, DOC_TYPE.count],
-  ))[0] as { wh_code: string | null } | undefined;
+  ))[0] as { wh_code: string | null; po_no: string | null } | undefined;
   if (!header) return NextResponse.json({ error: "ບໍ່ພົບໃບກວດນັບ" }, { status: 404 });
+
+  // Full PO list (with supplier) for this sheet.
+  const pos = await query<{ po_no: string; supplier_code: string | null; cust_name: string | null }>(
+    `SELECT rp.po_no, rp.supplier_code,
+            (SELECT p.cust_name FROM public.odg_po_remain p WHERE p.doc_no = rp.po_no LIMIT 1) AS cust_name
+     FROM public.wms_product_receive_po rp WHERE rp.doc_no = $1 ORDER BY rp.line_order, rp.roworder`,
+    [docNo],
+  );
+  const poList = pos.length > 0 ? pos : (header.po_no ? [{ po_no: header.po_no, supplier_code: null, cust_name: null }] : []);
 
   const accessible = accessibleWarehouses(session);
   if (Array.isArray(accessible) && (header.wh_code === null || !accessible.includes(header.wh_code))) {
@@ -103,7 +123,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
         ),
       ])
     : [[], []];
-  return NextResponse.json({ header, lines, serials, sameLocs, emptyLocs: (emptyLocs as { location: string }[]).map((r) => r.location) });
+  return NextResponse.json({ header, pos: poList, lines, serials, sameLocs, emptyLocs: (emptyLocs as { location: string }[]).map((r) => r.location) });
 }
 
 export async function PUT(request: Request, ctx: { params: Promise<{ doc: string }> }) {
@@ -160,10 +180,11 @@ export async function PUT(request: Request, ctx: { params: Promise<{ doc: string
         [docNo, line.item_code, line.item_name, line.unit_code || null, line.qty],
       );
     }
-    // Re-generate + reserve ISN for the edited counts (reusing held SN of this PO).
-    // Skipped when this warehouse's RECEIVE menu has SN off.
+    // Re-generate + reserve ISN for the edited counts (reusing held SN of the
+    // sheet's PO list). Skipped when this warehouse's RECEIVE menu has SN off.
     if (await warehouseSnEnabled(header.wh_code ?? "", "receive", client)) {
-      await writeCountSerials(client, docNo, lines.map((l) => ({ item_code: l.item_code, qty: l.qty, serials: l.serials })), header.po_no ?? undefined);
+      const poNos = await loadPos(docNo, header.po_no);
+      await writeCountSerials(client, docNo, lines.map((l) => ({ item_code: l.item_code, qty: l.qty, serials: l.serials })), poNos);
     }
     await client.query("COMMIT");
     return NextResponse.json({ ok: true });
@@ -195,20 +216,23 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ doc: st
     await client.query("BEGIN");
     // Reused (held-origin) serials carry already-printed labels — don't destroy
     // them. Release them back to the held pool on a surviving sibling count
-    // sheet of the same PO so they stay reclaimable; then drop only the fresh.
+    // sheet that shares any of this sheet's POs; then drop only the fresh.
+    const poNos = await loadPos(docNo, header.po_no);
     await client.query(
       `UPDATE public.wms_product_receive_serial_detail sd
          SET ref_rec_doc = COALESCE((
                SELECT h2.doc_no FROM public.wms_product_receive h2
-               WHERE h2.ref_doc_no = $2 AND h2.doc_type = $3 AND h2.doc_no <> $1
+               JOIN public.wms_product_receive_po rp2 ON rp2.doc_no = h2.doc_no
+               WHERE rp2.po_no = ANY($2) AND h2.doc_type = $3 AND h2.doc_no <> $1
                ORDER BY h2.doc_no DESC LIMIT 1), sd.ref_rec_doc),
              ignore_sync = 1, is_lock_record = 0, last_update_date_time_now = now()
        WHERE sd.ref_rec_doc = $1 AND COALESCE(sd.is_lock_record,0) = 1`,
-      [docNo, header.po_no, DOC_TYPE.count],
+      [docNo, poNos, DOC_TYPE.count],
     );
     await client.query(`DELETE FROM public.wms_product_receive_serial_detail WHERE ref_rec_doc = $1`, [docNo]);
     await client.query(`DELETE FROM public.wms_product_receive_detail WHERE doc_no = $1`, [docNo]);
     await client.query(`DELETE FROM public.wms_product_receive_ref WHERE doc_no = $1`, [docNo]);
+    await client.query(`DELETE FROM public.wms_product_receive_po WHERE doc_no = $1`, [docNo]);
     await client.query(`DELETE FROM public.wms_product_receive WHERE doc_no = $1`, [docNo]);
     await client.query("COMMIT");
     return NextResponse.json({ ok: true, deleted: docNo });

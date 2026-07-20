@@ -19,6 +19,7 @@ type SheetRow = {
   wh_name: string | null;
   supplier_code: string | null;
   po_no: string | null;
+  po_list: string[] | null;
   pack_no: string | null;
   remark: string | null;
   creator_name: string | null;
@@ -40,7 +41,9 @@ export default async function CountSheetList({ session }: { session: Session; pa
   const sheets = await query<SheetRow>(
     `SELECT h.doc_no, to_char(h.doc_date,'YYYY-MM-DD') AS doc_date, h.doc_time,
             h.warehouse_code AS wh_code, w.name_1 AS wh_name, h.supplier_code,
-            h.ref_doc_no AS po_no, r.ref_doc_no AS pack_no, h.remark,
+            h.ref_doc_no AS po_no,
+            COALESCE(pos.po_list, CASE WHEN h.ref_doc_no IS NULL THEN ARRAY[]::text[] ELSE ARRAY[h.ref_doc_no] END) AS po_list,
+            r.ref_doc_no AS pack_no, h.remark,
             h.creator_code, e.fullname_lo AS creator_name,
             COALESCE(agg.line_count,0) AS line_count, COALESCE(agg.total_qty,0)::text AS total_qty,
             agg.pallet_positions::text AS pallet_positions, COALESCE(sn.sn_count,0) AS sn_count
@@ -48,6 +51,8 @@ export default async function CountSheetList({ session }: { session: Session; pa
      LEFT JOIN public.ic_warehouse w ON w.code = h.warehouse_code
      LEFT JOIN public.odg_employee e ON e.employee_code = h.creator_code
      LEFT JOIN public.wms_product_receive_ref r ON r.doc_no = h.doc_no AND r.line_order = 1
+     LEFT JOIN (SELECT doc_no, array_agg(po_no ORDER BY line_order, roworder) AS po_list
+                FROM public.wms_product_receive_po GROUP BY doc_no) pos ON pos.doc_no = h.doc_no
      LEFT JOIN (SELECT d.doc_no, count(*)::int AS line_count, SUM(d.qty) AS total_qty,
                        SUM(CASE WHEN ph.pallet>0 THEN ceil(d.qty/ph.pallet) ELSE 0 END)::int AS pallet_positions
                 FROM public.wms_product_receive_detail d
@@ -84,7 +89,12 @@ export default async function CountSheetList({ session }: { session: Session; pa
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{s.doc_no}</span>
               <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">ກວດນັບ</span>
-              {s.po_no && <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">PO {s.po_no}</span>}
+              {(s.po_list && s.po_list.length > 0 ? s.po_list : s.po_no ? [s.po_no] : []).slice(0, 3).map((po) => (
+                <span key={po} className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">PO {po}</span>
+              ))}
+              {s.po_list && s.po_list.length > 3 && (
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">+{s.po_list.length - 3} PO</span>
+              )}
               {s.pack_no && <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{s.pack_no}</span>}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
