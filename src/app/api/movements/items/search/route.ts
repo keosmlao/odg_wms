@@ -53,6 +53,10 @@ export async function GET(request: Request) {
     1,
     Math.min(50, Number.parseInt(url.searchParams.get("limit") ?? "20", 10) || 20),
   );
+  // Transfer requests search the SOURCE warehouse's stock, which by design is
+  // any warehouse (not just the requester's own) — the requester's own scope
+  // is enforced separately on the destination side in POST /transfer-request.
+  const anySource = url.searchParams.get("scope") === "any";
 
   if (!wh) {
     return NextResponse.json({ error: "wh ຈຳເປັນ" }, { status: 400 });
@@ -61,9 +65,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ items: [] });
   }
 
-  const accessible = accessibleWarehouses(session);
-  if (Array.isArray(accessible) && !accessible.includes(wh)) {
-    return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
+  if (!anySource) {
+    const accessible = accessibleWarehouses(session);
+    if (Array.isArray(accessible) && !accessible.includes(wh)) {
+      return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
+    }
   }
 
   const like = `%${escapeLike(q)}%`;

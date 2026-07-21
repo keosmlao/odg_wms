@@ -129,8 +129,9 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
   useEffect(() => {
     if (!search.trim() || !whFrom) { setHits([]); return; }
     const t = setTimeout(async () => {
-      const res = await fetch(`/api/movements/items/search?warehouse=${encodeURIComponent(whFrom)}&q=${encodeURIComponent(search.trim())}`);
-      const data = (await res.json()) as { items?: Hit[] };
+      const res = await fetch(`/api/movements/items/search?warehouse=${encodeURIComponent(whFrom)}&q=${encodeURIComponent(search.trim())}&scope=any`);
+      const data = (await res.json()) as { items?: Hit[]; error?: string };
+      if (!res.ok) { showToast("err", data.error || "ຄົ້ນຫາບໍ່ສຳເລັດ"); setHits([]); return; }
       setHits(data.items ?? []);
     }, 250);
     return () => clearTimeout(t);
