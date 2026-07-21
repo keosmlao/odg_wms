@@ -23,20 +23,16 @@ type ItemHit = {
   item_code: string;
   item_name: string | null;
   unit_code: string | null;
-  balance_qty: string | null; // balance at the selected node
+  balance_qty: string | null; // balance at the queried node
   wh_balance: string | null; // total balance in the warehouse
   is_isn: number | null;
 };
 
-type WorkingItem = {
-  item_code: string;
-  item_name: string | null;
-  unit_code: string | null;
-  before_qty: number; // balance at the node (basis for delta)
-  wh_balance: number | null; // total in warehouse (info only)
-  counted: string; // raw input (qty mode)
-  serialized: boolean; // item is ISN-tracked (is_isn)
-  // Serial items adjust by serial: ISN to remove, scanned ISN to add, # to generate.
+/** The fields every counted line shares — enough to compute a delta. */
+type CountLine = {
+  before_qty: number;
+  counted: string;
+  serialized: boolean;
   serialsRemove: string[];
   serialsAdd: string[];
   serialsGenerate: number;
@@ -50,11 +46,16 @@ const REASONS: { code: string; label: string }[] = [
   { code: "other", label: "ອື່ນໆ" },
 ];
 
-const STEPS = [
+type StepDef = { n: number; label: string };
+const PRODUCT_STEPS: StepDef[] = [
+  { n: 1, label: "ນັບສິນຄ້າ" },
+  { n: 2, label: "ຢືນຢັນ" },
+];
+const LOCATION_STEPS: StepDef[] = [
   { n: 1, label: "ບ່ອນຈັດເກັບ" },
   { n: 2, label: "ນັບສິນຄ້າ" },
   { n: 3, label: "ຢືນຢັນ" },
-] as const;
+];
 
 function formatQty(value: string | number | null | undefined) {
   const n = typeof value === "number" ? value : Number.parseFloat(value ?? "");
@@ -73,7 +74,7 @@ function parsedCount(raw: string): number | null {
 }
 
 /** Number of serial changes queued on a serial line. */
-function serialActivity(item: WorkingItem): number {
+function serialActivity(item: CountLine): number {
   return item.serialsRemove.length + item.serialsAdd.length + item.serialsGenerate;
 }
 
@@ -83,11 +84,11 @@ function serialActivity(item: WorkingItem): number {
  * items included — is counted by typing a quantity, matching what the server
  * accepts (it drops serial payloads when the flag is off).
  */
-function bySerial(item: WorkingItem, snOn: boolean): boolean {
+function bySerial(item: CountLine, snOn: boolean): boolean {
   return item.serialized && snOn;
 }
 
-function deltaOf(item: WorkingItem, snOn: boolean): number | null {
+function deltaOf(item: CountLine, snOn: boolean): number | null {
   if (bySerial(item, snOn)) {
     return item.serialsAdd.length + item.serialsGenerate - item.serialsRemove.length;
   }
@@ -96,11 +97,825 @@ function deltaOf(item: WorkingItem, snOn: boolean): number | null {
   return Math.round((c - item.before_qty) * 1e6) / 1e6;
 }
 
-export default function AdjustClient({
-  warehouses,
+// ---------------------------------------------------------------------------
+// Wrapper: choose where the adjustment starts.
+//   • product  — start from the item, enter qty, then pick location per line
+//   • location — pick a location first, then count what's there (classic flow)
+// ---------------------------------------------------------------------------
+export default function AdjustClient({ warehouses }: { warehouses: WarehouseOption[] }) {
+  const [mode, setMode] = useState<"product" | "location">("product");
+
+  return (
+    <div className="space-y-5">
+      <ModeToggle mode={mode} onChange={setMode} />
+      {mode === "product" ? (
+        <ProductAdjust warehouses={warehouses} />
+      ) : (
+        <LocationAdjust warehouses={warehouses} />
+      )}
+    </div>
+  );
+}
+
+function ModeToggle({ mode, onChange }: { mode: "product" | "location"; onChange: (m: "product" | "location") => void }) {
+  const opts: { key: "product" | "location"; label: string; hint: string; icon: React.ReactNode }[] = [
+    { key: "product", label: "ເລີ່ມຈາກສິນຄ້າ", hint: "ສິນຄ້າ → ຈຳນວນ → location", icon: <PackageIcon className="h-4 w-4" /> },
+    { key: "location", label: "ເລີ່ມຈາກບ່ອນຈັດເກັບ", hint: "location → ນັບສິນຄ້າ", icon: <MapPinIcon className="h-4 w-4" /> },
+  ];
+  return (
+    <nav className="shadow-card flex flex-wrap items-center gap-2 rounded-2xl bg-white p-2 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+      <span className="px-2 text-xs font-semibold text-zinc-400">ເລີ່ມຈາກ:</span>
+      {opts.map((o) => {
+        const active = mode === o.key;
+        return (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
+              active
+                ? "bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/20"
+                : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+            }`}
+          >
+            {o.icon}
+            <span>{o.label}</span>
+            <span className={`hidden text-[10px] font-normal sm:inline ${active ? "text-white/80" : "text-zinc-400"}`}>· {o.hint}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared UI atoms
+// ---------------------------------------------------------------------------
+const inputCls =
+  "w-full rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+const labelCls = "mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300";
+const primaryBtn =
+  "inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-500 to-violet-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:shadow-lg disabled:opacity-50";
+const ghostBtn =
+  "inline-flex items-center justify-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800";
+
+function Toast({ toast }: { toast: { kind: "ok" | "err"; text: string } | null }) {
+  if (!toast) return null;
+  return (
+    <div className="fixed left-1/2 top-20 z-[100] -translate-x-1/2">
+      <div className={`flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-xl ${toast.kind === "ok" ? "bg-emerald-500" : "bg-rose-500"}`}>
+        {toast.kind === "ok" ? <CheckIcon className="h-4 w-4" /> : <AlertIcon className="h-4 w-4" />}
+        {toast.text}
+      </div>
+    </div>
+  );
+}
+
+function Stepper({
+  steps,
+  step,
+  canGoTo,
+  onJump,
 }: {
-  warehouses: WarehouseOption[];
+  steps: StepDef[];
+  step: number;
+  canGoTo: (n: number) => boolean;
+  onJump: (n: number) => void;
 }) {
+  return (
+    <nav className="shadow-card rounded-2xl bg-white p-3 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+      <ol className="flex items-center">
+        {steps.map((s, idx) => {
+          const active = step === s.n;
+          const done = step > s.n;
+          const reachable = canGoTo(s.n);
+          return (
+            <li key={s.n} className="flex flex-1 items-center last:flex-none">
+              <button
+                type="button"
+                onClick={() => onJump(s.n)}
+                disabled={!reachable}
+                className={`flex items-center gap-2 rounded-lg px-2 py-1 transition ${reachable ? "cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/60" : "cursor-not-allowed"}`}
+              >
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition ${
+                    active
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30"
+                      : done
+                        ? "bg-emerald-500 text-white"
+                        : "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500"
+                  }`}
+                >
+                  {done ? "✓" : s.n}
+                </span>
+                <span
+                  className={`hidden text-sm font-semibold sm:inline ${
+                    active ? "text-zinc-900 dark:text-zinc-50" : "text-zinc-500 dark:text-zinc-400"
+                  }`}
+                >
+                  {s.label}
+                </span>
+              </button>
+              {idx < steps.length - 1 && (
+                <span className={`mx-1.5 h-0.5 flex-1 rounded-full sm:mx-3 ${step > s.n ? "bg-emerald-400" : "bg-zinc-200 dark:bg-zinc-800"}`} />
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+// ===========================================================================
+// PRODUCT-FIRST FLOW (new)
+//   Add product → enter qty → choose Rack/Location/Pallet per line.
+//   Warehouse-wide total shown on add; the location's balance drives the delta.
+// ===========================================================================
+type PWorking = CountLine & {
+  id: string; // stable per-line id (same item may appear at several nodes)
+  item_code: string;
+  item_name: string | null;
+  unit_code: string | null;
+  wh_balance: number | null; // total in the warehouse (info only)
+  rack: string;
+  location: string;
+  pallet: string;
+  balLoading: boolean; // fetching before_qty for the current node
+};
+
+function pNodeKey(i: { item_code: string; rack: string; location: string; pallet: string }) {
+  return `${i.item_code}|${i.rack}|${i.location}|${i.pallet}`;
+}
+function pNodePath(i: { rack: string; location: string; pallet: string }) {
+  const parts = [i.rack, i.location].filter(Boolean);
+  if (i.pallet) parts.push(`pallet:${i.pallet}`);
+  return parts.length ? parts.join(" / ") : "ບໍ່ລະບຸ (ສາງລວມ)";
+}
+
+function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
+  const [step, setStep] = useState<1 | 2>(1);
+
+  const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
+  const [racks, setRacks] = useState<RackOption[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [pallets, setPallets] = useState<PalletOption[]>([]);
+
+  const [items, setItems] = useState<PWorking[]>([]);
+
+  const [reason, setReason] = useState("count");
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const [search, setSearch] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [hits, setHits] = useState<ItemHit[]>([]);
+
+  const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [serialLine, setSerialLine] = useState<string | null>(null);
+
+  const searchRef = useRef<HTMLInputElement>(null);
+  const lineSeq = useRef(0);
+
+  function newLineId() {
+    lineSeq.current += 1;
+    return `L${lineSeq.current}`;
+  }
+  function showToast(kind: "ok" | "err", text: string) {
+    setToast({ kind, text });
+    setTimeout(() => setToast(null), 3000);
+  }
+
+  // Load racks + locations + pallets when the warehouse changes; reset the list.
+  useEffect(() => {
+    setRacks([]);
+    setLocations([]);
+    setPallets([]);
+    setItems([]);
+    if (!whCode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(whCode)}`);
+        const data = (await res.json()) as { racks?: RackOption[]; locations?: LocationOption[]; pallets?: PalletOption[] };
+        if (cancelled) return;
+        setRacks(data.racks ?? []);
+        setLocations(data.locations ?? []);
+        setPallets(data.pallets ?? []);
+      } catch {
+        if (!cancelled) showToast("err", "ບໍ່ສາມາດໂຫຼດພື້ນທີ່ຈັດເກັບ");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [whCode]);
+
+  const whName = useMemo(() => warehouses.find((w) => w.code === whCode)?.name ?? null, [warehouses, whCode]);
+  const snOn = useMemo(() => warehouses.find((w) => w.code === whCode)?.sn_adjust ?? true, [warehouses, whCode]);
+  const locationsForRack = (rack: string) => (rack ? locations.filter((l) => l.rack_code === rack) : locations);
+
+  // Debounced item search (warehouse-wide — location is chosen per line later).
+  useEffect(() => {
+    if (search.trim().length === 0) {
+      setHits([]);
+      return;
+    }
+    if (!whCode) return;
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const params = new URLSearchParams({ warehouse: whCode, q: search.trim() });
+        const res = await fetch(`/api/movements/items/search?${params}`);
+        const data = (await res.json()) as { items?: ItemHit[] };
+        setHits(data.items ?? []);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [search, whCode]);
+
+  /**
+   * Fetch the system balance of an item AT a given node and store it as the
+   * line's before_qty. Node + item passed explicitly (not read from `items`)
+   * so callers can fire this right after a state update. Race-guarded.
+   */
+  async function loadBalance(lineId: string, node: { rack: string; location: string; pallet: string }, itemCode: string) {
+    if (!whCode) return;
+    const reqKey = pNodeKey({ item_code: itemCode, ...node });
+    setItems((prev) => prev.map((i) => (i.id === lineId ? { ...i, balLoading: true } : i)));
+    try {
+      const params = new URLSearchParams({
+        warehouse: whCode,
+        rack: node.rack,
+        location: node.location,
+        pallet: node.pallet,
+        q: itemCode,
+        limit: "5",
+      });
+      const res = await fetch(`/api/movements/items/search?${params}`);
+      const data = (await res.json()) as { items?: ItemHit[] };
+      const hit = (data.items ?? []).find((h) => h.item_code === itemCode);
+      const before = Number.parseFloat(hit?.balance_qty ?? "0") || 0;
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.id !== lineId) return i;
+          if (pNodeKey(i) === reqKey) return { ...i, before_qty: before, balLoading: false };
+          return { ...i, balLoading: false };
+        }),
+      );
+    } catch {
+      setItems((prev) => prev.map((i) => (i.id === lineId ? { ...i, balLoading: false } : i)));
+    }
+  }
+
+  function addHit(hit: ItemHit) {
+    setHits([]);
+    setSearch("");
+    const whBal = hit.wh_balance === null ? null : Number.parseFloat(hit.wh_balance) || 0;
+    const id = newLineId();
+    setItems((prev) => [
+      {
+        id,
+        item_code: hit.item_code,
+        item_name: hit.item_name,
+        unit_code: hit.unit_code,
+        wh_balance: whBal,
+        rack: "",
+        location: "",
+        pallet: "",
+        before_qty: 0,
+        balLoading: false,
+        counted: "",
+        serialized: (hit.is_isn ?? 0) === 1,
+        serialsRemove: [],
+        serialsAdd: [],
+        serialsGenerate: 0,
+      },
+      ...prev,
+    ]);
+    void loadBalance(id, { rack: "", location: "", pallet: "" }, hit.item_code);
+    setTimeout(() => searchRef.current?.focus(), 50);
+  }
+
+  function updateLine(lineId: string, patch: Partial<PWorking>) {
+    setItems((prev) => prev.map((i) => (i.id === lineId ? { ...i, ...patch } : i)));
+  }
+
+  /** Change one node field on a line, then refresh its system balance. */
+  function setLineNode(lineId: string, patch: Partial<Pick<PWorking, "rack" | "location" | "pallet">>) {
+    let nextNode: { rack: string; location: string; pallet: string } | null = null;
+    let itemCode = "";
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.id !== lineId) return i;
+        const next = { ...i, ...patch };
+        if (bySerial(i, snOn)) {
+          next.serialsRemove = [];
+          next.serialsAdd = [];
+          next.serialsGenerate = 0;
+        }
+        nextNode = { rack: next.rack, location: next.location, pallet: next.pallet };
+        itemCode = next.item_code;
+        return next;
+      }),
+    );
+    if (nextNode) void loadBalance(lineId, nextNode, itemCode);
+  }
+
+  function setCounted(lineId: string, value: string) {
+    updateLine(lineId, { counted: value });
+  }
+  function stepCount(lineId: string, delta: number) {
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.id !== lineId) return i;
+        const cur = parsedCount(i.counted);
+        const base = cur === null ? i.before_qty : cur;
+        const next = Math.max(0, Math.round((base + delta) * 1e6) / 1e6);
+        return { ...i, counted: String(next) };
+      }),
+    );
+  }
+  function removeItem(lineId: string) {
+    setItems((prev) => prev.filter((i) => i.id !== lineId));
+  }
+
+  const changedItems = useMemo(
+    () =>
+      items.filter((i) => {
+        if (bySerial(i, snOn)) return serialActivity(i) > 0;
+        const d = deltaOf(i, snOn);
+        return d !== null && d !== 0;
+      }),
+    [items, snOn],
+  );
+
+  const duplicateNode = useMemo(() => {
+    const seen = new Set<string>();
+    for (const i of changedItems) {
+      const k = pNodeKey(i);
+      if (seen.has(k)) return i;
+      seen.add(k);
+    }
+    return null;
+  }, [changedItems]);
+
+  function goToConfirm() {
+    if (changedItems.length === 0) {
+      showToast("err", "ບໍ່ມີການປ່ຽນແປງ — ໃສ່ຈຳນວນທີ່ນັບໄດ້ກ່ອນ");
+      return;
+    }
+    if (duplicateNode) {
+      showToast("err", `ສິນຄ້າ ${duplicateNode.item_code} ຊ້ຳຢູ່ບ່ອນຈັດເກັບດຽວກັນ`);
+      return;
+    }
+    setStep(2);
+  }
+
+  async function submit() {
+    if (changedItems.length === 0) {
+      showToast("err", "ບໍ່ມີການປ່ຽນແປງໃຫ້ບັນທຶກ");
+      return;
+    }
+    if (duplicateNode) {
+      showToast("err", `ສິນຄ້າ ${duplicateNode.item_code} ຊ້ຳຢູ່ບ່ອນຈັດເກັບດຽວກັນ`);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/movements/adjust`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wh_code: whCode,
+          reason,
+          note,
+          lines: changedItems.map((i) =>
+            bySerial(i, snOn)
+              ? {
+                  item_code: i.item_code,
+                  item_name: i.item_name,
+                  unit_code: i.unit_code,
+                  rack: i.rack,
+                  location: i.location,
+                  pallet: i.pallet,
+                  serials_remove: i.serialsRemove,
+                  serials_add: i.serialsAdd,
+                  serials_generate: i.serialsGenerate,
+                }
+              : {
+                  item_code: i.item_code,
+                  item_name: i.item_name,
+                  unit_code: i.unit_code,
+                  rack: i.rack,
+                  location: i.location,
+                  pallet: i.pallet,
+                  counted_qty: parsedCount(i.counted),
+                },
+          ),
+        }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string; adjust_code?: string; changed?: number; sn_generated?: number };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
+      showToast("ok", `ບັນທຶກແລ້ວ ${data.adjust_code} · ${data.changed} ລາຍການ${data.sn_generated ? ` · gen ${data.sn_generated} ISN` : ""}`);
+      setItems([]);
+      setNote("");
+      setStep(1);
+    } catch (err) {
+      showToast("err", err instanceof Error ? err.message : "ບໍ່ສຳເລັດ");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function canGoTo(n: number) {
+    if (n === 1) return true;
+    if (n === 2) return changedItems.length > 0 && !duplicateNode;
+    return false;
+  }
+
+  const fieldLabel = "mb-1 block text-[10px] font-semibold uppercase tracking-wide text-zinc-400";
+  const smallSelect =
+    "w-full rounded-lg bg-white px-2 py-1.5 text-xs text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+
+  return (
+    <div className="space-y-5">
+      <Stepper steps={PRODUCT_STEPS} step={step} canGoTo={canGoTo} onJump={(n) => (n === 2 ? goToConfirm() : setStep(1))} />
+
+      {step === 1 && (
+        <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+          {/* Warehouse + search */}
+          <div className="mb-4 grid gap-4 sm:grid-cols-[240px_1fr]">
+            <div>
+              <label className={labelCls}>ສາງ *</label>
+              <select value={whCode} onChange={(e) => setWhCode(e.target.value)} className={inputCls}>
+                <option value="">— ເລືອກສາງ —</option>
+                {warehouses.map((w) => (
+                  <option key={w.code} value={w.code}>
+                    {w.code}
+                    {w.name ? ` · ${w.name}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>
+                ເພີ່ມສິນຄ້າ
+                {!snOn && (
+                  <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    SN ປິດ · ປ້ອນຈຳນວນ
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  disabled={!whCode}
+                  placeholder={whCode ? "ສະແກນ / ພິມ ລະຫັດ ຫຼື ຊື່ ເພື່ອເພີ່ມສິນຄ້າ..." : "ເລືອກສາງກ່ອນ"}
+                  className={`${inputCls} pl-9`}
+                />
+                {(hits.length > 0 || searching) && (
+                  <div className="absolute inset-x-0 top-[calc(100%+0.3rem)] z-30 max-h-72 overflow-auto rounded-xl bg-white p-1 shadow-2xl ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+                    {searching && <div className="p-3 text-center text-xs text-zinc-400">ກຳລັງຄົ້ນຫາ...</div>}
+                    {hits.map((h) => (
+                      <button
+                        key={h.item_code}
+                        type="button"
+                        onClick={() => addHit(h)}
+                        className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-800/70"
+                      >
+                        <PlusIcon className="h-4 w-4 shrink-0 text-indigo-500" />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{h.item_code}</div>
+                          <div className="truncate text-xs">{h.item_name}</div>
+                        </div>
+                        <div className="shrink-0 text-right text-[10px]">
+                          <div className="font-mono font-bold tabular-nums text-zinc-700 dark:text-zinc-200">ສາງ {formatQty(h.wh_balance)}</div>
+                          <div className="text-zinc-400">{h.unit_code}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {items.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-zinc-200 py-10 text-center dark:border-zinc-800">
+              <PackageIcon className="mx-auto h-7 w-7 text-zinc-300 dark:text-zinc-600" />
+              <p className="mt-2 text-xs font-semibold text-zinc-500">
+                {whCode ? "ຄົ້ນຫາ ແລະ ເພີ່ມສິນຄ້າ → ໃສ່ຈຳນວນ → ເລືອກ location/pallet" : "ເລືອກສາງເພື່ອເລີ່ມ"}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {items.map((i) => {
+                const d = deltaOf(i, snOn);
+                const dColor =
+                  d === null || d === 0 ? "text-zinc-400" : d > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+                const dup = duplicateNode?.id === i.id;
+                return (
+                  <div
+                    key={i.id}
+                    className={`rounded-xl bg-zinc-50/60 p-3 ring-1 dark:bg-zinc-800/30 ${dup ? "ring-rose-300 dark:ring-rose-900/60" : "ring-zinc-200 dark:ring-zinc-800"}`}
+                  >
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{i.item_code}</div>
+                        <div className="max-w-md truncate text-sm text-zinc-800 dark:text-zinc-200" title={i.item_name ?? ""}>
+                          {i.item_name ?? "—"}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <div className="text-right">
+                          <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-400">ຍອດທັງສາງ</div>
+                          <div className="font-mono text-sm font-bold tabular-nums text-zinc-700 dark:text-zinc-200">
+                            {formatQty(i.wh_balance)}
+                            <span className="ml-1 text-[10px] uppercase text-zinc-400">{i.unit_code}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(i.id)}
+                          className="rounded p-1 text-zinc-300 transition hover:bg-rose-50 hover:text-rose-500 dark:text-zinc-600 dark:hover:bg-rose-500/10"
+                          aria-label="ລຶບອອກ"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2}>
+                            <path d="M18 6 6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)_auto]">
+                      <div>
+                        <span className={fieldLabel}>ນັບໄດ້</span>
+                        {bySerial(i, snOn) ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              readOnly
+                              tabIndex={-1}
+                              value={formatQty(i.before_qty + (d ?? 0))}
+                              title="ນັບຈາກ ISN — ແກ້ດ້ວຍປຸ່ມ ຈັດການ SN"
+                              className="w-16 cursor-not-allowed rounded-lg bg-zinc-100 px-2 py-1.5 text-center font-mono text-sm font-semibold tabular-nums text-zinc-500 ring-1 ring-zinc-200 outline-none dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setSerialLine(i.id)}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900/50"
+                            >
+                              <LayersIcon className="h-3.5 w-3.5" />
+                              {serialActivity(i) > 0 ? `ອອກ ${i.serialsRemove.length} · ເພີ່ມ ${i.serialsAdd.length + i.serialsGenerate}` : "ຈັດການ SN"}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => stepCount(i.id, -1)}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-lg font-bold text-zinc-700 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                              aria-label="ຫຼຸດ"
+                            >
+                              −
+                            </button>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              value={i.counted}
+                              onChange={(e) => setCounted(i.id, e.target.value)}
+                              placeholder="0"
+                              className="w-full min-w-0 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold tabular-nums ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:ring-zinc-800"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => stepCount(i.id, 1)}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-lg font-bold text-zinc-700 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                              aria-label="ເພີ່ມ"
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <span className={fieldLabel}>Rack</span>
+                          <select value={i.rack} onChange={(e) => setLineNode(i.id, { rack: e.target.value, location: "" })} className={smallSelect}>
+                            <option value="">— ທຸກ rack —</option>
+                            {racks.map((r) => (
+                              <option key={r.code} value={r.code}>
+                                {r.code}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <span className={fieldLabel}>Location</span>
+                          <select value={i.location} onChange={(e) => setLineNode(i.id, { location: e.target.value })} disabled={!i.rack} className={smallSelect}>
+                            <option value="">{i.rack ? "— ທຸກ location —" : "ເລືອກ rack"}</option>
+                            {locationsForRack(i.rack).map((l) => (
+                              <option key={l.code} value={l.code}>
+                                {l.code}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <span className={fieldLabel}>Pallet</span>
+                          <select
+                            value={i.pallet}
+                            onChange={(e) => {
+                              const code = e.target.value;
+                              const p = pallets.find((x) => x.code === code);
+                              setLineNode(i.id, {
+                                pallet: code,
+                                ...(p?.rack ? { rack: p.rack } : {}),
+                                ...(p?.location ? { location: p.location } : {}),
+                              });
+                            }}
+                            className={smallSelect}
+                          >
+                            <option value="">— ບໍ່ມີ —</option>
+                            {pallets.map((p) => (
+                              <option key={p.code} value={p.code}>
+                                {p.code}
+                                {p.location ? ` → ${p.location}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-4 lg:pl-2">
+                        <div className="text-right">
+                          <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-400">ຍອດບ່ອນນີ້</div>
+                          <div className="font-mono text-sm tabular-nums text-zinc-600 dark:text-zinc-400">{i.balLoading ? "…" : formatQty(i.before_qty)}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-400">ປ່ຽນແປງ</div>
+                          <div className={`font-mono text-base font-bold tabular-nums ${dColor}`}>
+                            {d === null ? "—" : d === 0 ? "0" : `${d > 0 ? "+" : ""}${formatQty(d)}`}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {dup && <p className="mt-2 text-[11px] font-semibold text-rose-500">⚠ ຊ້ຳກັບອີກແຖວທີ່ບ່ອນຈັດເກັບດຽວກັນ — ປ່ຽນ location ຫຼື ລວມແຖວ</p>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-5 flex items-center justify-end gap-3">
+            {changedItems.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/50">
+                <AlertIcon className="h-3.5 w-3.5" />
+                {changedItems.length} ປ່ຽນແປງ
+              </span>
+            )}
+            <button type="button" onClick={goToConfirm} disabled={changedItems.length === 0} className={primaryBtn}>
+              ກວດ + ຢືນຢັນ →
+            </button>
+          </div>
+        </section>
+      )}
+
+      {step === 2 && (
+        <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+          <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+            <CheckIcon className="h-4 w-4 text-emerald-500" />
+            ກວດສອບ ແລະ ຢືນຢັນການປັບປຸງ
+          </h3>
+          <p className="mb-4 text-xs text-zinc-500">
+            ສາງ: <span className="font-mono">{whCode || "—"}</span>
+            {whName && <span className="text-zinc-400"> · {whName}</span>}
+          </p>
+
+          {changedItems.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-zinc-200 py-8 text-center dark:border-zinc-800">
+              <p className="text-xs font-semibold text-zinc-500">ຍັງບໍ່ມີລາຍການທີ່ປ່ຽນແປງ</p>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/50">
+                      <th className="px-3 py-2">ສິນຄ້າ</th>
+                      <th className="px-3 py-2">ບ່ອນຈັດເກັບ</th>
+                      <th className="px-3 py-2 text-right">ກ່ອນ</th>
+                      <th className="px-3 py-2 text-right">ຫຼັງ</th>
+                      <th className="px-3 py-2 text-right">ປ່ຽນແປງ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {changedItems.map((i) => {
+                      const d = deltaOf(i, snOn) ?? 0;
+                      const dColor = d > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+                      return (
+                        <tr key={i.id}>
+                          <td className="px-3 py-2">
+                            <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{i.item_code}</div>
+                            <div className="max-w-xs truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="inline-flex items-center gap-1 font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
+                              <MapPinIcon className="h-3 w-3 text-indigo-400" />
+                              {pNodePath(i)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-xs tabular-nums text-zinc-500">{formatQty(i.before_qty)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-xs font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{formatQty(i.before_qty + d)}</td>
+                          <td className={`px-3 py-2 text-right font-mono text-xs font-bold tabular-nums ${dColor}`}>{d > 0 ? "+" : ""}{formatQty(d)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-[200px_1fr]">
+            <div>
+              <label className={labelCls}>ເຫດຜົນ *</label>
+              <select value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls}>
+                {REASONS.map((r) => (
+                  <option key={r.code} value={r.code}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>ໝາຍເຫດ (ທາງເລືອກ)</label>
+              <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="ລາຍລະອຽດເພີ່ມເຕີມ..." className={inputCls} />
+            </div>
+          </div>
+
+          <div className="mt-5 flex items-center justify-between gap-2">
+            <button type="button" onClick={() => setStep(1)} className={ghostBtn}>
+              ← ກັບໄປແກ້ໄຂ
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting || changedItems.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 transition hover:shadow-lg disabled:opacity-50"
+            >
+              <CheckIcon className="h-4 w-4" />
+              {submitting ? "ກຳລັງບັນທຶກ..." : `ບັນທຶກ ${changedItems.length} ລາຍການ`}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {serialLine && (() => {
+        const it = items.find((x) => x.id === serialLine);
+        if (!it) return null;
+        return (
+          <AdjustSerialModal
+            whCode={whCode}
+            rack={it.rack}
+            location={it.location}
+            pallet={it.pallet}
+            item={{ item_code: it.item_code, item_name: it.item_name, before: it.before_qty }}
+            initial={{ serialsRemove: it.serialsRemove, serialsAdd: it.serialsAdd, serialsGenerate: it.serialsGenerate }}
+            onClose={() => setSerialLine(null)}
+            onDone={(plan: SerialPlan) => {
+              setItems((prev) => prev.map((x) => (x.id === serialLine ? { ...x, ...plan } : x)));
+              setSerialLine(null);
+            }}
+          />
+        );
+      })()}
+
+      <Toast toast={toast} />
+    </div>
+  );
+}
+
+// ===========================================================================
+// LOCATION-FIRST FLOW (classic)
+//   Pick a location → load & count everything there → confirm.
+//   One node for the whole document.
+// ===========================================================================
+type LWorking = CountLine & {
+  item_code: string;
+  item_name: string | null;
+  unit_code: string | null;
+  wh_balance: number | null; // total in warehouse (info only)
+};
+
+function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
@@ -111,7 +926,7 @@ export default function AdjustClient({
   const [locationCode, setLocationCode] = useState("");
   const [palletCode, setPalletCode] = useState("");
 
-  const [items, setItems] = useState<WorkingItem[]>([]);
+  const [items, setItems] = useState<LWorking[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -133,7 +948,6 @@ export default function AdjustClient({
     setTimeout(() => setToast(null), 3000);
   }
 
-  // Load racks + locations when warehouse changes.
   useEffect(() => {
     setRacks([]);
     setLocations([]);
@@ -167,14 +981,12 @@ export default function AdjustClient({
     [locations, rackCode],
   );
 
-  // Reset selected location if it no longer belongs to the chosen rack.
   useEffect(() => {
     if (locationCode && rackCode && !availableLocations.find((l) => l.code === locationCode)) {
       setLocationCode("");
     }
   }, [rackCode, locationCode, availableLocations]);
 
-  // Selecting a different node invalidates the loaded item list.
   useEffect(() => {
     setItems([]);
     setLoaded(false);
@@ -188,16 +1000,8 @@ export default function AdjustClient({
     return parts.join(" / ");
   }, [whCode, rackCode, locationCode, palletCode]);
 
-  const whName = useMemo(
-    () => warehouses.find((w) => w.code === whCode)?.name ?? null,
-    [warehouses, whCode],
-  );
-
-  /** SN handling for the adjust menu at the selected warehouse (default on). */
-  const snOn = useMemo(
-    () => warehouses.find((w) => w.code === whCode)?.sn_adjust ?? true,
-    [warehouses, whCode],
-  );
+  const whName = useMemo(() => warehouses.find((w) => w.code === whCode)?.name ?? null, [warehouses, whCode]);
+  const snOn = useMemo(() => warehouses.find((w) => w.code === whCode)?.sn_adjust ?? true, [warehouses, whCode]);
 
   function nodeParams() {
     return new URLSearchParams({
@@ -223,7 +1027,7 @@ export default function AdjustClient({
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
-      const loadedItems: WorkingItem[] = (data.items ?? []).map((r) => {
+      const loadedItems: LWorking[] = (data.items ?? []).map((r) => {
         const before = Number.parseFloat(r.balance_qty ?? "0") || 0;
         return {
           item_code: r.ic_code,
@@ -247,7 +1051,6 @@ export default function AdjustClient({
     }
   }
 
-  // Auto-load the node's items the first time we land on step 2.
   useEffect(() => {
     if (step === 2 && whCode && !loaded && !loading) {
       void loadItems();
@@ -255,7 +1058,6 @@ export default function AdjustClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  // Debounced item search (node-aware).
   useEffect(() => {
     if (search.trim().length === 0) {
       setHits([]);
@@ -310,7 +1112,6 @@ export default function AdjustClient({
     setItems((prev) => prev.map((i) => (i.item_code === itemCode ? { ...i, counted: value } : i)));
   }
 
-  /** Step the counted value by ±1 (clamped at 0); blank field starts from current balance. */
   function stepCount(itemCode: string, delta: number) {
     setItems((prev) =>
       prev.map((i) => {
@@ -377,8 +1178,8 @@ export default function AdjustClient({
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       showToast("ok", `ບັນທຶກແລ້ວ ${data.adjust_code} · ${data.changed} ລາຍການ${data.sn_generated ? ` · gen ${data.sn_generated} ISN` : ""}`);
       setNote("");
-      await loadItems(); // refresh balances after posting
-      setStep(2); // counts now match balances — back to counting
+      await loadItems();
+      setStep(2);
     } catch (err) {
       showToast("err", err instanceof Error ? err.message : "ບໍ່ສຳເລັດ");
     } finally {
@@ -386,31 +1187,20 @@ export default function AdjustClient({
     }
   }
 
-  // ----- step navigation -----
   function canGoTo(n: number) {
     if (n === 1) return true;
     if (n === 2) return !!whCode;
     if (n === 3) return items.length > 0;
     return false;
   }
-  function goTo(n: 1 | 2 | 3) {
-    if (canGoTo(n)) setStep(n);
+  function goTo(n: number) {
+    if (canGoTo(n)) setStep(n as 1 | 2 | 3);
   }
-
-  const inputCls =
-    "w-full rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
-  const labelCls = "mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300";
-  const primaryBtn =
-    "inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-500 to-violet-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:shadow-lg disabled:opacity-50";
-  const ghostBtn =
-    "inline-flex items-center justify-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800";
 
   return (
     <div className="space-y-5">
-      {/* Stepper */}
-      <Stepper step={step} canGoTo={canGoTo} onJump={goTo} />
+      <Stepper steps={LOCATION_STEPS} step={step} canGoTo={canGoTo} onJump={goTo} />
 
-      {/* STEP 1 — location */}
       {step === 1 && (
         <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-zinc-800 dark:text-zinc-200">
@@ -464,7 +1254,6 @@ export default function AdjustClient({
                 onChange={(e) => {
                   const code = e.target.value;
                   setPalletCode(code);
-                  // pallet → location: a pallet lives at a fixed rack/location.
                   const p = pallets.find((x) => x.code === code);
                   if (p) {
                     if (p.rack) setRackCode(p.rack);
@@ -498,10 +1287,8 @@ export default function AdjustClient({
         </section>
       )}
 
-      {/* STEP 2 — count */}
       {step === 2 && (
         <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-          {/* node summary */}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-800/40">
             <div className="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-300">
               <MapPinIcon className="h-3.5 w-3.5 text-indigo-500" />
@@ -523,7 +1310,6 @@ export default function AdjustClient({
             </button>
           </div>
 
-          {/* Add / scan item search */}
           <div className="relative mb-4">
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
             <input
@@ -559,7 +1345,6 @@ export default function AdjustClient({
             )}
           </div>
 
-          {/* Item list */}
           {items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-zinc-200 py-10 text-center dark:border-zinc-800">
               <PackageIcon className="mx-auto h-7 w-7 text-zinc-300 dark:text-zinc-600" />
@@ -583,11 +1368,7 @@ export default function AdjustClient({
                   {items.map((i) => {
                     const d = deltaOf(i, snOn);
                     const dColor =
-                      d === null || d === 0
-                        ? "text-zinc-400"
-                        : d > 0
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-red-600 dark:text-red-400";
+                      d === null || d === 0 ? "text-zinc-400" : d > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
                     return (
                       <tr key={i.item_code} className="align-middle transition hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30">
                         <td className="px-4 py-2.5">
@@ -602,8 +1383,6 @@ export default function AdjustClient({
                         </td>
                         <td className="px-4 py-2.5">
                           {bySerial(i, snOn) ? (
-                            // SN on → the count is whatever the serials say; the
-                            // field is locked and only the SN modal moves it.
                             <div className="flex items-center justify-center gap-2">
                               <input
                                 type="text"
@@ -692,7 +1471,6 @@ export default function AdjustClient({
         </section>
       )}
 
-      {/* STEP 3 — confirm */}
       {step === 3 && (
         <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
           <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-zinc-800 dark:text-zinc-200">
@@ -772,7 +1550,6 @@ export default function AdjustClient({
         </section>
       )}
 
-      {/* Toast */}
       {serialItem && (() => {
         const it = items.find((x) => x.item_code === serialItem);
         if (!it) return null;
@@ -793,68 +1570,7 @@ export default function AdjustClient({
         );
       })()}
 
-      {toast && (
-        <div className="fixed left-1/2 top-20 z-[100] -translate-x-1/2">
-          <div className={`flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-xl ${toast.kind === "ok" ? "bg-emerald-500" : "bg-rose-500"}`}>
-            {toast.kind === "ok" ? <CheckIcon className="h-4 w-4" /> : <AlertIcon className="h-4 w-4" />}
-            {toast.text}
-          </div>
-        </div>
-      )}
+      <Toast toast={toast} />
     </div>
-  );
-}
-
-function Stepper({
-  step,
-  canGoTo,
-  onJump,
-}: {
-  step: number;
-  canGoTo: (n: number) => boolean;
-  onJump: (n: 1 | 2 | 3) => void;
-}) {
-  return (
-    <nav className="shadow-card rounded-2xl bg-white p-3 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-      <ol className="flex items-center">
-        {STEPS.map((s, idx) => {
-          const active = step === s.n;
-          const done = step > s.n;
-          const reachable = canGoTo(s.n);
-          return (
-            <li key={s.n} className="flex flex-1 items-center last:flex-none">
-              <button
-                type="button"
-                onClick={() => onJump(s.n as 1 | 2 | 3)}
-                disabled={!reachable}
-                className={`flex items-center gap-2 rounded-lg px-2 py-1 transition ${reachable ? "cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/60" : "cursor-not-allowed"}`}
-              >
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition ${
-                    active
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30"
-                      : done
-                        ? "bg-emerald-500 text-white"
-                        : "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500"
-                  }`}
-                >
-                  {done ? "✓" : s.n}
-                </span>
-                <span
-                  className={`hidden text-sm font-semibold sm:inline ${
-                    active ? "text-zinc-900 dark:text-zinc-50" : "text-zinc-500 dark:text-zinc-400"
-                  }`}
-                >
-                  {s.label}
-                </span>
-              </button>
-              {idx < STEPS.length - 1 && (
-                <span className={`mx-1.5 h-0.5 flex-1 rounded-full sm:mx-3 ${step > s.n ? "bg-emerald-400" : "bg-zinc-200 dark:bg-zinc-800"}`} />
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
   );
 }

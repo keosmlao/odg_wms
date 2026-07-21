@@ -9,6 +9,7 @@ import { estimatePalletPositions } from "@/lib/capacity";
 import { BackLink, DestToggle, ItemCard, PutawayChips, PutawayPicker, ReceiveHeaderCard, StickyFooter } from "./_receiveUI";
 
 type Header = { doc_no: string; doc_date: string | null; doc_time: string | null; status: number | null; wh_code: string | null; wh_name: string | null; supplier_code: string | null; po_no: string | null; pack_no: string | null; remark: string | null };
+type PoRef = { po_no: string; supplier_code: string | null; cust_name: string | null };
 type LineRow = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; is_isn: boolean; pallet?: string | null; stack?: string | null };
 type SerialRow = { item_code: string; serial_number: string; mfd_date: string | null; expire_date: string | null };
 type RackOption = { code: string; name: string | null };
@@ -46,6 +47,7 @@ function receivedQty(l: { isIsn: boolean; qty: string; received: string; serials
 export default function CountSheetDetail({ docNo }: { docNo: string }) {
   const router = useRouter();
   const [header, setHeader] = useState<Header | null>(null);
+  const [pos, setPos] = useState<PoRef[]>([]);
   const [lines, setLines] = useState<WorkLine[]>([]);
   const [remark, setRemark] = useState("");
   const [racks, setRacks] = useState<RackOption[]>([]);
@@ -74,10 +76,11 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
     (async () => {
       try {
         const res = await fetch(`/api/receive/count/${encodeURIComponent(docNo)}`);
-        const data = (await res.json()) as { header?: Header; lines?: LineRow[]; serials?: SerialRow[]; sameLocs?: { location: string; item_code: string; qty: string }[]; emptyLocs?: string[]; error?: string };
+        const data = (await res.json()) as { header?: Header; pos?: PoRef[]; lines?: LineRow[]; serials?: SerialRow[]; sameLocs?: { location: string; item_code: string; qty: string }[]; emptyLocs?: string[]; error?: string };
         if (cancelled) return;
         if (!res.ok || !data.header) throw new Error(data.error ?? "ໂຫຼດບໍ່ສຳເລັດ");
         setHeader(data.header);
+        setPos(Array.isArray(data.pos) ? data.pos : []);
         setRemark(data.header.remark ?? "");
         setSameLocs(Array.isArray(data.sameLocs) ? data.sameLocs : []);
         setEmptyLocs(Array.isArray(data.emptyLocs) ? data.emptyLocs : []);
@@ -247,13 +250,15 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
       const data = (await res.json()) as {
         ok?: boolean; receive_code?: string; serials?: number; held?: number; cancelled?: number; remaining?: number; error?: string;
         erp_purchase?: { doc_no: string; total: number; items: number; missing: string[] } | null;
+        erp_purchases?: { po_no: string; doc_no: string }[];
       };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       const sn = data.serials ? ` · SN ${data.serials}` : "";
       const vd = data.held ? ` · ພັກ ${data.held}` : "";
       const cn = data.cancelled ? ` · ຍົກເລີກ ${data.cancelled}` : "";
       const rest = data.remaining ? ` · ໃບຍັງຄ້າງ ${data.remaining} (ຮັບຕໍ່ໄດ້)` : "";
-      const erp = data.erp_purchase ? ` · ໃບຊື້ຕິດໜີ້ ${data.erp_purchase.doc_no}` : "";
+      const erpDocs = data.erp_purchases ?? (data.erp_purchase ? [{ po_no: "", doc_no: data.erp_purchase.doc_no }] : []);
+      const erp = erpDocs.length === 1 ? ` · ໃບຊື້ຕິດໜີ້ ${erpDocs[0].doc_no}` : erpDocs.length > 1 ? ` · ໃບຊື້ຕິດໜີ້ ${erpDocs.length} ໃບ` : "";
       showToast("ok", `ຮັບເຂົ້າ WMS ${data.receive_code} ສຳເລັດ${sn}${vd}${cn}${rest}${erp}`);
       // Items absent from the PO are received in WMS but carry no price → no AP line.
       if (data.erp_purchase?.missing?.length) {
@@ -307,7 +312,9 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
         got={totalReceived}
         want={totalCounted}
         badges={<>
-          {header.po_no && <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">PO {header.po_no}</span>}
+          {(pos.length > 0 ? pos.map((p) => p.po_no) : header.po_no ? [header.po_no] : []).map((po) => (
+            <span key={po} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">PO {po}</span>
+          ))}
           {header.pack_no && <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">{header.pack_no}</span>}
           <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">ສາງ {header.wh_code}{header.wh_name ? ` · ${header.wh_name}` : ""}</span>
           {totalPallets > 0 && <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-600">~{totalPallets} ພາເລດ</span>}

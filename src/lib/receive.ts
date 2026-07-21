@@ -90,7 +90,7 @@ export async function writeCountSerials(
   client: PoolClient,
   docNo: string,
   lines: CountLineInput[],
-  poNo?: string,
+  poNos: string[] = [],
 ): Promise<{ generated: number; manual: number; reused: number; serializedNoCategory: number }> {
   const info = await getIsnInfo(client, lines.map((l) => l.item_code));
   const yearCode = isnYearCode(new Date().getFullYear());
@@ -134,23 +134,24 @@ export async function writeCountSerials(
     }
     if (need === 0) continue;
 
-    // 1) Reuse held SN from earlier (incomplete) receipts of the SAME PO+item —
+    // 1) Reuse held SN from earlier (incomplete) receipts of the SAME PO(s)+item —
     //    the labels are already printed. Re-point them onto this count sheet.
-    if (poNo) {
+    //    Matches any of the sheet's POs via the receipt's PO list.
+    if (poNos.length > 0) {
       const claimed = await client.query<{ serial_number: string }>(
         `UPDATE public.wms_product_receive_serial_detail
            SET ref_rec_doc = $1, ignore_sync = 0, is_lock_record = 1, last_update_date_time_now = now()
          WHERE ctid IN (
            SELECT sd.ctid
            FROM public.wms_product_receive_serial_detail sd
-           JOIN public.wms_product_receive h ON h.doc_no = sd.ref_rec_doc
-           WHERE h.ref_doc_no = $2 AND sd.item_code = $3
+           JOIN public.wms_product_receive_po rp ON rp.doc_no = sd.ref_rec_doc AND rp.po_no = ANY($2)
+           WHERE sd.item_code = $3
              AND COALESCE(sd.ignore_sync,0) = 1 AND sd.ref_rec_doc <> $1
            ORDER BY sd.serial_number
            FOR UPDATE OF sd SKIP LOCKED
            LIMIT $4)
          RETURNING serial_number`,
-        [docNo, poNo, line.item_code, need],
+        [docNo, poNos, line.item_code, need],
       );
       reused += claimed.rowCount ?? 0;
       need -= claimed.rowCount ?? 0;

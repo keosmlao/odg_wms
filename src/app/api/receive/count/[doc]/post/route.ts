@@ -96,9 +96,35 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
     if (!hdr || hdr.doc_type !== DOC_TYPE.count) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ພົບໃບກວດນັບ" }, { status: 404 }); }
     if (hdr.status !== RECEIVE_STATUS.draft) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ໃບກວດນັບນີ້ຮັບເຂົ້າແລ້ວ" }, { status: 409 }); }
     const wh = hdr.wh_code ?? "";
-    const poNo = hdr.po_no ?? "";
     if (!wh) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ໃບກວດນັບບໍ່ມີສາງ" }, { status: 400 }); }
     if (Array.isArray(accessible) && !accessible.includes(wh)) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 }); }
+
+    // The sheet's PO list (multi-PO). Each merged line's received qty is allocated
+    // across these POs in order. Falls back to the header's single ref_doc_no.
+    const poRows = (await client.query<{ po_no: string; supplier_code: string | null }>(
+      `SELECT po_no, supplier_code FROM public.wms_product_receive_po WHERE doc_no = $1 ORDER BY line_order, roworder`,
+      [countNo],
+    )).rows;
+    const poNos = poRows.length > 0 ? poRows.map((r) => r.po_no) : (hdr.po_no ? [hdr.po_no] : []);
+    const supplierByPo = new Map(poRows.map((r) => [r.po_no, r.supplier_code]));
+    const primaryPo = poNos[0] ?? "";
+    if (poNos.length === 0) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ໃບກວດນັບບໍ່ມີ PO" }, { status: 400 }); }
+
+    /** Remaining (un-received) qty of an item on one PO, attributing WMS receipts
+     *  by the receipt line's own ref_doc_no when set, else the header ref_doc_no. */
+    async function remainingFor(po: string, item: string): Promise<number> {
+      const r = await client.query<{ remaining: string }>(
+        `SELECT (COALESCE(MAX(p.qty_balance),0) - COALESCE((
+            SELECT SUM(d.qty) FROM public.wms_product_receive h
+            JOIN public.wms_product_receive_detail d ON d.doc_no = h.doc_no
+            WHERE COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no) = $1
+              AND d.item_code = $2 AND (h.status = 0 OR h.status IS NULL)
+          ),0))::numeric::text AS remaining
+         FROM public.odg_po_remain p WHERE p.doc_no = $1 AND p.item_code = $2`,
+        [po, item],
+      );
+      return Number.parseFloat(r.rows[0]?.remaining ?? "0") || 0;
+    }
 
     // Lines + manual serials from the count sheet.
     const lines = (await client.query<{ item_code: string; item_name: string | null; unit_code: string | null; qty: string }>(
@@ -157,52 +183,77 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       }
     }
 
-    // Re-validate received qty ≤ remaining + every received line has a destination.
+    // Re-validate received qty and ALLOCATE it across the sheet's POs.
+    // For each received line: sum remaining across all POs (R). If R>0 the
+    // received qty must not exceed R; then fill POs in order. Any excess when
+    // R=0 (item not on any PO / already fully received) lands on the primary PO
+    // as an over-receipt — matching the old single-PO behaviour.
+    type Alloc = { po_no: string; qty: number };
+    const allocByItem = new Map<string, Alloc[]>();
     let totalReceived = 0;
     for (const line of lines) {
       const recv = planByItem.get(line.item_code)!.recv;
       totalReceived += recv;
-      if (recv <= 0) continue; // nothing arrived for this line — all its SN are held below
+      if (recv <= 0) { allocByItem.set(line.item_code, []); continue; }
       if (!destFor(line.item_code).ok) {
         await client.query("ROLLBACK");
         return NextResponse.json({ error: `ສິນຄ້າ ${line.item_code}: ກະລຸນາເລືອກ location ຫຼື pallet` }, { status: 400 });
       }
-      const r = await client.query<{ remaining: string }>(
-        `SELECT (COALESCE(MAX(p.qty_balance),0) - COALESCE((
-            SELECT SUM(d.qty) FROM public.wms_product_receive h
-            JOIN public.wms_product_receive_detail d ON d.doc_no = h.doc_no
-            WHERE h.ref_doc_no = $1 AND d.item_code = $2 AND (h.status = 0 OR h.status IS NULL)
-          ),0))::numeric::text AS remaining
-         FROM public.odg_po_remain p WHERE p.doc_no = $1 AND p.item_code = $2`,
-        [poNo, line.item_code],
-      );
-      const remaining = Number.parseFloat(r.rows[0]?.remaining ?? "0") || 0;
-      if (remaining > 0 && recv > remaining + 1e-6) {
+      const rema: { po_no: string; rm: number }[] = [];
+      let R = 0;
+      for (const po of poNos) { const rm = await remainingFor(po, line.item_code); rema.push({ po_no: po, rm }); if (rm > 0) R += rm; }
+      if (R > 0 && recv > R + 1e-6) {
         await client.query("ROLLBACK");
-        return NextResponse.json({ error: `ສິນຄ້າ ${line.item_code}: ຮັບ ${recv} ເກີນຄ້າງ ${remaining}` }, { status: 400 });
+        return NextResponse.json({ error: `ສິນຄ້າ ${line.item_code}: ຮັບ ${recv} ເກີນຄ້າງລວມທຸກ PO ${Math.round(R * 1e6) / 1e6}` }, { status: 400 });
       }
+      const allocs: Alloc[] = [];
+      let left = recv;
+      for (const { po_no, rm } of rema) {
+        if (left <= 1e-9) break;
+        const take = Math.min(left, Math.max(0, rm));
+        if (take > 0) { allocs.push({ po_no, qty: take }); left -= take; }
+      }
+      if (left > 1e-6) {
+        // Excess beyond every PO's remaining (R was 0) → attribute to primary PO.
+        const ex = allocs.find((a) => a.po_no === primaryPo);
+        if (ex) ex.qty += left; else allocs.push({ po_no: primaryPo, qty: left });
+      }
+      allocByItem.set(line.item_code, allocs);
     }
     if (totalReceived <= 0) {
       await client.query("ROLLBACK");
       return NextResponse.json({ error: "ບໍ່ມີຈຳນວນຮັບເຂົ້າ (ຮັບຈິງ = 0 ທຸກລາຍການ)" }, { status: 400 });
     }
 
-    // Receipt header (RC) + references (PO, count sheet).
+    // Which POs actually received something (allocation order preserved).
+    const receiptPos = poNos.filter((po) => Array.from(allocByItem.values()).some((as) => as.some((a) => a.po_no === po && a.qty > 0)));
+
+    // Receipt header (RC). Header ref_doc_no keeps the primary PO for compat;
+    // the full PO list is written to wms_product_receive_po below.
     const recNo = await genDocNo(client, "RC");
     await client.query(
       `INSERT INTO public.wms_product_receive
          (doc_no, doc_date, doc_time, status, doc_type, warehouse_code, supplier_code, remark,
           creator_code, ref_doc_no, box_code, shelf_code, create_datetime, create_date_time_now)
        VALUES ($1, CURRENT_DATE, to_char(now(),'HH24:MI'), $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())`,
-      [recNo, RECEIVE_STATUS.posted, DOC_TYPE.receipt, wh, hdr.supplier || null, remark || null, user, poNo, fallback.pallet || null, fallback.location || fallback.rack || null],
+      [recNo, RECEIVE_STATUS.posted, DOC_TYPE.receipt, wh, hdr.supplier || null, remark || null, user, primaryPo, fallback.pallet || null, fallback.location || fallback.rack || null],
     );
+    // _ref keeps the classic (primary PO, count sheet) pair for existing readers.
     await client.query(
       `INSERT INTO public.wms_product_receive_ref (doc_no, ref_doc_no, line_order, create_date_time_now)
        VALUES ($1, $2, 1, now()), ($1, $3, 2, now())`,
-      [recNo, poNo, countNo],
+      [recNo, primaryPo, countNo],
     );
+    // The receipt's full PO list (attribution source for remaining calcs).
+    for (let i = 0; i < receiptPos.length; i++) {
+      await client.query(
+        `INSERT INTO public.wms_product_receive_po (doc_no, po_no, wh_code, supplier_code, line_order, create_date_time_now)
+         VALUES ($1, $2, $3, $4, $5, now())`,
+        [recNo, receiptPos[i], wh, supplierByPo.get(receiptPos[i]) ?? null, i + 1],
+      );
+    }
 
-    await insertTransHeader(client, { docNo: recNo, docRef: poNo, wh, user });
+    await insertTransHeader(client, { docNo: recNo, docRef: primaryPo, wh, user });
 
     // Apply the per-line plan computed above: committed serials become stock,
     // held serials stay on the draft for the rest of the goods, cancelled serials
@@ -211,7 +262,10 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
     const commit: { item_code: string; serial_number: string }[] = [];
     const held: string[] = [];
     const cancelled: string[] = [];
-    const receivedForErp: { item_code: string; item_name: string | null; unit_code: string | null; qty: number }[] = [];
+    // Which PO each committed serial belongs to (for the serial ledger doc_ref).
+    const serialPo = new Map<string, string>();
+    // Received qty grouped per PO → per item, for ERP purchase posting.
+    const erpByPo = new Map<string, Map<string, { item_code: string; item_name: string | null; unit_code: string | null; qty: number }>>();
 
     for (const line of lines) {
       const plan = planByItem.get(line.item_code)!;
@@ -222,17 +276,37 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       for (const sn of plan.cancelled) cancelled.push(sn);
       if (recv <= 0) continue; // nothing received → no stock row, all SN held/cancelled
 
-      await client.query(
-        `INSERT INTO public.wms_product_receive_detail
-           (doc_no, doc_date, doc_time, item_code, item_name, unit_code, qty, box_code, shelf_code, create_date_time_now)
-         VALUES ($1, CURRENT_DATE, to_char(now(),'HH24:MI'), $2, $3, $4, $5, $6, $7, now())`,
-        [recNo, line.item_code, line.item_name, line.unit_code || null, recv, d.pallet || null, d.location || d.rack || null],
-      );
+      const allocs = allocByItem.get(line.item_code) ?? [];
+
+      // Assign the line's committed serials to POs following the allocation.
+      let sIdx = 0;
+      for (const a of allocs) {
+        let n = Math.round(a.qty);
+        while (n-- > 0 && sIdx < plan.commit.length) serialPo.set(plan.commit[sIdx++], a.po_no);
+      }
+      while (sIdx < plan.commit.length) serialPo.set(plan.commit[sIdx++], allocs[allocs.length - 1]?.po_no ?? primaryPo);
+
+      // One receipt-detail row per (item, PO allocation) — attributes the qty.
+      for (const a of allocs) {
+        await client.query(
+          `INSERT INTO public.wms_product_receive_detail
+             (doc_no, doc_date, doc_time, item_code, item_name, unit_code, qty, box_code, shelf_code, ref_doc_no, wh_code, create_date_time_now)
+           VALUES ($1, CURRENT_DATE, to_char(now(),'HH24:MI'), $2, $3, $4, $5, $6, $7, $8, $9, now())`,
+          [recNo, line.item_code, line.item_name, line.unit_code || null, a.qty, d.pallet || null, d.location || d.rack || null, a.po_no, wh],
+        );
+        // ERP accumulation per PO.
+        let m = erpByPo.get(a.po_no);
+        if (!m) { m = new Map(); erpByPo.set(a.po_no, m); }
+        const ex = m.get(line.item_code);
+        if (ex) ex.qty += a.qty;
+        else m.set(line.item_code, { item_code: line.item_code, item_name: line.item_name, unit_code: line.unit_code, qty: a.qty });
+      }
+
+      // One stock movement per item (full received qty) — stock is PO-agnostic.
       await insertTransDetail(client, {
-        docNo: recNo, docRef: poNo, wh, user,
+        docNo: recNo, docRef: primaryPo, wh, user,
         line: { item_code: line.item_code, item_name: line.item_name, qty: recv, unit_code: line.unit_code, rack: d.rack || null, location: d.location || null, pallet: d.pallet || null },
       });
-      receivedForErp.push({ item_code: line.item_code, item_name: line.item_name, unit_code: line.unit_code, qty: recv });
     }
 
     // Commit the received serials to the ledger (verbatim — generated at save
@@ -242,17 +316,18 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       await client.query(
         `INSERT INTO public.sn_trans (trans_flag, doc_no, doc_date, user_created, status, item_count, doc_def, doc_format_code, wh_code)
          VALUES ($1, $2, CURRENT_DATE, $3, 0, $4, $5, 'RC', $6)`,
-        [SN_RECEIPT_FLAG, recNo, user, commit.length, poNo, wh],
+        [SN_RECEIPT_FLAG, recNo, user, commit.length, primaryPo, wh],
       );
       for (const s of commit) {
         const line = lineByItem.get(s.item_code);
         const itemName = line?.item_name ?? null;
         const unitCode = line?.unit_code ?? null;
         const d = destFor(s.item_code);
+        const serialPoNo = serialPo.get(s.serial_number) ?? primaryPo;
         await client.query(
           `INSERT INTO public.sn_trans_detail (trans_flag, doc_no, doc_date, user_created, item_code, sn, qty, unit_cost, warehouse, item_name, doc_ref, calc_flag, rack, location, pallet)
            VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, 1, NULL, $6, $7, $8, 1, $9, $10, $11)`,
-          [SN_RECEIPT_FLAG, recNo, user, s.item_code, s.serial_number, wh, itemName, poNo, d.rack || null, d.location || null, d.pallet || null],
+          [SN_RECEIPT_FLAG, recNo, user, s.item_code, s.serial_number, wh, itemName, serialPoNo, d.rack || null, d.location || null, d.pallet || null],
         );
         await client.query(
           `INSERT INTO public.sn_inventory (sn, isn, qty, status, item_code, item_name, unit_code, wh_code, rack, location, pallet, user_mapping)
@@ -322,14 +397,23 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       await client.query(`UPDATE public.wms_product_receive SET status = $2 WHERE doc_no = $1`, [countNo, RECEIVE_STATUS.consumed]);
     }
 
-    // ERP: post ໃບຊື້ສິນຄ້າຕິດໜີ້ (flag 12) for the received qty — stock-in + AP,
-    // priced from the PO. Env-gated (writes real ERP financial docs).
-    let erpPurchase: Awaited<ReturnType<typeof postErpPurchaseReceipt>> = null;
-    if (poNo && receivedForErp.length > 0 && process.env.WMS_ERP_PURCHASE_ENABLED === "1") {
-      erpPurchase = await postErpPurchaseReceipt(client, {
-        poNo, items: receivedForErp, wh, location: null,
-        user: user ?? null, wmsDoc: recNo, remark: `WMS receive ${poNo}`,
-      });
+    // ERP: post ໃບຊື້ສິນຄ້າຕິດໜີ້ (flag 12) — one per PO that received goods,
+    // priced from that PO. Env-gated (writes real ERP financial docs).
+    const erpDocs: { po_no: string; doc_no: string; total: number; items: number; missing: string[] }[] = [];
+    const erpMissing: string[] = [];
+    if (process.env.WMS_ERP_PURCHASE_ENABLED === "1") {
+      for (const [po, itemsMap] of erpByPo) {
+        const items = Array.from(itemsMap.values());
+        if (!po || items.length === 0) continue;
+        const r = await postErpPurchaseReceipt(client, {
+          poNo: po, items, wh, location: null,
+          user: user ?? null, wmsDoc: recNo, remark: `WMS receive ${po}`,
+        });
+        if (r && r.docNo) {
+          erpDocs.push({ po_no: po, doc_no: r.docNo, total: r.total, items: r.posted, missing: r.missing });
+          erpMissing.push(...r.missing);
+        }
+      }
     }
 
     await client.query("COMMIT");
@@ -337,14 +421,17 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       ok: true,
       receive_code: recNo,
       count_code: countNo,
+      pos: receiptPos.length,
       received: lines.length,
       serials: commit.length,
       remaining: remainTotal,
       held: held.length,
       cancelled: cancelled.length,
-      erp_purchase: erpPurchase && erpPurchase.docNo
-        ? { doc_no: erpPurchase.docNo, total: erpPurchase.total, items: erpPurchase.posted, missing: erpPurchase.missing }
+      // First ERP doc kept as erp_purchase for backward-compat; full list in erp_purchases.
+      erp_purchase: erpDocs[0]
+        ? { doc_no: erpDocs[0].doc_no, total: erpDocs[0].total, items: erpDocs[0].items, missing: erpMissing }
         : null,
+      erp_purchases: erpDocs,
     });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
