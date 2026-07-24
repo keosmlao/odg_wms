@@ -31,7 +31,17 @@ export const ERP_PURCHASE_CREDIT_FLAG = 12; // ໃບຊື້ສິນຄ້າ
 const TRANS_TYPE = 3; // stock-movement document family
 const TRANS_TYPE_PURCHASE = 1; // purchase/AP document family
 
-export type ErpItem = { item_code: string; item_name: string | null; unit_code: string | null; qty: number };
+export type ErpItem = {
+  item_code: string;
+  item_name: string | null;
+  unit_code: string | null;
+  qty: number;
+  /** Source-warehouse condition (ສະພາບ) for the ic_trans_detail row. Optional —
+   *  falls back to the doc-level locFrom. Set from the 124 request for transfers. */
+  shelfCode?: string | null;
+  /** Destination-warehouse condition (ສະພາບ). Falls back to the doc-level locTo. */
+  shelfCode2?: string | null;
+};
 
 /**
  * Per-warehouse default doc_format_code for a ໃບເບີກ (56). In SmartBiz the format
@@ -54,6 +64,9 @@ export const TRANSFER_FORMAT = "FT";
  * the live in-transit balance is SUM(qty·calc_flag) over wh_code=9903 for that ref.
  */
 export const IN_TRANSIT_WH = "9903";
+/** Default location (ສະພາບ) inside the in-transit warehouse (9903) — the landing
+ *  spot the ERP transfer-out doc points its header location_to at. */
+export const IN_TRANSIT_LOC = "990399";
 export function issueFormatFor(wh: string): string {
   return ISSUE_FORMAT_BY_WH[wh] ?? "WFOH"; // WFOH = most common overall fallback
 }
@@ -94,14 +107,19 @@ async function avgCost(client: PoolClient, item: string, _wh: string): Promise<n
 }
 
 function insHeaderSql(): string {
-  // doc_ref_trans = the WMS DP doc that created this ERP doc → lets the DP
-  // delete find and reverse the 56 / 70+72 it posted.
+  // doc_ref       = the REQUEST doc this fulfils (122/124 doc_no) — lets the
+  //                 issue-history screen trace the whole document chain
+  //                 (request → transfer-out → transfer-in), since every leg of
+  //                 a 124's fulfilment (posted from different DPs, at different
+  //                 times) shares the same doc_ref.
+  // doc_ref_trans = the WMS DP doc that created THIS ERP doc → lets that DP's
+  //                 delete find and reverse the 56 / 70+72 it posted.
   return `INSERT INTO public.ic_trans
     (trans_type, trans_flag, doc_date, doc_no, doc_format_code, branch_code,
-     wh_from, location_from, wh_to, location_to, remark, status, doc_success,
+     wh_from, location_from, wh_to, location_to, doc_ref, remark, status, doc_success,
      doc_time, creator_code, total_amount, total_cost, doc_ref_trans, create_date_time_now)
-   VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0,
-           to_char(now(),'HH24:MI'), $11, $12, $12, $13, now())`;
+   VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0,
+           to_char(now(),'HH24:MI'), $12, $13, $13, $14, now())`;
 }
 
 function insDetailSql(): string {
@@ -129,7 +147,7 @@ export async function postErpIssue(
   }
   await client.query(insHeaderSql(), [
     TRANS_TYPE, ERP_ISSUE_FLAG, opts.docNo, opts.format, branch,
-    opts.wh, opts.location, null, null, opts.remark ?? null, opts.user, total, opts.wmsDoc ?? null,
+    opts.wh, opts.location, null, null, opts.refDoc ?? null, opts.remark ?? null, opts.user, total, opts.wmsDoc ?? null,
   ]);
   let line = 0;
   for (const { it, cost } of costed) {
@@ -162,21 +180,25 @@ export async function postErpTransfer(
   for (const flag of [ERP_TRANSFER_OUT, ERP_TRANSFER_IN]) {
     await client.query(insHeaderSql(), [
       TRANS_TYPE, flag, opts.docNo, opts.format, branch,
-      opts.whFrom, opts.locFrom, opts.whTo, opts.locTo, opts.remark ?? null, opts.user, total, opts.wmsDoc ?? null,
+      opts.whFrom, opts.locFrom, opts.whTo, opts.locTo, opts.refDoc ?? null, opts.remark ?? null, opts.user, total, opts.wmsDoc ?? null,
     ]);
   }
   let line = 0;
   for (const { it, cost } of costed) {
     const sum = Math.round(it.qty * cost * 100) / 100;
+    // Per-item source/dest conditions (ສະພາບ) when supplied (transfers carry the
+    // 124 request's shelf_code / shelf_code_2); otherwise the doc-level locations.
+    const sFrom = it.shelfCode !== undefined ? it.shelfCode : opts.locFrom;
+    const sTo = it.shelfCode2 !== undefined ? it.shelfCode2 : opts.locTo;
     // 72 out leg: −1 from source
     await client.query(insDetailSql(), [
       TRANS_TYPE, ERP_TRANSFER_OUT, opts.docNo, it.item_code, it.item_name, it.unit_code,
-      it.qty, -1, opts.whFrom, opts.locFrom, opts.whTo, opts.locTo, branch, cost, sum, opts.refDoc, line,
+      it.qty, -1, opts.whFrom, sFrom, opts.whTo, sTo, branch, cost, sum, opts.refDoc, line,
     ]);
     // 70 in leg: +1 into dest
     await client.query(insDetailSql(), [
       TRANS_TYPE, ERP_TRANSFER_IN, opts.docNo, it.item_code, it.item_name, it.unit_code,
-      it.qty, 1, opts.whTo, opts.locTo, opts.whFrom, opts.locFrom, branch, cost, sum, opts.refDoc, line++,
+      it.qty, 1, opts.whTo, sTo, opts.whFrom, sFrom, branch, cost, sum, opts.refDoc, line++,
     ]);
     // Transfer is net-zero for the global balance; the per-warehouse view
     // (stock_balance) recomputes from the inserted legs. Nothing else to cache.

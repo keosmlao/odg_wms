@@ -8,6 +8,7 @@ type Querier = Pick<PoolClient, "query">;
 export type SnFlag =
   | "receive"
   | "issue"
+  | "issue_pick"
   | "transfer"
   | "pallet"
   | "adjust"
@@ -18,7 +19,8 @@ export type SnFlags = Record<SnFlag, boolean>;
 /** Menu metadata for the settings UI — order + Lao labels. */
 export const SN_MENUS: { key: SnFlag; label: string; hint: string }[] = [
   { key: "receive", label: "ຮັບເຂົ້າ", hint: "gen/ຕິດຕາມ SN ຕອນຮັບເຂົ້າ" },
-  { key: "issue", label: "ຈ່າຍອອກ", hint: "ບັງຄັບ scan SN ຕອນຈ່າຍ" },
+  { key: "issue", label: "ຈ່າຍອອກ", hint: "ຕິດຕາມ/scan SN ຕອນຢືນຢັນຈ່າຍ" },
+  { key: "issue_pick", label: "ຈ່າຍ: pick", hint: "ບັງຄັບເລືອກ SN ຕັ້ງແຕ່ຕອນສ້າງໃບ pick (ປິດ = ໄປຍິງຕອນຢືນຢັນ)" },
   { key: "transfer", label: "ໂອນ", hint: "ຍ້າຍ SN ຕອນຮັບໂອນ 124" },
   { key: "pallet", label: "ຍ້າຍ pallet", hint: "ຍ້າຍ SN ຕາມ pallet" },
   { key: "adjust", label: "ປັບປຸງ", hint: "add/remove/generate SN" },
@@ -28,6 +30,7 @@ export const SN_MENUS: { key: SnFlag; label: string; hint: string }[] = [
 const FLAG_COLUMN: Record<SnFlag, string> = {
   receive: "sn_receive",
   issue: "sn_issue",
+  issue_pick: "sn_issue_pick",
   transfer: "sn_transfer",
   pallet: "sn_pallet",
   adjust: "sn_adjust",
@@ -37,6 +40,7 @@ const FLAG_COLUMN: Record<SnFlag, string> = {
 const DEFAULT_FLAGS: SnFlags = {
   receive: true,
   issue: true,
+  issue_pick: true,
   transfer: true,
   pallet: true,
   adjust: true,
@@ -46,6 +50,7 @@ const DEFAULT_FLAGS: SnFlags = {
 type FlagRow = {
   sn_receive: boolean;
   sn_issue: boolean;
+  sn_issue_pick: boolean;
   sn_transfer: boolean;
   sn_pallet: boolean;
   sn_adjust: boolean;
@@ -57,6 +62,7 @@ function rowToFlags(r: FlagRow | undefined): SnFlags {
   return {
     receive: r.sn_receive ?? true,
     issue: r.sn_issue ?? true,
+    issue_pick: r.sn_issue_pick ?? true,
     transfer: r.sn_transfer ?? true,
     pallet: r.sn_pallet ?? true,
     adjust: r.sn_adjust ?? true,
@@ -65,7 +71,7 @@ function rowToFlags(r: FlagRow | undefined): SnFlags {
 }
 
 const SELECT_FLAGS =
-  "sn_receive, sn_issue, sn_transfer, sn_pallet, sn_adjust, sn_return";
+  "sn_receive, sn_issue, sn_issue_pick, sn_transfer, sn_pallet, sn_adjust, sn_return";
 
 /**
  * All per-menu SN flags for a warehouse. Every flag defaults to TRUE when the

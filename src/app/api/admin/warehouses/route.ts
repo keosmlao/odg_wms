@@ -30,6 +30,7 @@ const SELECT_FIELDS = `
 type WhRow = Omit<Warehouse, "sn"> & {
   sn_receive: boolean;
   sn_issue: boolean;
+  sn_issue_pick: boolean;
   sn_transfer: boolean;
   sn_pallet: boolean;
   sn_adjust: boolean;
@@ -37,12 +38,13 @@ type WhRow = Omit<Warehouse, "sn"> & {
 };
 
 function rowToWarehouse(r: WhRow): Warehouse {
-  const { sn_receive, sn_issue, sn_transfer, sn_pallet, sn_adjust, sn_return, ...rest } = r;
+  const { sn_receive, sn_issue, sn_issue_pick, sn_transfer, sn_pallet, sn_adjust, sn_return, ...rest } = r;
   return {
     ...rest,
     sn: {
       receive: sn_receive ?? true,
       issue: sn_issue ?? true,
+      issue_pick: sn_issue_pick ?? true,
       transfer: sn_transfer ?? true,
       pallet: sn_pallet ?? true,
       adjust: sn_adjust ?? true,
@@ -95,9 +97,10 @@ export async function GET() {
 
   const rows = await query<WhRow>(
     `SELECT ${SELECT_FIELDS.split(",").map((f) => `w.${f.trim()}`).join(", ")},
-            COALESCE(c.sn_receive, true)  AS sn_receive,
-            COALESCE(c.sn_issue, true)    AS sn_issue,
-            COALESCE(c.sn_transfer, true) AS sn_transfer,
+            COALESCE(c.sn_receive, true)     AS sn_receive,
+            COALESCE(c.sn_issue, true)       AS sn_issue,
+            COALESCE(c.sn_issue_pick, true)  AS sn_issue_pick,
+            COALESCE(c.sn_transfer, true)    AS sn_transfer,
             COALESCE(c.sn_pallet, true)   AS sn_pallet,
             COALESCE(c.sn_adjust, true)   AS sn_adjust,
             COALESCE(c.sn_return, true)   AS sn_return
@@ -171,7 +174,7 @@ export async function POST(request: Request) {
       ],
     );
     // New warehouses default to SN-on for every menu (no config row needed).
-    const sn: SnFlags = { receive: true, issue: true, transfer: true, pallet: true, adjust: true, return: true };
+    const sn: SnFlags = { receive: true, issue: true, issue_pick: true, transfer: true, pallet: true, adjust: true, return: true };
     return NextResponse.json({ ok: true, warehouse: { ...rows[0], sn } });
   } catch (err) {
     const e = err as { code?: string; message?: string };

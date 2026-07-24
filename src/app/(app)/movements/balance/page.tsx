@@ -5,6 +5,7 @@ import { getSession } from "@/lib/session";
 import { ROLE_LABEL_LO, accessibleWarehouses } from "@/lib/session-shared";
 import BalanceLocationItems from "./BalanceLocationItems";
 import BalanceTableClient, { TableStockRow } from "./BalanceTableClient";
+import BalanceFilters, { RackOpt, LocOpt } from "./BalanceFilters";
 import { Notice as UiNotice } from "@/components/ui/Card";
 import {
   AlertIcon,
@@ -13,7 +14,6 @@ import {
   ListIcon,
   MapPinIcon,
   PackageIcon,
-  SearchIcon,
 } from "@/components/ui/Icons";
 
 type AggRow = {
@@ -94,6 +94,8 @@ export default async function BalancePage({
   const params = await searchParams;
   const search = pickStr(params.q);
   const requestedWh = pickStr(params.wh);
+  const requestedRack = pickStr(params.rack);
+  const requestedLocation = pickStr(params.location);
   const requestedView = pickStr(params.view) || "tree";
   const page = Math.max(1, Number.parseInt(pickStr(params.page), 10) || 1);
 
@@ -123,11 +125,20 @@ export default async function BalancePage({
 
   const allowed = new Set(whInfo.map((w) => w.code));
   const wh = requestedWh && allowed.has(requestedWh) ? requestedWh : "";
+  // Rack/location filters only apply within a chosen warehouse.
+  const rack = wh ? requestedRack : "";
+  const location = wh && rack ? requestedLocation : "";
 
   // Unified SQL filtering for Tree/Table query based on search query `q` and chosen warehouse `wh`
   const baseArgs: unknown[] = [];
+  // NOTE: do NOT filter on `status`. In odg_wms_trans_detail, status=1 is not a
+  // "void" flag — it marks the outbound (-1) leg of an internal bin relocation
+  // (trans_flag 77: +1 status=0 into the destination bin, -1 status=1 out of the
+  // source bin) plus a handful of status=1 sales legs. Excluding status=1 keeps
+  // the +1 destination legs but drops the -1 source legs, so relocations no
+  // longer net to zero and source bins are never debited — inflating the balance
+  // (e.g. item 120101-2626 @ 1202/Z02 showed 664 instead of the real 576).
   let baseFilters = [
-    "(t.status = 0 OR t.status IS NULL)",
     "t.wh_code IS NOT NULL AND t.wh_code <> ''"
   ];
   if (Array.isArray(accessible)) {
@@ -137,6 +148,14 @@ export default async function BalancePage({
   if (wh) {
     baseArgs.push(wh);
     baseFilters.push(`t.wh_code = $${baseArgs.length}`);
+  }
+  if (rack) {
+    baseArgs.push(rack);
+    baseFilters.push(`TRIM(t.shelf_code) = $${baseArgs.length}`);
+  }
+  if (location) {
+    baseArgs.push(location);
+    baseFilters.push(`TRIM(t.shelf_code1) = $${baseArgs.length}`);
   }
   if (search) {
     baseArgs.push(`%${search}%`);
@@ -194,8 +213,18 @@ export default async function BalancePage({
     ),
   };
 
-  const filtered = !!wh || !!search;
+  const filtered = !!wh || !!rack || !!location || !!search;
   const expandAll = filtered;
+
+  // Cascading filter options (warehouse → rack → location) from the location master.
+  const rackOpts: RackOpt[] = rackMaster
+    .filter((r): r is RackMasterRow & { code: string; wh_code: string } => !!r.code && !!r.wh_code)
+    .map((r) => ({ wh: r.wh_code, code: r.code, name: r.name }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+  const locOpts: LocOpt[] = locationMaster
+    .filter((l): l is LocationMasterRow & { code: string; wh_code: string; rack_code: string } => !!l.code && !!l.wh_code && !!l.rack_code)
+    .map((l) => ({ wh: l.wh_code, rack: l.rack_code, code: l.code, name: l.name }))
+    .sort((a, b) => a.code.localeCompare(b.code));
 
   // Table query (Paginated flat list of stock balance by items)
   let tableRows: TableStockRow[] = [];
@@ -248,12 +277,16 @@ export default async function BalancePage({
     const next = {
       q: search,
       wh: requestedWh,
+      rack: requestedRack,
+      location: requestedLocation,
       view: requestedView,
       page: String(page),
       ...overrides,
     };
     if (next.q) sp.set("q", next.q);
     if (next.wh) sp.set("wh", next.wh);
+    if (next.rack) sp.set("rack", next.rack);
+    if (next.location) sp.set("location", next.location);
     if (next.view && next.view !== "tree") sp.set("view", next.view);
     if (next.page && next.page !== "1") sp.set("page", next.page);
     const s = sp.toString();
@@ -312,43 +345,15 @@ export default async function BalancePage({
           </div>
         </div>
 
-        {/* Filter bar */}
-        <form method="get" className="mt-4 grid gap-2.5 sm:grid-cols-[220px_1fr_auto]">
-          {/* Keep hidden views when submitting form */}
-          {requestedView !== "tree" && <input type="hidden" name="view" value={requestedView} />}
-          <select
-            name="wh"
-            defaultValue={wh}
-            className="rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
-          >
-            <option value="">{accessible === null ? "ທຸກສາງ" : `ສາງທີ່ຮັບຜິດຊອບ (${whInfo.length})`}</option>
-            {whInfo.map((w) => (
-              <option key={w.code} value={w.code}>
-                {w.code}{w.name ? ` · ${w.name}` : ""}
-              </option>
-            ))}
-          </select>
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-            <input
-              type="text"
-              name="q"
-              defaultValue={search}
-              placeholder="ຄົ້ນຫາ ລະຫັດ/ຊື່ສິນຄ້າ ຫຼື rack / location / pallet..."
-              className="w-full rounded-lg bg-white py-2 pl-9 pr-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
-            />
-          </div>
-          <div className="flex gap-2">
-            <button type="submit" className="rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:shadow-lg">
-              ກອງ
-            </button>
-            {filtered && (
-              <Link href={requestedView === "table" ? "/movements/balance?view=table" : "/movements/balance"} className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-600 ring-1 ring-zinc-200 transition hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800">
-                ລ້າງ
-              </Link>
-            )}
-          </div>
-        </form>
+        {/* Filter bar (warehouse → rack → location cascade + search + Excel export) */}
+        <BalanceFilters
+          warehouses={whInfo}
+          racks={rackOpts}
+          locations={locOpts}
+          initial={{ wh, rack, location, q: search }}
+          view={requestedView}
+          accessibleAll={accessible === null}
+        />
 
         {/* Compact stat chips */}
         <div className="mt-4 flex flex-wrap items-center gap-2">

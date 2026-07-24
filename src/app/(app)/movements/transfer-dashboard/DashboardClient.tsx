@@ -199,6 +199,8 @@ function TrackCard({ d, role, now, today }: { d: Row; role: "out" | "in"; now: n
         <span className="ml-auto flex items-center gap-2">
           {!t.done && t.req - t.rcv > 1e-6 && <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 ring-1 ring-amber-200">ຍັງຄ້າງ {t.req - t.rcv}/{t.req}</span>}
           <span className="text-[11px] text-slate-400">{fmtD(d.doc_date)}</span>
+          <a href={`/print/transfer-request/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener"
+            title="ພິມໃບຂໍໂອນ" className="shrink-0 rounded-lg p-1.5 text-slate-400 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-700">🖨</a>
         </span>
       </div>
 

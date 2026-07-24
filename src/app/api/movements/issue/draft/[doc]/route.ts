@@ -4,6 +4,8 @@ import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { type IssueLine, executeIssue } from "@/lib/issueCore";
 import { saveMoveNotes } from "@/lib/moveReasons";
+import { warehouseSnEnabled } from "@/lib/warehouseConfig";
+import { getSnDualBrands } from "@/lib/snDualBrand";
 
 const SRC_TYPE: Record<number, string> = { 122: "req", 124: "transfer", 44: "sale" };
 
@@ -53,28 +55,54 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
   // (incl. substitutes not in the pending plan). Filtered per line by node below.
   const wh = draft.header.warehouse_code ?? "";
   const items = Array.from(new Set(draft.lines.map((l) => l.item_code)));
+  // A unit can be scanned by EITHER its factory serial (sn) or this company's
+  // own serial (isn) — expose both as separately-scannable ids, not just one.
   const avail = items.length > 0
-    ? await query<{ item_code: string; id: string; rack: string; location: string; pallet: string }>(
-        `SELECT item_code, COALESCE(NULLIF(sn, ''), isn) AS id,
+    ? await query<{ item_code: string; sn: string | null; isn: string | null; rack: string; location: string; pallet: string }>(
+        `SELECT item_code, NULLIF(TRIM(sn), '') AS sn, NULLIF(TRIM(isn), '') AS isn,
                 COALESCE(NULLIF(TRIM(rack), ''), '') AS rack,
                 COALESCE(NULLIF(TRIM(location), ''), '') AS location,
                 COALESCE(NULLIF(TRIM(pallet), ''), '') AS pallet
          FROM public.sn_inventory
          WHERE wh_code = $1 AND COALESCE(status, 0) = 0 AND item_code = ANY($2)
-           AND COALESCE(NULLIF(sn, ''), isn) IS NOT NULL`,
+           AND (NULLIF(TRIM(sn), '') IS NOT NULL OR NULLIF(TRIM(isn), '') IS NOT NULL)`,
         [wh, items],
       )
     : [];
+
+  // Whether an item needs its SN scanned at confirm is decided by the ACTUAL
+  // serial-tracked stock (items that have scannable units in sn_inventory),
+  // gated by the warehouse's issue-SN policy — NOT by whatever the pick slip
+  // happened to pre-select. This lets a location-only pick (sn_issue_pick off)
+  // still be forced to scan the serial here.
+  const snIssueOn = await warehouseSnEnabled(wh, "issue");
+  const trackedItems = new Set(avail.map((a) => a.item_code));
+
+  // Items whose brand requires BOTH sn and isn (SAMSUNG etc.) — so the confirm
+  // screen can flag a scanned unit that is missing one of the two.
+  const dualBrands = await getSnDualBrands();
+  const dualItems = new Set<string>();
+  if (dualBrands.length > 0 && items.length > 0) {
+    const br = await query<{ code: string }>(
+      `SELECT code FROM public.ic_inventory WHERE code = ANY($1) AND item_brand = ANY($2)`,
+      [items, dualBrands],
+    );
+    for (const r of br) dualItems.add(r.code);
+  }
 
   return NextResponse.json({
     header: draft.header,
     source_type: SRC_TYPE[draft.header.doc_type ?? 0] ?? "",
     lines: draft.lines.map((l) => {
       const node = parseNode(l.shelf_code);
-      const available = avail
-        .filter((a) => a.item_code === l.item_code && a.rack === node.rack && a.location === node.location && a.pallet === node.pallet)
-        .map((a) => a.id);
-      return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: l.qty, ...node, serials: serialsByItem[l.item_code] ?? [], available };
+      const nodeUnits = avail.filter(
+        (a) => a.item_code === l.item_code && a.rack === node.rack && a.location === node.location && a.pallet === node.pallet,
+      );
+      const available = nodeUnits.flatMap((a) => [a.sn, a.isn].filter((v): v is string => !!v));
+      // Both ids of each scannable unit, so the UI can show sn + isn per row.
+      const units = nodeUnits.map((a) => ({ sn: a.sn, isn: a.isn }));
+      const serial_required = snIssueOn && trackedItems.has(l.item_code);
+      return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: l.qty, ...node, serials: serialsByItem[l.item_code] ?? [], available, units, serial_required, dual_required: dualItems.has(l.item_code) };
     }),
   });
 }
@@ -199,27 +227,45 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
         [docNo],
       )
     ).rows;
-    const allSerials = (
-      await client.query<{ item_code: string; serial_number: string }>(
-        `SELECT item_code, serial_number FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1`,
-        [docNo],
-      )
-    ).rows;
-    const serialItems = new Set(allSerials.map((s) => s.item_code)); // items issued by serial
+    // Items that must be issued by serial = those actually serial-tracked in this
+    // warehouse (have scannable units in sn_inventory), gated by the issue-SN
+    // policy — NOT the pick's pre-selected serials. So a location-only pick
+    // (sn_issue_pick off) is still forced to scan the SN here at confirm.
+    const snIssueOn = await warehouseSnEnabled(wh, "issue", client);
+    const docItemCodes = Array.from(new Set(detail.map((d) => d.item_code)));
+    const serialItems = new Set<string>();
+    if (snIssueOn && docItemCodes.length > 0) {
+      const tracked = await client.query<{ item_code: string }>(
+        `SELECT DISTINCT item_code FROM public.sn_inventory
+         WHERE wh_code = $1 AND COALESCE(status, 0) = 0 AND item_code = ANY($2)
+           AND (NULLIF(TRIM(sn), '') IS NOT NULL OR NULLIF(TRIM(isn), '') IS NOT NULL)`,
+        [wh, docItemCodes],
+      );
+      for (const r of tracked.rows) serialItems.add(r.item_code);
+    }
 
     // Resolve the ACTUAL scanned serials against in-stock (substitute allowed):
     // each scanned serial must be a real in-stock serial of one of the doc's items.
+    // A unit may be scanned by EITHER its factory serial (sn) or this company's
+    // own serial (isn) — match whichever the caller supplied, not just one column.
     const scannedArr = [...scanned];
-    const scannedInfo = scannedArr.length > 0
-      ? (await client.query<{ id: string; item_code: string }>(
-          `SELECT COALESCE(NULLIF(sn, ''), isn) AS id, item_code
+    const scannedRows = scannedArr.length > 0
+      ? (await client.query<{ item_code: string; sn: string | null; isn: string | null }>(
+          `SELECT item_code, NULLIF(TRIM(sn), '') AS sn, NULLIF(TRIM(isn), '') AS isn
            FROM public.sn_inventory
            WHERE wh_code = $1 AND COALESCE(status, 0) = 0
-             AND upper(COALESCE(NULLIF(sn, ''), isn)) = ANY($2)`,
+             AND (upper(TRIM(sn)) = ANY($2) OR upper(TRIM(isn)) = ANY($2))`,
           [wh, scannedArr],
         )).rows
       : [];
-    const validById = new Map(scannedInfo.map((s) => [s.id.toUpperCase(), s.item_code]));
+    // Map each scanned string (uppercased) to its item + the raw (original-case)
+    // id that matched, so downstream matching against sn_inventory stays exact.
+    const validById = new Map<string, string>();
+    const rawById = new Map<string, string>();
+    for (const row of scannedRows) {
+      if (row.sn && scanned.has(row.sn.toUpperCase())) { validById.set(row.sn.toUpperCase(), row.item_code); rawById.set(row.sn.toUpperCase(), row.sn); }
+      if (row.isn && scanned.has(row.isn.toUpperCase())) { validById.set(row.isn.toUpperCase(), row.item_code); rawById.set(row.isn.toUpperCase(), row.isn); }
+    }
     const docItems = new Set(detail.map((d) => d.item_code));
     const badScan = scannedArr.filter((s) => !validById.has(s) || !docItems.has(validById.get(s)!));
     if (badScan.length > 0) {
@@ -228,7 +274,10 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
     }
     // Group actual scanned serials per item.
     const scannedByItem: Record<string, string[]> = {};
-    for (const s of scannedInfo) (scannedByItem[s.item_code] ??= []).push(s.id);
+    for (const s of scannedArr) {
+      const item = validById.get(s);
+      if (item) (scannedByItem[item] ??= []).push(rawById.get(s) ?? s);
+    }
 
     // Each serial item must be scanned exactly to its planned qty.
     const plannedByItem: Record<string, number> = {};

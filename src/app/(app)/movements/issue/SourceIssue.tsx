@@ -132,8 +132,10 @@ function lineCap(line: WorkingLine): number {
   // Issue qty can't exceed what's remaining on the source, nor the chosen node's WMS stock.
   return Math.min(line.remaining, nodeQty(line));
 }
-function issueQty(line: WorkingLine): number {
-  if (line.serialized) return line.selectedSerials.length;
+function issueQty(line: WorkingLine, pickRequiresSn = true): number {
+  // Serial line WITH pick-time SN required → issue = how many ISN were selected.
+  // Serial line with SN deferred to confirm → issue = the entered target qty.
+  if (line.serialized) return pickRequiresSn ? line.selectedSerials.length : (parsedQty(line.qty) ?? 0);
   return parsedQty(line.qty) ?? 0;
 }
 /** Target qty for a serial line (how many ISN to pick) = entered qty, capped at
@@ -222,6 +224,12 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   const gscanRef = useRef<HTMLInputElement>(null);
   const [assignee, setAssignee] = useState(""); // มอบหมายให้ forklift/คนเก็บ → wms_product_out.remark
   const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  // Per-warehouse SN policy (settings → ສາງ → SN ຕໍ່ເມນູ):
+  //  · snIssueOn      ("ຈ່າຍ")      → serials tracked in the issue flow at all.
+  //  · snPickRequired ("ຈ່າຍ: pick") → the pick slip must pre-select serials; when
+  //    off, the pick is location+qty only and SN is scanned at confirm instead.
+  const [snIssueOn, setSnIssueOn] = useState(true);
+  const [snPickRequired, setSnPickRequired] = useState(true);
 
   const showToast = useCallback((kind: "ok" | "err", text: string) => {
     setToast({ kind, text });
@@ -229,6 +237,24 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   }, []);
 
   const whName = useMemo(() => warehouses.find((w) => w.code === whCode)?.name ?? null, [warehouses, whCode]);
+
+  useEffect(() => {
+    if (!whCode) { setSnIssueOn(true); setSnPickRequired(true); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/movements/warehouse-sn-flags?wh=${encodeURIComponent(whCode)}`);
+        const data = (await res.json()) as { flags?: { issue?: boolean; issue_pick?: boolean } };
+        if (cancelled) return;
+        const issueOn = data.flags?.issue !== false;
+        setSnIssueOn(issueOn);
+        setSnPickRequired(issueOn && data.flags?.issue_pick !== false);
+      } catch {
+        if (!cancelled) { setSnIssueOn(true); setSnPickRequired(true); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [whCode]);
 
   // Deep-link from the transfer dashboard (?type=&wh=&doc=) → preselect + auto-open.
   const searchParams = useSearchParams();
@@ -466,10 +492,10 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   // Lines shown in the wizard (not removed) vs the ones the user pulled out.
   const shownLines = useMemo(() => lines.filter((l) => !removed.has(l.key)), [lines, removed]);
   const removedLines = useMemo(() => lines.filter((l) => removed.has(l.key)), [lines, removed]);
-  const readyLines = useMemo(() => shownLines.filter((l) => issueQty(l) > 0 && l.selIdx >= 0), [shownLines]);
+  const readyLines = useMemo(() => shownLines.filter((l) => issueQty(l, snPickRequired) > 0 && l.selIdx >= 0), [shownLines, snPickRequired]);
   const invalid = useMemo(
-    () => shownLines.find((l) => issueQty(l) > 0 && issueQty(l) > lineCap(l) + 1e-6),
-    [shownLines],
+    () => shownLines.find((l) => issueQty(l, snPickRequired) > 0 && issueQty(l, snPickRequired) > lineCap(l) + 1e-6),
+    [shownLines, snPickRequired],
   );
 
   const qNum = (l: WorkingLine) => parsedQty(l.qty) ?? 0;
@@ -481,11 +507,11 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
     for (const l of shownLines) { const a = m.get(l.item_code); if (a) a.push(l); else m.set(l.item_code, [l]); }
     return [...m.entries()].map(([item_code, allocs]) => ({ item_code, allocs, line: allocs[0] }));
   }, [shownLines]);
-  const allocatedFor = (item: string) => shownLines.filter((l) => l.item_code === item).reduce((s, l) => s + issueQty(l), 0);
+  const allocatedFor = (item: string) => shownLines.filter((l) => l.item_code === item).reduce((s, l) => s + issueQty(l, snPickRequired), 0);
   const neededFor = (item: string) => itemGroups.find((g) => g.item_code === item)?.line.remaining ?? 0;
   /** An allocation row is incomplete if it has a qty target but is missing a
    *  location or (for serial) the full ISN set. */
-  const incompleteAlloc = (l: WorkingLine) => qNum(l) > 0 && (l.selIdx < 0 || (l.serialized && l.selectedSerials.length < targetQty(l)));
+  const incompleteAlloc = (l: WorkingLine) => qNum(l) > 0 && (l.selIdx < 0 || (l.serialized && snPickRequired && l.selectedSerials.length < targetQty(l)));
 
   // Add / remove an allocation row for an item (split across locations).
   function addAlloc(item: string) {
@@ -575,8 +601,8 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
               item_code: l.item_code,
               item_name: l.item_name,
               unit_code: l.unit_code,
-              qty: issueQty(l),
-              serials: l.serialized ? l.selectedSerials : [],
+              qty: issueQty(l, snPickRequired),
+              serials: l.serialized && snIssueOn ? l.selectedSerials : [],
               rack: loc?.rack ?? "",
               location: loc?.location ?? "",
               pallet: loc?.pallet ?? "",
@@ -886,6 +912,11 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
           {/* Global SN scan — ยิง SN ของรายการ serial ใดก็ได้ */}
           {lines.some((l) => l.serialized) && (
             <div className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/50 p-3.5 dark:border-violet-900/40 dark:bg-violet-950/20">
+              {snIssueOn && !snPickRequired && (
+                <div className="mb-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/40">
+                  ⚙ ສາງນີ້ຕັ້ງ: ໃບ pick ຈັດຕາມ<span className="underline">ທີ່ເກັບເທົ່ານັ້ນ</span> — ບໍ່ບັງຄັບ ISN (ໄປຍິງ SN ຕອນຢືນຢັນຈ່າຍ)
+                </div>
+              )}
               <label className="mb-1 block text-[11px] font-bold text-violet-700 dark:text-violet-300">🔫 ຍິງ / ພິມ SN ຫຼື ISN ແລ້ວ Enter (ເລືອກໃຫ້ສິນຄ້າອັດຕະໂນມັດ)</label>
               <input ref={gscanRef} value={gscan} onChange={(e) => setGscan(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleGlobalScan(); } }}
@@ -951,7 +982,11 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                                 onChange={(e) => (l.serialized ? setSerialQty(l.key, e.target.value) : setQty(l.key, e.target.value))}
                                 className={`w-20 rounded-lg bg-zinc-50/50 px-2 py-2 text-center font-mono text-xs font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:bg-zinc-950 ${over ? "ring-amber-400 text-amber-700" : "ring-zinc-200 dark:ring-zinc-800"}`} />
                               {l.serialized ? (
-                                <button type="button" onClick={() => openSerialPicker(l.key)} disabled={l.selIdx < 0} className={`inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold ring-1 disabled:opacity-40 ${l.selectedSerials.length >= target && target > 0 ? "bg-violet-600 text-white ring-violet-600" : "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:ring-violet-900/40"}`}><LayersIcon className="h-3.5 w-3.5" />{l.selectedSerials.length} / {target} ISN</button>
+                                <button type="button" onClick={() => openSerialPicker(l.key)} disabled={l.selIdx < 0}
+                                  title={snPickRequired ? "ຕ້ອງເລືອກ ISN ໃຫ້ຄົບ" : "ບໍ່ບັງຄັບ — ສາງນີ້ຈັດ pick ຕາມທີ່ເກັບເທົ່ານັ້ນ (ຍິງ SN ຕອນຢືນຢັນ)"}
+                                  className={`inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold ring-1 disabled:opacity-40 ${l.selectedSerials.length >= target && target > 0 ? "bg-violet-600 text-white ring-violet-600" : "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:ring-violet-900/40"}`}>
+                                  <LayersIcon className="h-3.5 w-3.5" />{l.selectedSerials.length} / {target} ISN{!snPickRequired && <span className="opacity-70"> (ບໍ່ບັງຄັບ)</span>}
+                                </button>
                               ) : (
                                 <span className="text-[10px] text-zinc-400">ມີ {formatQty(locStock)}</span>
                               )}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 
 /**
  * Stage 1 of the goods issue (ຈ່າຍສິນຄ້າອອກສາງ): create a PENDING draft in
@@ -101,6 +102,16 @@ export async function POST(request: Request) {
   try {
     await client.query("BEGIN");
 
+    // Per-warehouse policy:
+    //  · sn_issue off      → issue by qty only; drop serials entirely.
+    //  · sn_issue on but
+    //    sn_issue_pick off → pick slip picks location + qty; serials are OPTIONAL
+    //                        here and get scanned at confirm instead.
+    //  · both on (default) → the pick slip must pre-select every serial.
+    const snOn = await warehouseSnEnabled(wh, "issue", client);
+    const pickRequiresSn = snOn && (await warehouseSnEnabled(wh, "issue_pick", client));
+    if (!snOn) for (const l of lines) l.serials = [];
+
     // Pre-validate (same rules as finalize) so an invalid plan can't be saved:
     // serialized items need serials, qty ≤ node balance, serials in stock here.
     const snRes = await client.query<{ item_code: string }>(
@@ -109,9 +120,9 @@ export async function POST(request: Request) {
     );
     const hasSerials = new Set(snRes.rows.map((r) => r.item_code));
     for (const line of lines) {
-      if (hasSerials.has(line.item_code) && line.serials.length === 0) {
+      if (pickRequiresSn && hasSerials.has(line.item_code) && line.serials.length === 0) {
         await client.query("ROLLBACK");
-        return NextResponse.json({ error: `ສິນຄ້າ ${line.item_code} ມີ serial — ຕ້ອງເລືອກ/ຍິງ serial ກ່ອນຈ່າຍ` }, { status: 400 });
+        return NextResponse.json({ error: `ສິນຄ້າ ${line.item_code} ມີ serial — ຕ້ອງເລືອກ/ຍິງ serial ກ່ອນສ້າງໃບ pick` }, { status: 400 });
       }
       const balRes = await client.query<{ before: string }>(
         `SELECT COALESCE(SUM(t.qty * t.calc_flag), 0)::numeric::text AS before

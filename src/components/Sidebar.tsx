@@ -208,6 +208,11 @@ const groups: Group[] = [
         icon: <ShieldIcon className="h-3.5 w-3.5" />,
       },
       {
+        label: "ຍີ່ຫໍ້ບັງຄັບ SN+ISN",
+        href: "/settings/sn-dual-brands",
+        icon: <PackageIcon className="h-3.5 w-3.5" />,
+      },
+      {
         label: "ຄ່າຝາກເຄື່ອງ",
         href: "/settings/deposit",
         icon: <PackageIcon className="h-3.5 w-3.5" />,

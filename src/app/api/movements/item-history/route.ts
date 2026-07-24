@@ -65,9 +65,12 @@ export async function GET(request: Request) {
     );
   }
 
+  // No `status` filter — status=1 marks the outbound (-1) leg of an internal bin
+  // relocation (trans_flag 77), not a voided row. Dropping it would hide real
+  // movements and make the history fail to reconcile with the balance shown on
+  // the balance page (which now counts every leg).
   const where: string[] = [
     "t.item_code = $1",
-    "(t.status = 0 OR t.status IS NULL)",
   ];
   const args: unknown[] = [itemCode];
 

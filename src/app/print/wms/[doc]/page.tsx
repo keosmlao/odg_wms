@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { MOVE_REASONS } from "@/lib/moveReasons";
+import { IN_TRANSIT_WH } from "@/lib/erpPost";
 import AutoPrint from "./AutoPrint";
 
 const REASON_LABEL = Object.fromEntries(MOVE_REASONS.map((r) => [r.code, r.label]));
@@ -58,15 +59,21 @@ export default async function PrintWmsDocPage({ params, searchParams }: { params
     [docNo],
   ) : [];
 
-  const serials = h ? await query<{ item_code: string; sn: string | null; isn: string | null }>(
-    `SELECT item_code, sn, isn FROM public.sn_trans_detail WHERE doc_no = $1 ORDER BY item_code`,
+  // One row per physical unit — sn_trans_detail carries the exact rack/location/
+  // pallet it moved at (source node for an issue-out leg, landing node for a
+  // receive), so we can show "ຈ່າຍອອກ/ຮັບເຂົ້າ ທີ່ຈຸດໃດ" per serial, not just per item.
+  const units = h ? await query<{ item_code: string; sn: string | null; isn: string | null; rack: string | null; location: string | null; pallet: string | null }>(
+    `SELECT item_code, NULLIF(TRIM(sn), '') AS sn, NULLIF(TRIM(isn), '') AS isn,
+            NULLIF(TRIM(rack), '') AS rack, NULLIF(TRIM(location), '') AS location, NULLIF(TRIM(pallet), '') AS pallet
+     FROM public.sn_trans_detail WHERE doc_no = $1 ORDER BY item_code, COALESCE(sn, isn)`,
     [docNo],
   ) : [];
-  const snByItem = new Map<string, string[]>();
-  for (const s of serials) {
-    const id = (s.sn && s.sn.trim()) || s.isn || "";
-    if (!id) continue;
-    const a = snByItem.get(s.item_code) ?? []; a.push(id); snByItem.set(s.item_code, a);
+  const unitsByItem = new Map<string, typeof units>();
+  for (const u of units) {
+    const a = unitsByItem.get(u.item_code) ?? []; a.push(u); unitsByItem.set(u.item_code, a);
+  }
+  function unitLoc(u: { rack: string | null; location: string | null; pallet: string | null }): string {
+    return [u.rack, u.location, u.pallet].filter(Boolean).join(" / ") || "—";
   }
 
   // Short-movement reasons (table may not exist yet → degrade silently).
@@ -82,10 +89,42 @@ export default async function PrintWmsDocPage({ params, searchParams }: { params
 
   const isRelocation = rows.some((r) => r.to_wh);
   const title = !h ? "ບໍ່ພົບເອກະສານ" : isRelocation ? "ໃບໂອນ / ຮັບໂອນ ສິນຄ້າ (WMS)" : "ໃບຈ່າຍສິນຄ້າ (WMS Pick Slip)";
+  // A receive doc's −1 leg sits AT 9903 (goods leaving in-transit) — so its
+  // sn_trans_detail units carry the DESTINATION landing node, not a source one.
+  // An issue-out / transfer-out doc's units carry the real SOURCE node.
+  const isReceiveDoc = rows.some((r) => r.from_wh === IN_TRANSIT_WH);
+
+  type PrintRow = {
+    key: string; item_code: string; item_name: string | null; unit_code: string | null;
+    sn: string | null; isn: string | null; loc_from: string; loc_to: string; qty: number;
+  };
+  const printRows: PrintRow[] = [];
+  for (const r of rows) {
+    const us = unitsByItem.get(r.item_code) ?? [];
+    if (us.length > 0) {
+      for (const u of us) {
+        const uloc = unitLoc(u);
+        printRows.push({
+          key: `${r.item_code}-${u.sn ?? u.isn ?? printRows.length}`,
+          item_code: r.item_code, item_name: r.item_name, unit_code: r.unit_code,
+          sn: u.sn, isn: u.isn,
+          loc_from: isReceiveDoc ? (r.from_loc ?? "—") : uloc,
+          loc_to: isReceiveDoc ? uloc : (r.to_loc ?? "—"),
+          qty: 1,
+        });
+      }
+    } else {
+      printRows.push({
+        key: r.item_code, item_code: r.item_code, item_name: r.item_name, unit_code: r.unit_code,
+        sn: null, isn: null, loc_from: r.from_loc ?? "—", loc_to: r.to_loc ?? "—",
+        qty: Number.parseFloat(r.qty || "0"),
+      });
+    }
+  }
 
   return (
-    <div className="mx-auto max-w-3xl bg-white p-8 text-slate-900" style={{ fontFamily: "'Noto Sans Lao', sans-serif" }}>
-      <style>{`@media print { .no-print { display:none !important } @page { margin: 14mm } } body { background:#fff }`}</style>
+    <div className="mx-auto max-w-[190mm] bg-white p-5 text-slate-900" style={{ fontFamily: "'Noto Sans Lao', sans-serif" }}>
+      <style>{`@media print { .no-print { display:none !important } @page { size: A4; margin: 8mm } } body { background:#fff }`}</style>
       <AutoPrint auto={sp.auto === "1"} />
 
       {!h ? (
@@ -93,9 +132,9 @@ export default async function PrintWmsDocPage({ params, searchParams }: { params
       ) : (
         <>
           <div className="mb-1 text-center text-lg font-black">ODIEN GROUP</div>
-          <div className="mb-4 text-center text-base font-bold">{title}</div>
+          <div className="mb-3 text-center text-base font-bold">{title}</div>
 
-          <div className="mb-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+          <div className="mb-3 grid grid-cols-2 gap-x-6 gap-y-0.5 text-xs">
             <div><b>ເລກທີ່:</b> <span className="font-mono">{h.doc_no}</span></div>
             <div><b>ວັນທີ່:</b> {h.doc_date} {h.doc_time}</div>
             <div><b>ສາງ:</b> {whLabel(h.wh_code, h.wh_name)}</div>
@@ -103,53 +142,70 @@ export default async function PrintWmsDocPage({ params, searchParams }: { params
             <div><b>ຜູ້ດຳເນີນ:</b> {h.user_created ?? "—"}</div>
           </div>
 
-          <table className="w-full border-collapse text-sm">
+          <table className="w-full table-fixed border-collapse text-[11px]">
+            <colgroup>
+              <col className="w-[4%]" /><col className="w-[16%]" /><col className="w-[13%]" />
+              <col className="w-[15%]" /><col className="w-[19%]" />
+              {isRelocation && <col className="w-[15%]" />}
+              <col className={isRelocation ? "w-[8%]" : "w-[16%]"} /><col className="w-[6%]" />
+            </colgroup>
             <thead>
               <tr className="bg-slate-100 text-left">
-                <th className="border border-slate-300 px-2 py-1 w-8">#</th>
-                <th className="border border-slate-300 px-2 py-1">ສິນຄ້າ</th>
-                <th className="border border-slate-300 px-2 py-1">ຈາກ</th>
-                {isRelocation && <th className="border border-slate-300 px-2 py-1">ໄປ</th>}
-                <th className="border border-slate-300 px-2 py-1 text-right w-20">ຈຳນວນ</th>
+                <th className="border border-slate-300 px-1.5 py-1">#</th>
+                <th className="border border-slate-300 px-1.5 py-1">SN</th>
+                <th className="border border-slate-300 px-1.5 py-1">Internal SN</th>
+                <th className="border border-slate-300 px-1.5 py-1">ລະຫັດສິນຄ້າ</th>
+                <th className="border border-slate-300 px-1.5 py-1">ຊື່</th>
+                {isRelocation ? (
+                  <>
+                    <th className="border border-slate-300 px-1.5 py-1">ຈາກ</th>
+                    <th className="border border-slate-300 px-1.5 py-1">ໄປ</th>
+                  </>
+                ) : (
+                  <th className="border border-slate-300 px-1.5 py-1">ບ່ອນເກັບ</th>
+                )}
+                <th className="border border-slate-300 px-1.5 py-1 text-right">ຈຳນວນ</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => {
-                const sns = snByItem.get(r.item_code) ?? [];
-                return (
-                  <tr key={r.item_code} className="align-top">
-                    <td className="border border-slate-300 px-2 py-1 text-center">{i + 1}</td>
-                    <td className="border border-slate-300 px-2 py-1">
-                      <div className="font-mono text-xs font-bold">{r.item_code}</div>
-                      <div>{r.item_name}</div>
-                      {sns.length > 0 && <div className="mt-0.5 text-[10px] text-slate-500">SN: {sns.join(", ")}</div>}
-                    </td>
-                    <td className="border border-slate-300 px-2 py-1 text-xs">{whLabel(r.from_wh, null)}<br />{r.from_loc ?? ""}</td>
-                    {isRelocation && <td className="border border-slate-300 px-2 py-1 text-xs">{whLabel(r.to_wh, null)}<br />{r.to_loc ?? ""}</td>}
-                    <td className="border border-slate-300 px-2 py-1 text-right font-mono">{Number.parseFloat(r.qty || "0")} {r.unit_code ?? ""}</td>
-                  </tr>
-                );
-              })}
+              {printRows.map((r, i) => (
+                <tr key={r.key} className="align-top">
+                  <td className="border border-slate-300 px-1.5 py-1 text-center">{i + 1}</td>
+                  <td className="border border-slate-300 px-1.5 py-1 truncate font-mono">{r.sn ?? "—"}</td>
+                  <td className="border border-slate-300 px-1.5 py-1 truncate font-mono">{r.isn ?? "—"}</td>
+                  <td className="border border-slate-300 px-1.5 py-1 truncate font-mono font-bold">{r.item_code}</td>
+                  <td className="border border-slate-300 px-1.5 py-1 truncate">{r.item_name}</td>
+                  {isRelocation ? (
+                    <>
+                      <td className="border border-slate-300 px-1.5 py-1 truncate">{r.loc_from}</td>
+                      <td className="border border-slate-300 px-1.5 py-1 truncate">{r.loc_to}</td>
+                    </>
+                  ) : (
+                    <td className="border border-slate-300 px-1.5 py-1 truncate">{r.loc_from}</td>
+                  )}
+                  <td className="border border-slate-300 px-1.5 py-1 text-right font-mono">{r.qty} {r.unit_code ?? ""}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
 
           {notes.length > 0 && (
-            <div className="mt-4 rounded border border-amber-300 bg-amber-50 p-2 text-sm">
+            <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-xs">
               <div className="mb-1 font-bold text-amber-800">ໝາຍເຫດ — ຮັບ/ຈ່າຍ ບໍ່ຄົບ</div>
               <ul className="list-disc pl-5">
                 {notes.map((n, i) => (
-                  <li key={i}><span className="font-mono text-xs">{n.item_code}</span> — {REASON_LABEL[n.reason_code ?? ""] ?? n.reason_code}{n.short_qty ? ` (ຂາດ ${Number.parseFloat(n.short_qty)})` : ""}</li>
+                  <li key={i}><span className="font-mono">{n.item_code}</span> — {REASON_LABEL[n.reason_code ?? ""] ?? n.reason_code}{n.short_qty ? ` (ຂາດ ${Number.parseFloat(n.short_qty)})` : ""}</li>
                 ))}
               </ul>
             </div>
           )}
 
-          <div className="mt-12 grid grid-cols-3 gap-6 text-center text-sm">
+          <div className="mt-8 grid grid-cols-3 gap-6 text-center text-xs">
             {["ຜູ້ຈ່າຍ / ຜູ້ໂອນ", "ຜູ້ຮັບ", "ຜູ້ກວດສອບ"].map((s) => (
               <div key={s}>
-                <div className="mb-10 border-b border-slate-400" />
+                <div className="mb-8 border-b border-slate-400" />
                 <div>{s}</div>
-                <div className="text-[10px] text-slate-400">ວັນທີ່ ......./......./.......</div>
+                <div className="text-[9px] text-slate-400">ວັນທີ່ ......./......./.......</div>
               </div>
             ))}
           </div>

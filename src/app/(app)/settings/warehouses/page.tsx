@@ -44,22 +44,22 @@ export default async function WarehousesPage() {
 
   // Per-menu SN flags default true. Guarded so the page still renders before
   // migrations 019/020 create the config table & columns.
-  const defaultSn = { receive: true, issue: true, transfer: true, pallet: true, adjust: true, return: true };
+  const defaultSn = { receive: true, issue: true, issue_pick: true, transfer: true, pallet: true, adjust: true, return: true };
   for (const w of warehouses) w.sn = { ...defaultSn };
   try {
     const cfg = await query<{
       wh_code: string;
-      sn_receive: boolean; sn_issue: boolean; sn_transfer: boolean;
+      sn_receive: boolean; sn_issue: boolean; sn_issue_pick: boolean; sn_transfer: boolean;
       sn_pallet: boolean; sn_adjust: boolean; sn_return: boolean;
     }>(
-      `SELECT wh_code, sn_receive, sn_issue, sn_transfer, sn_pallet, sn_adjust, sn_return
+      `SELECT wh_code, sn_receive, sn_issue, sn_issue_pick, sn_transfer, sn_pallet, sn_adjust, sn_return
        FROM public.odg_wms_warehouse_config`,
     );
     const byCode = new Map(cfg.map((c) => [c.wh_code, c]));
     for (const w of warehouses) {
       const c = byCode.get(w.code);
       if (c) w.sn = {
-        receive: c.sn_receive, issue: c.sn_issue, transfer: c.sn_transfer,
+        receive: c.sn_receive, issue: c.sn_issue, issue_pick: c.sn_issue_pick, transfer: c.sn_transfer,
         pallet: c.sn_pallet, adjust: c.sn_adjust, return: c.sn_return,
       };
     }

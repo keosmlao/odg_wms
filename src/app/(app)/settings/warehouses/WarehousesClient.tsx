@@ -7,7 +7,8 @@ import type { SnFlag } from "@/lib/warehouseConfig";
 // Client-safe menu metadata (no server import). Order matches the row chips.
 const SN_MENUS: { key: SnFlag; label: string; full: string }[] = [
   { key: "receive", label: "ຮັບ", full: "ຮັບເຂົ້າ" },
-  { key: "issue", label: "ຈ່າຍ", full: "ຈ່າຍອອກ" },
+  { key: "issue", label: "ຈ່າຍ", full: "ຈ່າຍອອກ (scan SN ຕອນຢືນຢັນ)" },
+  { key: "issue_pick", label: "pick", full: "ຈ່າຍ: ບັງຄັບ SN ຕອນສ້າງໃບ pick (ປິດ = ໄປຍິງຕອນຢືນຢັນ)" },
   { key: "transfer", label: "ໂອນ", full: "ໂອນ (124)" },
   { key: "pallet", label: "pallet", full: "ຍ້າຍ pallet" },
   { key: "adjust", label: "ປັບ", full: "ປັບປຸງ" },

@@ -192,24 +192,54 @@ export default async function IssueHistory({
     else linesByDoc.set(l.doc_no, [l]);
   }
 
-  // Related ERP documents (ໃບເບີກ 56 / ໃບໂອນ 70+72) this issue posted, linked via
-  // ic_trans.doc_ref_trans = <DP doc>.
-  const erpDocs = docNos.length
-    ? await query<{ dp: string; doc_no: string; trans_flag: number }>(
-        `SELECT DISTINCT doc_ref_trans AS dp, doc_no, trans_flag
-         FROM public.ic_trans
-         WHERE doc_ref_trans = ANY($1)
-         ORDER BY doc_no, trans_flag`,
-        [docNos],
-      )
-    : [];
-  const ERP_FLAG_LABEL: Record<number, string> = { 56: "ໃບເບີກ", 70: "ໃບເບີກ(ເຂົ້າ)", 72: "ໃບໂອນ" };
-  const erpByDoc = new Map<string, { doc_no: string; label: string }[]>();
-  for (const e of erpDocs) {
-    const arr = erpByDoc.get(e.dp) ?? [];
-    arr.push({ doc_no: e.doc_no, label: ERP_FLAG_LABEL[e.trans_flag] ?? `flag ${e.trans_flag}` });
-    erpByDoc.set(e.dp, arr);
+  // Related ERP documents this issue posted, plus the FULL document chain of a
+  // transfer request: the request (124) is fulfilled from the SOURCE at issue-
+  // confirm time (this DP → an outbound ໃบโอน, source→9903) and later RECEIVED
+  // at the DESTINATION (a completely different DP, from the receive screen —
+  // 9903→dest). Both legs share `ic_trans.doc_ref` = the 124's doc_no, so we can
+  // trace the whole chain even though the receive-side doc wasn't created here.
+  //  · ownRows   — linked via doc_ref_trans = THIS page's own DP doc.
+  //  · chainRows — linked via doc_ref = the request doc_no this DP fulfilled
+  //                (catches the destination's transfer-in, posted by a DP we
+  //                never see on this screen).
+  const ownDocRefs = Array.from(new Set(pageDocs.map((d) => d.doc_ref).filter((v): v is string => !!v)));
+  type ErpRow = { key: string; doc_no: string; trans_flag: number; wh_from: string | null; wh_to: string | null };
+  const [ownRows, chainRows] = await Promise.all([
+    docNos.length
+      ? query<ErpRow>(
+          `SELECT DISTINCT doc_ref_trans AS key, doc_no, trans_flag, wh_from, wh_to
+           FROM public.ic_trans WHERE doc_ref_trans = ANY($1)`,
+          [docNos],
+        )
+      : [],
+    ownDocRefs.length
+      ? query<ErpRow>(
+          `SELECT DISTINCT doc_ref AS key, doc_no, trans_flag, wh_from, wh_to
+           FROM public.ic_trans WHERE doc_ref = ANY($1) AND trans_flag IN (56, 70, 72)`,
+          [ownDocRefs],
+        )
+      : [],
+  ]);
+
+  // ໃບໂອນອອກ = posted INTO the in-transit wh (9903); ໃບໂອນເຂົ້າ = posted OUT of it.
+  function erpLabel(trans_flag: number, wh_from: string | null, wh_to: string | null): string {
+    if (trans_flag === 56) return "ໃບເບີກ";
+    if (wh_from === "9903") return "ໃບໂອນເຂົ້າ";
+    if (wh_to === "9903") return "ໃບໂອນອອກ";
+    return "ໃບໂອນ";
   }
+  const erpByDoc = new Map<string, { doc_no: string; label: string }[]>();
+  const addedFor = new Set<string>(); // `${pageDocNo}|${erpDocNo}` — de-dupe own vs chain
+  function addErp(pageDocNo: string, row: ErpRow) {
+    const dedupeKey = `${pageDocNo}|${row.doc_no}`;
+    if (addedFor.has(dedupeKey)) return;
+    addedFor.add(dedupeKey);
+    const arr = erpByDoc.get(pageDocNo) ?? [];
+    arr.push({ doc_no: row.doc_no, label: erpLabel(row.trans_flag, row.wh_from, row.wh_to) });
+    erpByDoc.set(pageDocNo, arr);
+  }
+  for (const r of ownRows) addErp(r.key, r);
+  for (const r of chainRows) for (const d of pageDocs) if (d.doc_ref === r.key) addErp(d.doc_no, r);
 
   const todayCount = pageDocs.filter((d) => d.doc_date === today).length;
 
@@ -352,6 +382,8 @@ export default async function IssueHistory({
                     <div className="font-mono text-base font-bold tabular-nums text-red-600 dark:text-red-400">−{formatQty(d.out_qty)}</div>
                     <div className="text-[10px] text-zinc-400">{d.line_count} ລາຍການ</div>
                   </div>
+                  <a href={`/print/wms/${encodeURIComponent(d.doc_no)}`} target="_blank" rel="noopener"
+                    title="ເບິ່ງລາຍລະອຽດ SN / ISN + ບ່ອນຈ່າຍອອກ" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-blue-50 hover:text-blue-600 dark:ring-zinc-800">👁</a>
                   <a href={`/print/wms/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener"
                     title="ພິມໃບຈ່າຍ" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-slate-50 hover:text-slate-700 dark:ring-zinc-800">🖨</a>
                   <DeleteIssueButton docNo={d.doc_no} />
@@ -394,7 +426,11 @@ export default async function IssueHistory({
                       <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-blue-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-blue-400 dark:ring-zinc-800" title="ໃບຂໍ (ຕົ້ນທາງ)">ໃບຂໍ · {d.doc_ref}</span>
                     )}
                     {(erpByDoc.get(d.doc_no) ?? []).map((e) => (
-                      <span key={e.doc_no + e.label} className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-emerald-700 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-emerald-400 dark:ring-zinc-800" title="ERP">{e.label} · {e.doc_no}</span>
+                      <span key={e.doc_no + e.label}
+                        className={`inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800 ${e.label === "ໃບໂອນເຂົ້າ" ? "text-violet-700 dark:text-violet-400" : "text-emerald-700 dark:text-emerald-400"}`}
+                        title={e.label === "ໃບໂອນເຂົ້າ" ? "ຮັບໂອນເຂົ້າສາງປາຍທາງ (ERP)" : "ERP"}>
+                        {e.label} · {e.doc_no}
+                      </span>
                     ))}
                     {(erpByDoc.get(d.doc_no) ?? []).length === 0 && (
                       <span className="text-[10px] text-zinc-400">(ບໍ່ມີ ERP doc ຫຼື ຍັງບໍ່ post)</span>

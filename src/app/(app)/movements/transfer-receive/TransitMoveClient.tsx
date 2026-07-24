@@ -24,6 +24,38 @@ const T = {
   return: { verb: "ຮັບคืน", landing: "ສาງต้นทาง", doneCol: "ຮັບຄืນແລ້ວ", btn: "ຢືນຢັນ ຮັບຄืน", empty: "ບໍ່ມີໃบຂໍໂอนค้างรับคืน" },
 } as const;
 
+// ── Draft-scan persistence (survives a page refresh) ─────────────────────────
+// Scans/qty/location entered but not yet confirmed are kept in localStorage,
+// keyed by mode+doc, so refreshing (or navigating away) never loses them.
+const lsActiveKey = (mode: TransitMoveMode) => `wms.transitMove.${mode}.activeDoc`;
+const lsStateKey = (mode: TransitMoveMode, doc: string) => `wms.transitMove.${mode}.state.${doc}`;
+
+function lsGet(key: string): string | null {
+  try { return typeof window !== "undefined" ? window.localStorage.getItem(key) : null; } catch { return null; }
+}
+function lsSet(key: string, val: string) {
+  try { if (typeof window !== "undefined") window.localStorage.setItem(key, val); } catch { /* ignore quota / privacy mode */ }
+}
+function lsDel(key: string) {
+  try { if (typeof window !== "undefined") window.localStorage.removeItem(key); } catch { /* ignore */ }
+}
+
+type SavedTransitState = {
+  qty: Record<string, number>;
+  picked: Record<string, string[]>;
+  reasons: Record<string, string>;
+  locTo: string;
+  putMode: "all" | "line";
+  locByLine: Record<string, string>;
+};
+function loadTransitState(mode: TransitMoveMode, doc: string): SavedTransitState | null {
+  try {
+    const raw = lsGet(lsStateKey(mode, doc));
+    if (!raw) return null;
+    return JSON.parse(raw) as SavedTransitState;
+  } catch { return null; }
+}
+
 export default function TransitMoveClient({ endpoint, mode }: { endpoint: string; mode: TransitMoveMode }) {
   const t = T[mode];
   const [docs, setDocs] = useState<DocRow[]>([]);
@@ -80,9 +112,12 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
     const r = await fetch(`${endpoint}?doc=${encodeURIComponent(doc)}`, { cache: "no-store" });
     const j = await r.json();
     const ls: DetailLine[] = j.lines ?? [];
+    const validItems = new Set(ls.map((l) => l.item_code));
+    const serialRows: SerialRow[] = j.serials ?? [];
+    const validSerialIds = new Set(serialRows.map((s) => s.id));
     setHeader(j.header ?? null);
     setLines(ls);
-    setSerials(j.serials ?? []);
+    setSerials(serialRows);
     setSameLocs(Array.isArray(j.sameLocs) ? j.sameLocs : []);
     setEmptyLocs(Array.isArray(j.emptyLocs) ? j.emptyLocs : []);
     // Landing warehouse: receive → destination (wh_to); return → source (wh_from).
@@ -97,10 +132,35 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
     // default qty = full in-transit for non-serial; serial items start at 0 (scan to add)
     const q: Record<string, number> = {};
     for (const l of ls) q[l.item_code] = l.serialized ? 0 : Number.parseFloat(l.in_transit) || 0;
+
+    // Restore any scan/qty/location stashed for this doc from a previous
+    // (unconfirmed) session — dropping anything that no longer matches the
+    // fresh server data (item removed, serial already consumed elsewhere, etc.).
+    const saved = loadTransitState(mode, doc);
+    if (saved) {
+      for (const [item, v] of Object.entries(saved.qty)) if (validItems.has(item)) q[item] = v;
+      const restoredPicked: Record<string, Set<string>> = {};
+      for (const [item, ids] of Object.entries(saved.picked)) {
+        if (!validItems.has(item)) continue;
+        const kept = ids.filter((id) => validSerialIds.has(id));
+        if (kept.length > 0) { restoredPicked[item] = new Set(kept); q[item] = kept.length; }
+      }
+      setPicked(restoredPicked);
+      const restoredReasons: Record<string, string> = {};
+      for (const [item, code] of Object.entries(saved.reasons)) if (validItems.has(item)) restoredReasons[item] = code;
+      setReasons(restoredReasons);
+      const restoredLocByLine: Record<string, string> = {};
+      for (const [item, loc] of Object.entries(saved.locByLine)) if (validItems.has(item)) restoredLocByLine[item] = loc;
+      setLocByLine(restoredLocByLine);
+      setLocTo(saved.locTo || "");
+      setPutMode(saved.putMode === "line" ? "line" : "all");
+    } else {
+      setPicked({});
+      setReasons({});
+      setLocByLine({});
+    }
     setQty(q);
-    setPicked({});
-    setReasons({});
-    setLocByLine({});
+    lsSet(lsActiveKey(mode), doc);
   }, [endpoint, mode]);
 
   const locByCode = useMemo(() => new Map(locList.map((l) => [l.code, l.name])), [locList]);
@@ -112,40 +172,59 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
     return Array.from(m, ([location, qty]) => ({ location, qty: String(qty) })).sort((a, b) => Number(b.qty) - Number(a.qty));
   }, [sameLocs]);
 
-  // Deep-link from the transfer dashboard (?doc=) → auto-open that doc once.
+  // Deep-link from the transfer dashboard (?doc=) takes priority; otherwise
+  // resume whatever doc was left open (with its stashed scans) before a refresh.
   useEffect(() => {
     if (autoOpened.current) return;
-    const d = searchParams.get("doc");
+    const d = searchParams.get("doc") || lsGet(lsActiveKey(mode));
     if (d) { autoOpened.current = true; void openDoc(d); }
-  }, [searchParams, openDoc]);
+  }, [searchParams, openDoc, mode]);
+
+  // Persist qty/picked/reasons/location as they change, keyed by the open doc.
+  useEffect(() => {
+    if (!sel) return;
+    const toSave: SavedTransitState = {
+      qty,
+      picked: Object.fromEntries(Object.entries(picked).map(([k, v]) => [k, [...v]])),
+      reasons, locTo, putMode, locByLine,
+    };
+    lsSet(lsStateKey(mode, sel), JSON.stringify(toSave));
+  }, [sel, mode, qty, picked, reasons, locTo, putMode, locByLine]);
 
   const serialsByItem = useMemo(() => {
     const m = new Map<string, SerialRow[]>();
     for (const s of serials) { const a = m.get(s.item_code) ?? []; a.push(s); m.set(s.item_code, a); }
     return m;
   }, [serials]);
-  const serialOwner = useMemo(() => {
-    const m = new Map<string, string>(); // serial id → item_code
-    for (const s of serials) m.set(s.id, s.item_code);
+  // A unit can be scanned by EITHER its factory serial (sn) or this company's own
+  // serial (isn) — index both (uppercased) to the row, so either input resolves
+  // to the SAME canonical `id` that gets stored/submitted.
+  const scanIndex = useMemo(() => {
+    const m = new Map<string, SerialRow>();
+    for (const s of serials) {
+      if (s.sn) m.set(s.sn.toUpperCase(), s);
+      if (s.isn) m.set(s.isn.toUpperCase(), s);
+      m.set(s.id.toUpperCase(), s);
+    }
     return m;
   }, [serials]);
 
   const handleScan = useCallback((raw: string) => {
-    const id = raw.trim();
-    if (!id) return;
-    const item = serialOwner.get(id);
-    if (!item) { setMsg({ tone: "err", text: `serial ${id} ບໍ່ຢູ່ໃນສາງລະຫວ່າງທາງຂອງໃບนี้` }); setScan(""); return; }
+    const t = raw.trim();
+    if (!t) return;
+    const hit = scanIndex.get(t.toUpperCase());
+    if (!hit) { setMsg({ tone: "err", text: `serial ${raw} ບໍ່ຢູ່ໃນສາງລະຫວ່າງທາງຂອງໃບนี้` }); setScan(""); return; }
     setPicked((p) => {
-      const cur = new Set(p[item] ?? []);
-      if (cur.has(id)) { setMsg({ tone: "err", text: `serial ${id} ເລືອກໄປແລ້ວ` }); return p; }
-      cur.add(id);
-      const next = { ...p, [item]: cur };
-      setQty((qq) => ({ ...qq, [item]: cur.size }));
-      setMsg({ tone: "ok", text: `+ ${id}` });
+      const cur = new Set(p[hit.item_code] ?? []);
+      if (cur.has(hit.id)) { setMsg({ tone: "err", text: `serial ${raw} ເລືອກໄປແລ້ວ` }); return p; }
+      cur.add(hit.id);
+      const next = { ...p, [hit.item_code]: cur };
+      setQty((qq) => ({ ...qq, [hit.item_code]: cur.size }));
+      setMsg({ tone: "ok", text: `+ ${raw}` });
       return next;
     });
     setScan("");
-  }, [serialOwner]);
+  }, [scanIndex]);
 
   const toggleSerial = (item: string, id: string) => {
     setPicked((p) => {
@@ -163,7 +242,14 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
   }).filter((l) => l.qty > 0), [lines, picked, qty, putMode, locByLine]);
 
   const overSome = lines.some((l) => !l.serialized && (qty[l.item_code] ?? 0) > (Number.parseFloat(l.in_transit) || 0) + 1e-6);
-  const canSubmit = payloadLines.length > 0 && !overSome && !submitting;
+  // Every item actually being received/returned this time must have ITS location
+  // resolved — whichever order it was filled in (scan-then-location, or
+  // location-then-scan; both just set independent state). "all" mode covers
+  // every line with one shared locTo; "line" mode needs each line's own.
+  const missingLoc = putMode === "all"
+    ? payloadLines.length > 0 && !locTo
+    : payloadLines.some((l) => !l.location);
+  const canSubmit = payloadLines.length > 0 && !overSome && !missingLoc && !submitting;
 
   const submit = async () => {
     if (!sel || !canSubmit) return;
@@ -183,6 +269,9 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
       if (!r.ok) { setMsg({ tone: "err", text: j.error || "ບໍ່ສຳເລັດ" }); setSubmitting(false); return; }
       setMsg({ tone: "ok", text: `${t.verb}สำเร็จ · WMS ${j.wmsDoc} · ERP ${j.erpDoc}` });
       setLastDoc(j.wmsDoc ?? null);
+      // Units just consumed — clear the stashed scan state before the refresh
+      // reload gives us fresh (possibly zero) remaining lines.
+      lsDel(lsStateKey(mode, sel));
       await loadList();
       await openDoc(sel); // refresh remaining; if 0 left it drops out of the list
     } catch (e) {
@@ -199,7 +288,7 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
     const pct = totalInT > 0 ? Math.min(100, Math.round((totalGot / totalInT) * 100)) : 0;
     return (
       <div className="space-y-4 pb-24">
-        <button onClick={() => { setSel(null); setMsg(null); }} className="inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-slate-800 cursor-pointer">← ກັບໄປລາຍกານ</button>
+        <button onClick={() => { lsDel(lsActiveKey(mode)); setSel(null); setMsg(null); }} className="inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-slate-800 cursor-pointer">← ກັບໄປລາຍกານ</button>
 
         {/* header */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -294,9 +383,34 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
                     </div>
                   )}
                 </div>
+                {l.serialized && pick.size > 0 && (
+                  <div className="border-t border-slate-100 px-4 py-3">
+                    <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200">
+                      <table className="w-full table-fixed text-xs tabular-nums">
+                        <colgroup><col className="w-[46%]" /><col className="w-[46%]" /><col className="w-[8%]" /></colgroup>
+                        <thead><tr className="bg-slate-50 text-left text-[9px] font-semibold uppercase tracking-wide text-slate-400"><th className="px-3 py-1.5">SN (ໂຮງງານ)</th><th className="px-3 py-1.5">ISN (ບໍລິສັດ)</th><th className="px-3 py-1.5" /></tr></thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {[...pick].map((id) => {
+                            const s = serialsByItem.get(l.item_code)?.find((x) => x.id === id);
+                            return (
+                              <tr key={id}>
+                                <td className="truncate px-3 py-1.5 font-mono text-slate-800">{s?.sn ?? "—"}</td>
+                                <td className="truncate px-3 py-1.5 font-mono text-slate-800">{s?.isn ?? "—"}</td>
+                                <td className="px-3 py-1.5 text-right"><button onClick={() => toggleSerial(l.item_code, id)} title="ຍົກເລີກ" className="text-slate-300 hover:text-rose-500 cursor-pointer">✕</button></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
                 {putMode === "line" && (
                   <div className="border-t border-slate-100 px-4 py-3">
-                    <div className="mb-1.5 text-[11px] font-bold text-slate-500">📍 ບ່ອນຈັດເກັບ</div>
+                    <div className="mb-1.5 flex items-center gap-2 text-[11px] font-bold text-slate-500">
+                      📍 ບ່ອນຈັດເກັບ
+                      {got > 0 && !locByLine[l.item_code] && <span className="text-amber-600">⚠ ຕ້ອງເລືອກກ່ອນບັນທຶກ</span>}
+                    </div>
                     <PutawayPicker allowPallet={false} dest="location" onDest={() => {}}
                       locValue={locByLine[l.item_code] || ""} onLoc={(v) => setLocByLine((p) => ({ ...p, [l.item_code]: v }))}
                       locOptions={locOptions}
@@ -322,7 +436,10 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
         {/* sticky footer */}
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:left-64">
           <div className="flex w-full items-center justify-between gap-3">
-            <span className="text-sm font-bold text-slate-600">รధม {t.verb} {totalGot}/{totalInT}</span>
+            <span className="text-sm font-bold text-slate-600">
+              รధม {t.verb} {totalGot}/{totalInT}
+              {missingLoc && <span className="ml-2 text-xs font-bold text-amber-600">⚠ ຍັງບໍ່ໄດ້ເລືອກບ່ອນຈັດເກັບໃຫ້ຄົບທຸກລາຍการ</span>}
+            </span>
             <button onClick={submit} disabled={!canSubmit}
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-7 py-3 text-sm font-bold text-white shadow-md hover:shadow-lg active:scale-98 transition disabled:opacity-50 cursor-pointer">
               {submitting ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : "✓"}
@@ -338,12 +455,13 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
           const pick = picked[pickerFor] ?? new Set<string>();
           const cap = line ? Number.parseFloat(line.in_transit) || 0 : 0;
           const term = modalScan.trim().toLowerCase();
-          const remain = all.filter((s) => !pick.has(s.id) && (!term || s.id.toLowerCase().includes(term)));
+          const remain = all.filter((s) => !pick.has(s.id) && (!term || s.id.toLowerCase().includes(term) || (s.sn ?? "").toLowerCase().includes(term) || (s.isn ?? "").toLowerCase().includes(term)));
           const tryScan = (raw: string) => {
-            const id = raw.trim();
-            if (!id) return;
-            const hit = all.find((s) => s.id === id) ?? all.find((s) => s.id.toLowerCase() === id.toLowerCase());
-            if (!hit) { setMsg({ tone: "err", text: `serial ${id} ບໍ່ຢູ່ໃນສາງລະຫວ່າງທາງຂອງສິນຄ້ານີ້` }); setModalScan(""); return; }
+            const t = raw.trim().toUpperCase();
+            if (!t) return;
+            // Match by EITHER sn or isn (or the canonical id) — not just id.
+            const hit = all.find((s) => s.id.toUpperCase() === t || (s.sn ?? "").toUpperCase() === t || (s.isn ?? "").toUpperCase() === t);
+            if (!hit) { setMsg({ tone: "err", text: `serial ${raw} ບໍ່ຢູ່ໃນສາງລະຫວ່າງທາງຂອງສິນຄ້ານີ້` }); setModalScan(""); return; }
             if (pick.has(hit.id)) { setMsg({ tone: "err", text: `${hit.id} ເລືອກໄປແລ້ວ` }); setModalScan(""); return; }
             toggleSerial(pickerFor, hit.id); setModalScan("");
           };
@@ -382,7 +500,10 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
                           const o = all.find((s) => s.id === id);
                           return (
                             <div key={id} className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-slate-50">
-                              <span className="truncate font-mono text-[11px] font-bold text-slate-800">{o?.isn ?? id}</span>
+                              <span className="min-w-0 truncate font-mono text-[11px] font-bold text-slate-800">
+                                {o?.sn ?? "—"}
+                                {o?.isn && <span className="ml-1.5 font-normal text-slate-400">ISN: {o.isn}</span>}
+                              </span>
                               <button onClick={() => toggleSerial(pickerFor, id)} className="shrink-0 rounded px-1 text-rose-400 hover:bg-rose-50 hover:text-rose-600 cursor-pointer">✕</button>
                             </div>
                           );

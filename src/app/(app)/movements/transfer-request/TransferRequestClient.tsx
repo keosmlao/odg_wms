@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertIcon, CheckIcon, ChevronRightIcon, PlusIcon, SearchIcon } from "@/components/ui/Icons";
 import RSelect, { type ROption } from "@/components/ui/RSelect";
+import StockLocationsDrawer from "./StockLocationsDrawer";
 
 export type WarehouseOption = { code: string; name: string | null };
 type Hit = { item_code: string; item_name: string | null; unit_code: string | null; wh_balance: string | null };
@@ -61,6 +62,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
   const [editDoc, setEditDoc] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [toast, setToast] = useState<{ k: "ok" | "err"; t: string } | null>(null);
+  const [stockDrawer, setStockDrawer] = useState<{ code: string; name: string | null; shelf?: string } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   function showToast(k: "ok" | "err", t: string) { setToast({ k, t }); setTimeout(() => setToast(null), 3000); }
 
@@ -165,10 +167,16 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
     return () => clearTimeout(t);
   }, [search, whFrom]);
 
+  function applyRow1ShelfToAll() {
+    if (lines.length === 0) return;
+    const { shelfFrom, shelfTo } = lines[0];
+    setLines((p) => p.map((x) => ({ ...x, shelfFrom, shelfTo })));
+  }
+
   function addHit(h: Hit) {
     setHits([]); setSearch("");
     if (lines.some((l) => l.item_code === h.item_code)) { showToast("err", "ມີໃນລາຍການແລ້ວ"); return; }
-    setLines((p) => [{ item_code: h.item_code, item_name: h.item_name, unit_code: h.unit_code, qty: "1", shelfFrom: "", shelfTo: "" }, ...p]);
+    setLines((p) => [...p, { item_code: h.item_code, item_name: h.item_name, unit_code: h.unit_code, qty: "1", shelfFrom: "", shelfTo: "" }]);
     setTimeout(() => searchRef.current?.focus(), 50);
   }
 
@@ -371,11 +379,13 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
             {hits.length > 0 && (
               <div className="absolute inset-x-0 top-[calc(100%+0.3rem)] z-30 max-h-72 overflow-auto rounded-xl bg-white p-1 shadow-2xl ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
                 {hits.map((h) => (
-                  <button key={h.item_code} type="button" onClick={() => addHit(h)} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-800/70">
-                    <PlusIcon className="h-4 w-4 shrink-0 text-blue-500" />
-                    <div className="min-w-0 flex-1"><div className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{h.item_code}</div><div className="truncate text-xs">{h.item_name}</div></div>
-                    <div className="shrink-0 text-[10px] text-zinc-400">ມີ {h.wh_balance ?? "0"} · {h.unit_code}</div>
-                  </button>
+                  <div key={h.item_code} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-800/70">
+                    <button type="button" onClick={() => addHit(h)} className="flex min-w-0 flex-1 items-center gap-3">
+                      <PlusIcon className="h-4 w-4 shrink-0 text-blue-500" />
+                      <div className="min-w-0 flex-1"><div className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{h.item_code}</div><div className="truncate text-xs">{h.item_name}</div></div>
+                    </button>
+                    <button type="button" onClick={() => setStockDrawer({ code: h.item_code, name: h.item_name })} title="ເບິ່ງສະຕັອກທຸກສາງ" className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-zinc-400 underline decoration-dotted underline-offset-2 hover:text-blue-600 dark:hover:text-blue-400">ມີ {h.wh_balance ?? "0"} · {h.unit_code}</button>
+                  </div>
                 ))}
               </div>
             )}
@@ -386,13 +396,25 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
           ) : (
             <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
               <table className="w-full text-sm">
-                <thead><tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase text-zinc-500 dark:bg-zinc-800/50"><th className="px-4 py-2.5">ສິນຄ້າ</th><th className="px-4 py-2.5 text-center">ຈຳນວນຂໍ</th><th className="px-3 py-2.5">ສະພາບ (ຈາກ)</th><th className="px-3 py-2.5">ສະພາບ (ເຂົ້າ)</th><th className="w-8" /></tr></thead>
+                <thead><tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase text-zinc-500 dark:bg-zinc-800/50"><th className="px-4 py-2.5">ສິນຄ້າ</th><th className="px-4 py-2.5 text-center">ຈຳນວນຂໍ</th><th className="px-3 py-2.5">
+                  ສະພາບ (ຈາກ)
+                  {lines.length > 1 && (lines[0].shelfFrom || lines[0].shelfTo) && (
+                    <button type="button" onClick={applyRow1ShelfToAll} title="ໃຊ້ສະພາບຂອງແຖວ 1 ກັບທຸກລາຍການ" className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold normal-case text-blue-600 hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300">ໃຊ້ຄືແຖວ 1 ທຸກລາຍການ</button>
+                  )}
+                </th><th className="px-3 py-2.5">ສະພາບ (ເຂົ້າ)</th><th className="w-8" /></tr></thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {lines.map((l) => (
+                  {lines.map((l, i) => (
                     <tr key={l.item_code}>
-                      <td className="px-4 py-2.5"><span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{l.item_code}</span><div className="max-w-md truncate text-[13px]">{l.item_name}</div></td>
+                      <td className="px-4 py-2.5"><button type="button" onClick={() => setStockDrawer({ code: l.item_code, name: l.item_name, shelf: l.shelfFrom })} title="ເບິ່ງສະຕັອກທຸກສາງ" className="font-mono text-[11px] font-bold text-blue-600 underline decoration-dotted underline-offset-2 hover:text-blue-700 dark:text-blue-400">{l.item_code}</button><div className="max-w-md truncate text-[13px]">{l.item_name}</div></td>
                       <td className="px-4 py-2.5 text-center"><input type="number" inputMode="decimal" value={l.qty} onChange={(e) => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, qty: e.target.value } : x))} className="w-24 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:ring-zinc-800" /><span className="ml-1 text-[10px] text-zinc-400">{l.unit_code}</span></td>
-                      <td className="px-3 py-2.5"><div className="min-w-[160px]"><RSelect size="sm" value={l.shelfFrom} options={shelfFromOptions} onChange={(v) => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, shelfFrom: v } : x))} placeholder="— ສະພາບ —" /></div></td>
+                      <td className="px-3 py-2.5">
+                        <div className="min-w-[160px]"><RSelect size="sm" value={l.shelfFrom} options={shelfFromOptions} onChange={(v) => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, shelfFrom: v } : x))} placeholder="— ສະພາບ —" /></div>
+                        {i > 0 && (lines[0].shelfFrom || lines[0].shelfTo) && (l.shelfFrom !== lines[0].shelfFrom || l.shelfTo !== lines[0].shelfTo) && (
+                          <button type="button" onClick={() => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, shelfFrom: lines[0].shelfFrom, shelfTo: lines[0].shelfTo } : x))} className="mt-1 text-[10px] font-semibold text-blue-500 underline decoration-dotted underline-offset-2 hover:text-blue-700 dark:text-blue-400">
+                            ໃຊ້ຄືແຖວ 1
+                          </button>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5"><div className="min-w-[160px]"><RSelect size="sm" value={l.shelfTo} options={shelfToOptions} onChange={(v) => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, shelfTo: v } : x))} placeholder="— ສະພາບ —" /></div></td>
                       <td className="px-2 py-2.5 text-right"><button type="button" onClick={() => setLines((p) => p.filter((x) => x.item_code !== l.item_code))} className="rounded p-1 text-zinc-300 hover:text-rose-500">✕</button></td>
                     </tr>
@@ -414,6 +436,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
           <div className={`flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-xl ${toast.k === "ok" ? "bg-emerald-500" : "bg-rose-500"}`}>{toast.k === "ok" ? <CheckIcon className="h-4 w-4" /> : <AlertIcon className="h-4 w-4" />}{toast.t}</div>
         </div>
       )}
+      <StockLocationsDrawer open={!!stockDrawer} itemCode={stockDrawer?.code ?? ""} itemName={stockDrawer?.name ?? null} highlightWh={whFrom || undefined} highlightLocation={stockDrawer?.shelf || undefined} onClose={() => setStockDrawer(null)} />
     </div>
   );
 }

@@ -75,8 +75,11 @@ export async function GET(request: Request) {
   }
 
   const queryArgs: unknown[] = [warehouse, rack, location, pallet];
+  // No `status` filter — status=1 marks the outbound (-1) leg of an internal bin
+  // relocation (trans_flag 77) plus a few status=1 sales legs, not voided rows.
+  // Excluding it drops real stock reductions and inflates the per-bin balance,
+  // so the drilldown here must match the tree/table totals on the balance page.
   const filters = [
-    "(t.status = 0 OR t.status IS NULL)",
     "t.wh_code = $1",
     "COALESCE(NULLIF(TRIM(t.shelf_code), ''), '') = $2",
     "COALESCE(NULLIF(TRIM(t.shelf_code1), ''), '') = $3",

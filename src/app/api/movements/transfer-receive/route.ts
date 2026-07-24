@@ -83,8 +83,11 @@ export async function GET(request: Request) {
       [doc, IN_TRANSIT_WH, head[0]?.wh_to ?? ""],
     );
     // Serials currently parked in 9903 for this ref (to scan against on receive).
+    // `id` is just a stable per-row key for the UI's Set bookkeeping — the actual
+    // matching (client + server) must accept EITHER sn or isn, not just this one.
     const serials = await query<{ item_code: string; sn: string | null; isn: string | null; id: string }>(
-      `SELECT item_code, sn, isn, COALESCE(NULLIF(sn,''), isn) AS id
+      `SELECT item_code, NULLIF(TRIM(sn), '') AS sn, NULLIF(TRIM(isn), '') AS isn,
+              COALESCE(NULLIF(TRIM(sn), ''), NULLIF(TRIM(isn), '')) AS id
        FROM public.sn_inventory
        WHERE wh_code = $1 AND location = $2 AND COALESCE(status,0)=0
        ORDER BY item_code, id`,

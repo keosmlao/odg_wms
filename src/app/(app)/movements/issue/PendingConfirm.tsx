@@ -9,12 +9,39 @@ type DraftDoc = {
   doc_no: string; doc_date: string | null; doc_time: string | null; warehouse_code: string | null;
   ref_doc_no: string | null; customer_code: string | null; remark: string | null; line_count: number; serial_count: number; total_qty: string;
 };
-type DraftLine = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; serials: string[]; available: string[] };
+type Unit = { sn: string | null; isn: string | null };
+type DraftLine = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; serials: string[]; available: string[]; units?: Unit[]; serial_required?: boolean; dual_required?: boolean };
 
 function ddmm(d: string | null) {
   if (!d) return "—";
   const [y, m, day] = d.split("-");
   return day ? `${day}-${m}-${y}` : d;
+}
+
+// ── Draft-scan persistence (survives a page refresh) ─────────────────────────
+// Scans that are entered but not yet confirmed are kept in localStorage keyed by
+// doc, so refreshing (or navigating away) never loses them — the operator can
+// come back and keep scanning where they left off.
+const LS_ACTIVE = "wms.issueConfirm.activeDoc";
+const LS_WH = "wms.issueConfirm.wh";
+const scanKey = (doc: string) => `wms.issueConfirm.scan.${doc}`;
+
+function lsGet(key: string): string | null {
+  try { return typeof window !== "undefined" ? window.localStorage.getItem(key) : null; } catch { return null; }
+}
+function lsSet(key: string, val: string) {
+  try { if (typeof window !== "undefined") window.localStorage.setItem(key, val); } catch { /* ignore quota / privacy mode */ }
+}
+function lsDel(key: string) {
+  try { if (typeof window !== "undefined") window.localStorage.removeItem(key); } catch { /* ignore */ }
+}
+function loadScan(doc: string): { scanned: string[]; reasons: Record<string, string> } {
+  try {
+    const raw = lsGet(scanKey(doc));
+    if (!raw) return { scanned: [], reasons: {} };
+    const p = JSON.parse(raw) as { scanned?: string[]; reasons?: Record<string, string> };
+    return { scanned: Array.isArray(p.scanned) ? p.scanned : [], reasons: p.reasons ?? {} };
+  } catch { return { scanned: [], reasons: {} }; }
 }
 
 export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOption[] }) {
@@ -44,6 +71,23 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
   }
   useEffect(() => { void loadDocs(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [wh]);
 
+  // On first mount, restore the warehouse + auto-reopen the doc the operator was
+  // confirming (with its stashed scans), so a page refresh resumes in place.
+  useEffect(() => {
+    const savedWh = lsGet(LS_WH);
+    if (savedWh) setWh(savedWh);
+    const savedDoc = lsGet(LS_ACTIVE);
+    if (savedDoc) void openDoc(savedDoc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist the selected warehouse, and the active doc's scans, as they change.
+  useEffect(() => { if (wh) lsSet(LS_WH, wh); }, [wh]);
+  useEffect(() => {
+    if (!active) return;
+    lsSet(scanKey(active.header.doc_no), JSON.stringify({ scanned: [...scanned], reasons }));
+  }, [scanned, reasons, active]);
+
   async function toggleExpand(doc_no: string) {
     if (expanded === doc_no) { setExpanded(null); return; }
     setExpanded(doc_no);
@@ -63,10 +107,18 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       const data = (await res.json()) as { header?: DraftDoc; lines?: DraftLine[]; error?: string };
       if (!res.ok || !data.header) throw new Error(data.error ?? "ໂຫຼດບໍ່ສຳເລັດ");
       setActive({ header: data.header, lines: data.lines ?? [] });
-      setScanned(new Set());
-      setReasons({});
+      // Restore any scans stashed for this doc from a previous (unconfirmed) session.
+      const saved = loadScan(doc_no);
+      setScanned(new Set(saved.scanned));
+      setReasons(saved.reasons);
+      lsSet(LS_ACTIVE, doc_no);
       setTimeout(() => scanRef.current?.focus(), 50);
-    } catch (e) { showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ"); }
+    } catch (e) {
+      // The stashed doc no longer opens (confirmed / cancelled elsewhere) — drop
+      // the pointer so a refresh doesn't keep failing.
+      lsDel(LS_ACTIVE);
+      showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ");
+    }
     finally { setBusy(false); }
   }
 
@@ -76,13 +128,31 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
     if (active) for (const l of active.lines) for (const a of l.available) m.set(a.toUpperCase(), l.item_code);
     return m;
   }, [active]);
+  // Each scannable id (sn OR isn, uppercased) → its unit's BOTH ids + item. Lets
+  // the screen show sn + isn per scanned unit and reject scanning the same unit
+  // twice (once by sn, once by isn).
+  const unitByScan = useMemo(() => {
+    const m = new Map<string, { sn: string | null; isn: string | null; item_code: string }>();
+    if (active) for (const l of active.lines) for (const u of l.units ?? []) {
+      const rec = { sn: u.sn, isn: u.isn, item_code: l.item_code };
+      if (u.sn) m.set(u.sn.toUpperCase(), rec);
+      if (u.isn) m.set(u.isn.toUpperCase(), rec);
+    }
+    return m;
+  }, [active]);
   const neededByItem = useMemo(() => {
     const m = new Map<string, number>();
     if (active) for (const l of active.lines) m.set(l.item_code, (m.get(l.item_code) ?? 0) + (Number.parseInt(l.qty, 10) || 0));
     return m;
   }, [active]);
-  // Only items that are serial-tracked (have a pending serial plan) need scanning.
-  const serialItems = useMemo(() => new Set(active ? active.lines.filter((l) => l.serials.length > 0).map((l) => l.item_code) : []), [active]);
+  // Items that must be scanned = those the server marks serial_required (actually
+  // serial-tracked in this warehouse + SN policy on), regardless of whether the
+  // pick slip pre-selected serials. Falls back to the pre-selected serials for
+  // older drafts served before serial_required existed.
+  const serialItems = useMemo(
+    () => new Set(active ? active.lines.filter((l) => l.serial_required ?? l.serials.length > 0).map((l) => l.item_code) : []),
+    [active],
+  );
   const scannedCount = (item: string) => [...scanned].filter((s) => serialOwner.get(s) === item).length;
   const totalNeeded = useMemo(() => [...serialItems].reduce((s, i) => s + (neededByItem.get(i) ?? 0), 0), [serialItems, neededByItem]);
   const allDone = totalNeeded > 0 && [...serialItems].every((i) => scannedCount(i) === (neededByItem.get(i) ?? 0));
@@ -98,8 +168,11 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
     const t = scan.trim().toUpperCase();
     if (!t) return;
     const owner = serialOwner.get(t);
+    // Reject if the SAME physical unit was already scanned by its other id.
+    const unit = unitByScan.get(t);
+    const dupByUnit = !!unit && ((!!unit.sn && scanned.has(unit.sn.toUpperCase())) || (!!unit.isn && scanned.has(unit.isn.toUpperCase())));
     if (!owner) showToast("err", `ISN ${scan} ບໍ່ມีในstock / ບໍ່ແມ່ນຂອງໃບนี้`);
-    else if (scanned.has(t)) showToast("err", `${scan} ຍິງແລ້ວ`);
+    else if (scanned.has(t) || dupByUnit) showToast("err", `${scan} ຍິງແລ້ວ`);
     else if (scannedCount(owner) >= (neededByItem.get(owner) ?? 0)) showToast("err", `${owner}: ຍິງครບ ${neededByItem.get(owner)} ແລ້ວ`);
     else {
       const isSub = !active.lines.some((l) => l.item_code === owner && l.serials.some((s) => s.toUpperCase() === t));
@@ -121,6 +194,10 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       const data = (await res.json()) as { ok?: boolean; error?: string; issue_code?: string; erp_doc?: string | null; partial?: boolean };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       showToast("ok", `ຈ່າຍສຳເລັດ ${data.issue_code}${data.partial ? " · ส่วนที่เหลือยังค้างใน pending" : ""}`);
+      // Issued serials are consumed — clear the stash (a partial remainder is
+      // re-scanned fresh against the reduced pending).
+      lsDel(scanKey(active.header.doc_no));
+      lsDel(LS_ACTIVE);
       setActive(null);
       await loadDocs();
     } catch (e) { showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ"); }
@@ -152,6 +229,8 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       const data = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       showToast("ok", "ຍົກເລີກ pending ແລ້ວ");
+      lsDel(scanKey(doc_no));
+      lsDel(LS_ACTIVE);
       setActive(null);
       await loadDocs();
     } catch (e) { showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ"); }
@@ -220,7 +299,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
         return (
         <section className="space-y-4 pb-24">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <button type="button" onClick={() => setActive(null)} className="inline-flex items-center gap-1 text-sm font-semibold text-zinc-500 hover:text-zinc-800">← ກັບ</button>
+            <button type="button" onClick={() => { lsDel(LS_ACTIVE); setActive(null); }} className="inline-flex items-center gap-1 text-sm font-semibold text-zinc-500 hover:text-zinc-800">← ກັບ</button>
             <div className="flex items-center gap-2">
               <a href={`/print/pick/${encodeURIComponent(active.header.doc_no)}?auto=1`} target="_blank" rel="noopener" className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800">🖨 ພິມໃບ pick</a>
               <button type="button" disabled={busy} onClick={() => cancelDraft(active.header.doc_no)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50 disabled:opacity-50 dark:bg-zinc-900 dark:text-rose-400 dark:ring-rose-900/50">ຍົກເລີກ pick</button>
@@ -272,6 +351,14 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                 const got = isSer ? scannedCount(l.item_code) : need;
                 const lp = need > 0 ? Math.min(100, Math.round((got / need) * 100)) : 0;
                 const short = isSer && got < (neededByItem.get(l.item_code) ?? 0);
+                // The scanned units for this item, each with BOTH sn + isn resolved
+                // (so the operator can verify a dual-serial brand has both).
+                const scannedUnits = [...scanned]
+                  .filter((sc) => serialOwner.get(sc) === l.item_code)
+                  .map((sc) => {
+                    const u = unitByScan.get(sc);
+                    return { key: sc, sn: u?.sn ?? (u ? null : sc), isn: u?.isn ?? null, sub: !l.serials.some((x) => x.toUpperCase() === sc) };
+                  });
                 return (
                   <div key={i} className={`overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-zinc-900 ${got >= need && need > 0 ? "border-emerald-300 dark:border-emerald-900/50" : "border-zinc-200 dark:border-zinc-800"}`}>
                     <div className="flex items-start justify-between gap-2 p-4">
@@ -281,7 +368,18 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                         <div className="font-mono text-[10px] text-zinc-400">{[l.rack, l.location, l.pallet].filter(Boolean).join(" / ") || "—"}</div>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <div className="text-right"><div className="font-mono text-lg font-black text-red-600 dark:text-red-400">−{l.qty}</div><div className="text-[10px] text-zinc-400">{l.unit_code}</div></div>
+                        {isSer ? (() => {
+                          const remain = Math.max(0, need - got);
+                          const done = remain === 0 && need > 0;
+                          return (
+                            <div className="text-right">
+                              <div className={`font-mono text-lg font-black ${done ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{done ? "✓ 0" : remain}</div>
+                              <div className="text-[10px] text-zinc-400">{done ? "ຍິງຄົບ" : "ຍັງເຫຼືອຍິງ"}</div>
+                            </div>
+                          );
+                        })() : (
+                          <div className="text-right"><div className="font-mono text-lg font-black text-zinc-700 dark:text-zinc-200">{l.qty}</div><div className="text-[10px] text-zinc-400">{l.unit_code} · ຈ່າຍ</div></div>
+                        )}
                         <button type="button" disabled={busy} onClick={() => removeLine(l.item_code)} title="ລົບ ออกจากใบ pick" className="rounded p-1 text-zinc-300 hover:bg-rose-50 hover:text-rose-500 disabled:opacity-40 dark:hover:bg-rose-950/30">🗑</button>
                       </div>
                     </div>
@@ -289,16 +387,36 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                       <>
                         <div className="px-4"><div className="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800"><div className={`h-full rounded-full transition-all ${got >= need && need > 0 ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${lp}%` }} /></div></div>
                         <div className="p-4 pt-3">
-                          <div className="mb-1 text-[10px] font-bold text-zinc-500">ຍິງ {got} / {need}</div>
-                          <div className="flex flex-wrap gap-1">
-                            {l.serials.map((sn) => {
-                              const ok = scanned.has(sn.toUpperCase());
-                              return <span key={sn} className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ring-1 ${ok ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50" : "bg-zinc-50 text-zinc-400 ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-500 dark:ring-zinc-700"}`}>{ok ? "✓ " : "○ "}{sn}</span>;
-                            })}
-                            {[...scanned].filter((sc) => serialOwner.get(sc) === l.item_code && !l.serials.some((x) => x.toUpperCase() === sc)).map((sc) => (
-                              <span key={sc} className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ring-1 bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/50">⚠ {sc} ตัวแทน</span>
-                            ))}
+                          <div className="mb-1.5 flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-zinc-500">ຍິງ {got} / {need}</span>
+                            {l.dual_required && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">ຕ້ອງມີ SN + ISN ຄົບ</span>}
                           </div>
+                          {scannedUnits.length > 0 ? (
+                            <div className="overflow-x-auto rounded-lg ring-1 ring-zinc-200 dark:ring-zinc-800">
+                              <table className="w-full table-fixed text-xs tabular-nums">
+                                <colgroup><col className="w-[46%]" /><col className="w-[34%]" /><col className="w-[20%]" /></colgroup>
+                                <thead><tr className="bg-zinc-50 text-left text-[9px] font-semibold uppercase tracking-wide text-zinc-400 dark:bg-zinc-800/50"><th className="px-3 py-1.5 font-semibold">SN (ໂຮງງານ)</th><th className="px-3 py-1.5 font-semibold">ISN (ບໍລິສັດ)</th><th className="px-3 py-1.5 text-right font-semibold">ສະຖານະ</th></tr></thead>
+                                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                                  {scannedUnits.map((u) => {
+                                    const missing = !!l.dual_required && (!u.sn || !u.isn);
+                                    return (
+                                      <tr key={u.key} className={missing ? "bg-rose-50 dark:bg-rose-950/20" : ""}>
+                                        <td className="truncate px-3 py-1.5 font-mono text-zinc-800 dark:text-zinc-200">{u.sn ?? <span className="text-rose-500">— ຂາດ —</span>}</td>
+                                        <td className="truncate px-3 py-1.5 font-mono text-zinc-800 dark:text-zinc-200">{u.isn ?? <span className="text-rose-500">— ຂາດ —</span>}</td>
+                                        <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                                          {missing && <span className="mr-1 text-[9px] font-bold text-rose-600">ບໍ່ຄົບ</span>}
+                                          {u.sub && <span className="mr-1 text-[9px] text-amber-600">ຕัวแทน</span>}
+                                          <button type="button" onClick={() => setScanned((p) => { const n = new Set(p); n.delete(u.key); return n; })} title="ຍົກເລີກ ການຍິງນີ້" className="align-middle text-zinc-300 hover:text-rose-500">✕</button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-zinc-400">ຍັງບໍ່ໄດ້ຍິງ</div>
+                          )}
                           {short && (
                             <div className="mt-2 flex items-center gap-2">
                               <span className="text-[11px] font-bold text-amber-600">ขาด {(neededByItem.get(l.item_code) ?? 0) - got} →</span>
