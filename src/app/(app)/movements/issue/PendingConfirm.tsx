@@ -1,16 +1,43 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertIcon, CheckIcon, PackageIcon, SearchIcon } from "@/components/ui/Icons";
 import { MOVE_REASONS } from "@/lib/moveReasons";
+import ScanLogPanel from "./ScanLogPanel";
 import type { WarehouseOption } from "./SourceIssue";
 
 type DraftDoc = {
   doc_no: string; doc_date: string | null; doc_time: string | null; warehouse_code: string | null;
   ref_doc_no: string | null; customer_code: string | null; remark: string | null; line_count: number; serial_count: number; total_qty: string;
 };
-type Unit = { sn: string | null; isn: string | null };
-type DraftLine = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; serials: string[]; available: string[]; units?: Unit[]; serial_required?: boolean; dual_required?: boolean };
+/** A scannable unit, tagged with the node it currently sits at. */
+type Unit = { sn: string | null; isn: string | null; rack: string; location: string; pallet: string };
+/** A bin in this warehouse that still holds the item — a re-point target. */
+type LocOption = { rack: string; location: string; pallet: string; qty: string; sn_qty: number };
+type DraftLine = { roworder: number; item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; serials: string[]; units?: Unit[]; loc_options?: LocOption[]; serial_required?: boolean; dual_required?: boolean };
+/** Where a line's goods were actually taken from, when it differs from the plan. */
+type NodeRef = { rack: string; location: string; pallet: string };
+/** One entry in the confirm-step audit trail (odg_wms_pick_scan_log). */
+type ScanEvent = {
+  event: "scan" | "unscan" | "move" | "confirm";
+  result?: string;
+  item_code?: string | null;
+  scan_input?: string | null;
+  sn?: string | null;
+  isn?: string | null;
+  rack?: string | null;
+  location?: string | null;
+  pallet?: string | null;
+  from_node?: string | null;
+  to_node?: string | null;
+  qty?: number | null;
+  note?: string | null;
+};
+/** A row read back from the trail. */
+type ScanLogRow = ScanEvent & { roworder: number; user_created: string | null; created_at: string; qty: string | null };
+
+const nodeKey = (n: NodeRef) => `${n.rack}|${n.location}|${n.pallet}`;
+const nodeLabel = (n: NodeRef) => [n.rack, n.location, n.pallet].filter(Boolean).join(" / ") || "(ສາງ)";
 
 function ddmm(d: string | null) {
   if (!d) return "—";
@@ -35,13 +62,13 @@ function lsSet(key: string, val: string) {
 function lsDel(key: string) {
   try { if (typeof window !== "undefined") window.localStorage.removeItem(key); } catch { /* ignore */ }
 }
-function loadScan(doc: string): { scanned: string[]; reasons: Record<string, string> } {
+function loadScan(doc: string): { scanned: string[]; reasons: Record<string, string>; moves: Record<string, NodeRef> } {
   try {
     const raw = lsGet(scanKey(doc));
-    if (!raw) return { scanned: [], reasons: {} };
-    const p = JSON.parse(raw) as { scanned?: string[]; reasons?: Record<string, string> };
-    return { scanned: Array.isArray(p.scanned) ? p.scanned : [], reasons: p.reasons ?? {} };
-  } catch { return { scanned: [], reasons: {} }; }
+    if (!raw) return { scanned: [], reasons: {}, moves: {} };
+    const p = JSON.parse(raw) as { scanned?: string[]; reasons?: Record<string, string>; moves?: Record<string, NodeRef> };
+    return { scanned: Array.isArray(p.scanned) ? p.scanned : [], reasons: p.reasons ?? {}, moves: p.moves ?? {} };
+  } catch { return { scanned: [], reasons: {}, moves: {} }; }
 }
 
 export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOption[] }) {
@@ -53,12 +80,52 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
   const [linesByDoc, setLinesByDoc] = useState<Record<string, DraftLine[]>>({});
   const [scanned, setScanned] = useState<Set<string>>(new Set());
   const [reasons, setReasons] = useState<Record<string, string>>({}); // item → short reason
+  // roworder → the bin the goods were actually taken from, when it differs from
+  // the planned one. Applied to the pick slip when the issue is confirmed.
+  const [moves, setMoves] = useState<Record<string, NodeRef>>({});
+  // Audit trail of this confirm session — buffered and flushed in the background
+  // so scanning is never blocked by logging (see /api/movements/issue/scan-log).
+  const logBuf = useRef<ScanEvent[]>([]);
+  const logTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logDoc = useRef<{ doc_no: string; ref_doc: string | null; wh: string | null } | null>(null);
   const [scan, setScan] = useState("");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ k: "ok" | "err"; t: string } | null>(null);
   const scanRef = useRef<HTMLInputElement>(null);
 
   function showToast(k: "ok" | "err", t: string) { setToast({ k, t }); setTimeout(() => setToast(null), 2800); }
+
+  // ── Confirm-step audit trail ───────────────────────────────────────────────
+  // Every scan (accepted or rejected), un-scan and location change is buffered
+  // and POSTed in the background. Logging is deliberately fire-and-forget: it
+  // must never slow a scanner down or block a confirm if the request fails.
+  const flushLog = useCallback(async () => {
+    if (logTimer.current) { clearTimeout(logTimer.current); logTimer.current = null; }
+    const target = logDoc.current;
+    const batch = logBuf.current;
+    if (!target || batch.length === 0) return;
+    logBuf.current = [];
+    try {
+      await fetch(`/api/movements/issue/scan-log`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc_no: target.doc_no, ref_doc: target.ref_doc, wh: target.wh, events: batch }),
+      });
+    } catch { /* telemetry only — a dropped batch must not disturb the pick */ }
+  }, []);
+
+  const logEvent = useCallback((e: ScanEvent) => {
+    if (!logDoc.current) return;
+    logBuf.current.push(e);
+    if (logTimer.current) clearTimeout(logTimer.current);
+    logTimer.current = setTimeout(() => { void flushLog(); }, 1500);
+  }, [flushLog]);
+
+  // Don't lose a half-full buffer when the operator walks away or reloads.
+  useEffect(() => {
+    const onLeave = () => { void flushLog(); };
+    window.addEventListener("beforeunload", onLeave);
+    return () => { window.removeEventListener("beforeunload", onLeave); void flushLog(); };
+  }, [flushLog]);
 
   async function loadDocs() {
     if (!wh) { setDocs([]); return; }
@@ -85,8 +152,8 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
   useEffect(() => { if (wh) lsSet(LS_WH, wh); }, [wh]);
   useEffect(() => {
     if (!active) return;
-    lsSet(scanKey(active.header.doc_no), JSON.stringify({ scanned: [...scanned], reasons }));
-  }, [scanned, reasons, active]);
+    lsSet(scanKey(active.header.doc_no), JSON.stringify({ scanned: [...scanned], reasons, moves }));
+  }, [scanned, reasons, moves, active]);
 
   async function toggleExpand(doc_no: string) {
     if (expanded === doc_no) { setExpanded(null); return; }
@@ -107,10 +174,12 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       const data = (await res.json()) as { header?: DraftDoc; lines?: DraftLine[]; error?: string };
       if (!res.ok || !data.header) throw new Error(data.error ?? "ໂຫຼດບໍ່ສຳເລັດ");
       setActive({ header: data.header, lines: data.lines ?? [] });
+      logDoc.current = { doc_no: data.header.doc_no, ref_doc: data.header.ref_doc_no ?? null, wh: data.header.warehouse_code ?? null };
       // Restore any scans stashed for this doc from a previous (unconfirmed) session.
       const saved = loadScan(doc_no);
       setScanned(new Set(saved.scanned));
       setReasons(saved.reasons);
+      setMoves(saved.moves);
       lsSet(LS_ACTIVE, doc_no);
       setTimeout(() => scanRef.current?.focus(), 50);
     } catch (e) {
@@ -122,24 +191,100 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
     finally { setBusy(false); }
   }
 
-  // Map each in-stock serial → its item, and the planned qty + expected ISN per item.
+  /** The bin a line is currently pointing at — the operator's override if they
+   *  re-pointed it, otherwise the one the pick slip planned. */
+  const effNode = useCallback(
+    (l: DraftLine): NodeRef => moves[String(l.roworder)] ?? { rack: l.rack, location: l.location, pallet: l.pallet },
+    [moves],
+  );
+  const isMoved = useCallback(
+    (l: DraftLine) => nodeKey(effNode(l)) !== nodeKey({ rack: l.rack, location: l.location, pallet: l.pallet }),
+    [effNode],
+  );
+
+  /** Scannable units of a line, narrowed to the bin it currently points at. */
+  const unitsAt = useCallback(
+    (l: DraftLine) => (l.units ?? []).filter((u) => nodeKey(u) === nodeKey(effNode(l))),
+    [effNode],
+  );
+
+  // Map each scannable serial → its item. Built from the CURRENT bins, so
+  // re-pointing a line immediately makes that bin's serials the valid ones.
   const serialOwner = useMemo(() => {
     const m = new Map<string, string>();
-    if (active) for (const l of active.lines) for (const a of l.available) m.set(a.toUpperCase(), l.item_code);
+    if (active) for (const l of active.lines) for (const u of unitsAt(l)) {
+      if (u.sn) m.set(u.sn.toUpperCase(), l.item_code);
+      if (u.isn) m.set(u.isn.toUpperCase(), l.item_code);
+    }
     return m;
-  }, [active]);
+  }, [active, unitsAt]);
   // Each scannable id (sn OR isn, uppercased) → its unit's BOTH ids + item. Lets
   // the screen show sn + isn per scanned unit and reject scanning the same unit
   // twice (once by sn, once by isn).
   const unitByScan = useMemo(() => {
     const m = new Map<string, { sn: string | null; isn: string | null; item_code: string }>();
-    if (active) for (const l of active.lines) for (const u of l.units ?? []) {
+    if (active) for (const l of active.lines) for (const u of unitsAt(l)) {
       const rec = { sn: u.sn, isn: u.isn, item_code: l.item_code };
       if (u.sn) m.set(u.sn.toUpperCase(), rec);
       if (u.isn) m.set(u.isn.toUpperCase(), rec);
     }
     return m;
-  }, [active]);
+  }, [active, unitsAt]);
+
+  /** Re-point one line. Scans that belonged to the old bin are no longer valid
+   *  units for this doc, so they are dropped — but never silently: throwing away
+   *  work the operator already did needs an explicit yes. */
+  function changeNode(l: DraftLine, opt: LocOption) {
+    const planned = { rack: l.rack, location: l.location, pallet: l.pallet };
+    const from = effNode(l);
+    const target: NodeRef = { rack: opt.rack, location: opt.location, pallet: opt.pallet };
+    if (nodeKey(target) === nodeKey(from)) return;
+
+    // Which scans survive the move: still a unit of their item at one of the
+    // doc's bins (this line's new bin, every other line's current bin).
+    const stillValid = new Set<string>();
+    for (const line of active?.lines ?? []) {
+      const node = line.roworder === l.roworder ? target : effNode(line);
+      for (const u of line.units ?? []) {
+        if (nodeKey(u) !== nodeKey(node)) continue;
+        if (u.sn) stillValid.add(u.sn.toUpperCase());
+        if (u.isn) stillValid.add(u.isn.toUpperCase());
+      }
+    }
+    const dropped = [...scanned].filter((s) => !stillValid.has(s));
+    if (dropped.length > 0) {
+      const preview = dropped.slice(0, 5).map((s) => `· ${unitByScan.get(s)?.isn ?? unitByScan.get(s)?.sn ?? s}`).join("\n");
+      const more = dropped.length > 5 ? `\n… ແລະ ອີກ ${dropped.length - 5}` : "";
+      const ok = window.confirm(
+        `ປ່ຽນ location ຂອງ ${l.item_code}\n` +
+          `ຈາກ  ${nodeLabel(from)}\n` +
+          `ໄປ   ${nodeLabel(target)}\n\n` +
+          `⚠ SN ທີ່ຍິງໄວ້ແລ້ວ ${dropped.length} ໜ່ວຍ ບໍ່ໄດ້ຢູ່ບ່ອນໃໝ່ ຈະຖືກຍົກເລີກ:\n${preview}${more}\n\n` +
+          `ຕ້ອງການປ່ຽນແທ້ບໍ?`,
+      );
+      if (!ok) return; // controlled <select> snaps back to the current bin
+    }
+
+    setMoves((prev) => {
+      const next = { ...prev };
+      if (nodeKey(target) === nodeKey(planned)) delete next[String(l.roworder)];
+      else next[String(l.roworder)] = target;
+      return next;
+    });
+    if (dropped.length > 0) {
+      setScanned((prev) => new Set([...prev].filter((s) => stillValid.has(s))));
+      showToast("err", `ຍົກເລີກ ${dropped.length} SN ທີ່ຍິງຈາກ location ເກົ່າ`);
+    }
+    logEvent({
+      event: "move",
+      result: "ok",
+      item_code: l.item_code,
+      from_node: nodeLabel(from),
+      to_node: nodeLabel(target),
+      qty: dropped.length,
+      note: dropped.length > 0 ? `ຍົກເລີກ SN ທີ່ຍິງແລ້ວ: ${dropped.join(", ").slice(0, 160)}` : "ຍັງບໍ່ໄດ້ຍິງ SN",
+    });
+  }
   const neededByItem = useMemo(() => {
     const m = new Map<string, number>();
     if (active) for (const l of active.lines) m.set(l.item_code, (m.get(l.item_code) ?? 0) + (Number.parseInt(l.qty, 10) || 0));
@@ -171,13 +316,28 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
     // Reject if the SAME physical unit was already scanned by its other id.
     const unit = unitByScan.get(t);
     const dupByUnit = !!unit && ((!!unit.sn && scanned.has(unit.sn.toUpperCase())) || (!!unit.isn && scanned.has(unit.isn.toUpperCase())));
-    if (!owner) showToast("err", `ISN ${scan} ບໍ່ມีในstock / ບໍ່ແມ່ນຂອງໃບนี้`);
-    else if (scanned.has(t) || dupByUnit) showToast("err", `${scan} ຍິງແລ້ວ`);
-    else if (scannedCount(owner) >= (neededByItem.get(owner) ?? 0)) showToast("err", `${owner}: ຍິງครບ ${neededByItem.get(owner)} ແລ້ວ`);
-    else {
+    // The bin this scan counts against, for the audit trail.
+    const ownerLine = owner ? active.lines.find((l) => l.item_code === owner) : undefined;
+    const at = ownerLine ? effNode(ownerLine) : null;
+    const base: ScanEvent = {
+      event: "scan", scan_input: scan.trim(), item_code: owner ?? null,
+      sn: unit?.sn ?? null, isn: unit?.isn ?? null,
+      rack: at?.rack ?? null, location: at?.location ?? null, pallet: at?.pallet ?? null,
+    };
+    if (!owner) {
+      showToast("err", `ISN ${scan} ບໍ່ມีໃนstock / ບໍ່ແມ່ນຂອງໃບนี้`);
+      logEvent({ ...base, result: "not_found", note: "ບໍ່ມີໃນ stock ຫຼື ບໍ່ແມ່ນຂອງບ່ອນທີ່ເລືອກ" });
+    } else if (scanned.has(t) || dupByUnit) {
+      showToast("err", `${scan} ຍິງແລ້ວ`);
+      logEvent({ ...base, result: "duplicate", note: dupByUnit && !scanned.has(t) ? "ໜ່ວຍດຽວກັນ ຍິງດ້ວຍ id ອື່ນແລ້ວ" : "ຍິງຊ້ຳ" });
+    } else if (scannedCount(owner) >= (neededByItem.get(owner) ?? 0)) {
+      showToast("err", `${owner}: ຍິງครບ ${neededByItem.get(owner)} ແລ້ວ`);
+      logEvent({ ...base, result: "over_qty", note: `ເກີນຈຳນວນ ${neededByItem.get(owner)}` });
+    } else {
       const isSub = !active.lines.some((l) => l.item_code === owner && l.serials.some((s) => s.toUpperCase() === t));
       setScanned((p) => new Set(p).add(t));
-      showToast("ok", isSub ? `✓ ${scan} (ຕัวแทน)` : `✓ ${scan}`);
+      showToast("ok", isSub ? `✓ ${scan} (ຕົວແທນ)` : `✓ ${scan}`);
+      logEvent({ ...base, result: "ok", note: isSub ? "ຕົວແທນ (ບໍ່ຢູ່ໃນແຜນ pick)" : null });
     }
     setScan("");
     setTimeout(() => scanRef.current?.focus(), 20);
@@ -186,19 +346,27 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
   async function confirm() {
     if (!active) return;
     setBusy(true);
+    // Push the scan trail first, so it is on record even if the issue then fails.
+    await flushLog();
     try {
       const res = await fetch(`/api/movements/issue/draft/${encodeURIComponent(active.header.doc_no)}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scanned: [...scanned], notes: shortItems.map((i) => ({ item_code: i, reason_code: reasons[i] })) }),
+        body: JSON.stringify({
+          scanned: [...scanned],
+          notes: shortItems.map((i) => ({ item_code: i, reason_code: reasons[i] })),
+          // Re-pointed lines — the pick slip is updated to these bins as it posts.
+          moves: Object.entries(moves).map(([roworder, n]) => ({ roworder: Number(roworder), ...n })),
+        }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; issue_code?: string; erp_doc?: string | null; partial?: boolean };
+      const data = (await res.json()) as { ok?: boolean; error?: string; issue_code?: string; erp_doc?: string | null; partial?: boolean; moved?: number };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
-      showToast("ok", `ຈ່າຍສຳເລັດ ${data.issue_code}${data.partial ? " · ส่วนที่เหลือยังค้างใน pending" : ""}`);
+      showToast("ok", `ຈ່າຍສຳເລັດ ${data.issue_code}${data.moved ? ` · ແກ້ location ${data.moved} ລາຍການ` : ""}${data.partial ? " · ส่วนที่เหลือยังค้างใน pending" : ""}`);
       // Issued serials are consumed — clear the stash (a partial remainder is
       // re-scanned fresh against the reduced pending).
       lsDel(scanKey(active.header.doc_no));
       lsDel(LS_ACTIVE);
       setActive(null);
+      setMoves({});
       await loadDocs();
     } catch (e) { showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ"); }
     finally { setBusy(false); }
@@ -232,6 +400,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       lsDel(scanKey(doc_no));
       lsDel(LS_ACTIVE);
       setActive(null);
+      setMoves({});
       await loadDocs();
     } catch (e) { showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ"); }
     finally { setBusy(false); }
@@ -344,8 +513,14 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
           {/* items */}
           <div className="space-y-3">
             {[...active.lines]
-              .sort((a, b) => [a.rack, a.location, a.pallet].filter(Boolean).join("/").localeCompare([b.rack, b.location, b.pallet].filter(Boolean).join("/")))
+              .sort((a, b) => nodeLabel(effNode(a)).localeCompare(nodeLabel(effNode(b))))
               .map((l, i) => {
+                const node = effNode(l);
+                const moved = isMoved(l);
+                const options = l.loc_options ?? [];
+                // The planned bin may itself be empty now — keep it selectable so
+                // the dropdown always has the line's current value.
+                const hasCurrent = options.some((o) => nodeKey(o) === nodeKey(node));
                 const need = Number.parseInt(l.qty, 10) || 0;
                 const isSer = serialItems.has(l.item_code);
                 const got = isSer ? scannedCount(l.item_code) : need;
@@ -365,7 +540,36 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                       <div className="min-w-0">
                         <div className="font-mono text-[11px] text-zinc-400">{l.item_code}{isSer && <span className="ml-1.5 rounded bg-violet-100 px-1 text-[9px] font-bold text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">SN</span>}</div>
                         <div className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">{l.item_name}</div>
-                        <div className="font-mono text-[10px] text-zinc-400">{[l.rack, l.location, l.pallet].filter(Boolean).join(" / ") || "—"}</div>
+                        {/* ບ່ອນຈັດເກັບ — ແກ້ໄດ້ ຖ້າໄປເອົາຂອງຕົວຈິງບ່ອນອື່ນ (ທາງຕັນ / ຈັບບໍ່ອອກ) */}
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-zinc-400">⊙ ບ່ອນ</span>
+                          <select
+                            value={nodeKey(node)}
+                            disabled={busy}
+                            onChange={(e) => {
+                              const opt = options.find((o) => nodeKey(o) === e.target.value);
+                              if (opt) changeNode(l, opt);
+                            }}
+                            title="ປ່ຽນ location ຕາມບ່ອນທີ່ໄປເອົາຂອງຕົວຈິງ"
+                            className={`max-w-[320px] rounded-lg px-2 py-1 font-mono text-[11px] font-bold ring-1 outline-none focus:ring-2 focus:ring-red-500/30 disabled:opacity-50 ${
+                              moved
+                                ? "bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/50"
+                                : "bg-zinc-50 text-zinc-700 ring-zinc-200 dark:bg-zinc-950 dark:text-zinc-300 dark:ring-zinc-800"
+                            }`}
+                          >
+                            {!hasCurrent && <option value={nodeKey(node)}>{nodeLabel(node)} · ບໍ່ມີ stock ⚠</option>}
+                            {options.map((o) => (
+                              <option key={nodeKey(o)} value={nodeKey(o)}>
+                                {nodeLabel(o)} · ມີ {o.qty}{isSer ? ` · SN ${o.sn_qty}${o.sn_qty === 0 ? " ⚠" : ""}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                          {moved && (
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300" title={`ແຜນເດີມ: ${nodeLabel({ rack: l.rack, location: l.location, pallet: l.pallet })}`}>
+                              ແກ້ location · ເດີມ {nodeLabel({ rack: l.rack, location: l.location, pallet: l.pallet })}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         {isSer ? (() => {
@@ -406,7 +610,10 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                                         <td className="px-3 py-1.5 text-right whitespace-nowrap">
                                           {missing && <span className="mr-1 text-[9px] font-bold text-rose-600">ບໍ່ຄົບ</span>}
                                           {u.sub && <span className="mr-1 text-[9px] text-amber-600">ຕัวแทน</span>}
-                                          <button type="button" onClick={() => setScanned((p) => { const n = new Set(p); n.delete(u.key); return n; })} title="ຍົກເລີກ ການຍິງນີ້" className="align-middle text-zinc-300 hover:text-rose-500">✕</button>
+                                          <button type="button" onClick={() => {
+                                            setScanned((p) => { const n = new Set(p); n.delete(u.key); return n; });
+                                            logEvent({ event: "unscan", result: "ok", item_code: l.item_code, scan_input: u.key, sn: u.sn, isn: u.isn, rack: node.rack, location: node.location, pallet: node.pallet });
+                                          }} title="ຍົກເລີກ ການຍິງນີ້" className="align-middle text-zinc-300 hover:text-rose-500">✕</button>
                                         </td>
                                       </tr>
                                     );
@@ -435,10 +642,20 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
               })}
           </div>
 
+          {/* audit trail of this confirm session — scans, rejects, location changes */}
+          <ScanLogPanel doc={active.header.doc_no} />
+
           {/* sticky footer */}
           <div className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 px-4 py-3 backdrop-blur md:left-64 dark:border-zinc-800 dark:bg-zinc-950/95">
             <div className="flex w-full items-center justify-between gap-3">
-              <span className="text-sm font-bold text-zinc-600 dark:text-zinc-300">{totalNeeded > 0 ? `${totalScanned}/${totalNeeded} ຍິງແລ້ວ` : " พร้อมจ่าย"}{shortItems.length > 0 ? " · ຈ່າຍບໍ່ຄົບ" : ""}</span>
+              <span className="text-sm font-bold text-zinc-600 dark:text-zinc-300">
+                {totalNeeded > 0 ? `${totalScanned}/${totalNeeded} ຍິງແລ້ວ` : " พร้อมจ่าย"}{shortItems.length > 0 ? " · ຈ່າຍບໍ່ຄົບ" : ""}
+                {Object.keys(moves).length > 0 && (
+                  <span className="ml-2 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                    ແກ້ location {Object.keys(moves).length} ລາຍການ — ໃບ pick ຈະອັບເດດຕອນບັນທຶກ
+                  </span>
+                )}
+              </span>
               <button type="button" onClick={confirm} disabled={!canConfirm} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-red-500 to-orange-600 px-7 py-3 text-sm font-bold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">
                 <CheckIcon className="h-4 w-4" />{busy ? "ກຳລັງຈ່າຍ..." : shortItems.length > 0 ? "ຢືນຢັນຈ່າຍ (ບໍ່ຄົບ)" : "ຢືນຢັນຈ່າຍ"}
               </button>

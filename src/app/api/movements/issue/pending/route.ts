@@ -67,6 +67,7 @@ export async function GET(request: Request) {
     aging_days: number | null;
     want_date: string | null;
     created_at: string | null;
+    pending_qty: string;
   }>(
     `WITH src AS (
        SELECT d.doc_no,
@@ -107,6 +108,8 @@ export async function GET(request: Request) {
             h.remark,
             s.line_count,
             (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0))::numeric::text AS remaining_qty,
+            -- ຢູ່ໃນໃບ pick ຄ້າງຢືນຢັນ — ຫັກອອກຈາກ remaining_qty ແລ້ວ, ສົ່ງອອກໄປໃຫ້ UI ບອກຜູ້ໃຊ້
+            COALESCE(pd.pend_qty, 0)::numeric::text AS pending_qty,
             (CURRENT_DATE - h.doc_date)::int AS aging_days,
             to_char(h.want_date, 'YYYY-MM-DD') AS want_date,
             to_char(COALESCE(h.create_date_time_now, h.doc_date::timestamp + COALESCE(NULLIF(h.doc_time, '')::time, '00:00'::time)), 'YYYY-MM-DD HH24:MI:SS') AS created_at

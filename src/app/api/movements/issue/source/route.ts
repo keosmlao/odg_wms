@@ -8,13 +8,18 @@ import { accessibleWarehouses } from "@/lib/session-shared";
  * `ic_trans`), for the goods-issue flow. For each item line it returns:
  *   - remaining = (qty − cancel_qty) summed for the item, minus what WMS already
  *     issued for this source doc (odg_wms_trans_detail, doc_ref = doc, flag 72)
+ *     and minus what is already parked on an unconfirmed pick slip.
+ *   - issued_qty / pending_qty = the two deductions above, returned separately so
+ *     the UI can explain WHY the default allocation is smaller than the ordered
+ *     qty (an open pick slip silently eating the balance is otherwise invisible).
  *   - is_isn (serialized?)
  *   - locations: the WMS (rack, location, pallet) nodes in this warehouse that
  *     currently hold the item, with their balance — where the operator picks
  *     what to deduct.
  *
  * Query: ?doc=<doc_no>&type=req|transfer|sale&wh=<code>
- * Returns: { doc:{ doc_no, doc_date, cust_code, cust_name, remark }, lines:[...] }
+ * Returns: { doc:{ doc_no, doc_date, cust_code, cust_name, remark },
+ *            pending_docs:[{ doc_no, doc_date, qty, remark }], lines:[...] }
  */
 const FLAG_BY_TYPE: Record<string, number> = { req: 122, transfer: 124, sale: 44 };
 const ISSUE_STOCK_FLAG = 72;
@@ -63,6 +68,8 @@ export async function GET(request: Request) {
     unit_code: string | null;
     is_isn: number | null;
     src_qty: string;
+    issued_qty: string;
+    pending_qty: string;
     remaining: string;
   }>(
     `WITH src AS (
@@ -103,6 +110,8 @@ export async function GET(request: Request) {
                WHERE si.item_code = s.item_code AND si.wh_code = $3 AND COALESCE(si.status, 0) = 0
              ) THEN 1 ELSE 0 END) AS is_isn,
             s.src_qty::numeric::text AS src_qty,
+            COALESCE(i.wms_qty, 0)::numeric::text AS issued_qty,
+            COALESCE(pd.pend_qty, 0)::numeric::text AS pending_qty,
             (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0))::numeric::text AS remaining
      FROM src s
      LEFT JOIN issued i ON i.item_code = s.item_code
@@ -126,6 +135,14 @@ export async function GET(request: Request) {
       }>(
         // FIFO: oldest stock first. first_in = earliest inbound (calc_flag>0)
         // date at the node, so the UI can suggest/default to the oldest location.
+        //
+        // NOTE: do NOT filter on `status` — same rule as the balance page. In
+        // odg_wms_trans_detail status=1 is not "void": it marks the outbound (−1)
+        // leg of an internal bin relocation (trans_flag 77 writes +1 status=0 into
+        // the destination bin and −1 status=1 out of the source bin), plus a few
+        // status=1 sales legs. Filtering it out keeps the +1 destination legs but
+        // drops the −1 source legs, so a bin the goods were moved OUT of still
+        // shows its old balance and gets suggested as a pick location.
         `SELECT t.item_code,
                 COALESCE(NULLIF(TRIM(t.shelf_code), ''), '')  AS rack,
                 COALESCE(NULLIF(TRIM(t.shelf_code1), ''), '') AS location,
@@ -133,8 +150,7 @@ export async function GET(request: Request) {
                 SUM(t.qty * t.calc_flag)::text AS qty,
                 to_char(MIN(t.doc_date) FILTER (WHERE t.calc_flag > 0), 'YYYY-MM-DD') AS first_in
          FROM public.odg_wms_trans_detail t
-         WHERE (t.status = 0 OR t.status IS NULL)
-           AND t.wh_code = $1
+         WHERE t.wh_code = $1
            AND t.item_code = ANY($2)
          GROUP BY t.item_code, rack, location, pallet
          HAVING SUM(t.qty * t.calc_flag) > 0.0001
@@ -143,13 +159,64 @@ export async function GET(request: Request) {
       )
     : [];
 
-  const locByItem = new Map<string, { rack: string; location: string; pallet: string; qty: string; first_in: string | null }[]>();
+  // In-stock serials per node. A node can carry WMS balance with NO serial rows
+  // (balance and sn_inventory drift apart), and when the warehouse requires ISN
+  // on the pick slip such a node cannot be picked from at all — so the client
+  // needs the count to keep the FIFO default off those nodes.
+  const serialItems = lineRows.filter((l) => (l.is_isn ?? 0) === 1).map((l) => l.item_code);
+  const snRows = serialItems.length
+    ? await query<{ item_code: string; rack: string; location: string; pallet: string; sn_qty: string }>(
+        `SELECT i.item_code,
+                COALESCE(NULLIF(TRIM(i.rack), ''), '')     AS rack,
+                COALESCE(NULLIF(TRIM(i.location), ''), '') AS location,
+                COALESCE(NULLIF(TRIM(i.pallet), ''), '')   AS pallet,
+                count(*)::text AS sn_qty
+         FROM public.sn_inventory i
+         WHERE i.wh_code = $1 AND i.item_code = ANY($2) AND COALESCE(i.status, 0) = 0
+         GROUP BY i.item_code, rack, location, pallet`,
+        [wh, serialItems],
+      )
+    : [];
+  const snByNode = new Map<string, number>();
+  for (const r of snRows) {
+    snByNode.set(`${r.item_code}|${r.rack}|${r.location}|${r.pallet}`, Number.parseInt(r.sn_qty, 10) || 0);
+  }
+  const serialSet = new Set(serialItems);
+
+  const locByItem = new Map<string, { rack: string; location: string; pallet: string; qty: string; first_in: string | null; sn_qty: number | null }[]>();
   for (const r of locRows) {
     const arr = locByItem.get(r.item_code);
-    const entry = { rack: r.rack, location: r.location, pallet: r.pallet, qty: r.qty, first_in: r.first_in };
+    const entry = {
+      rack: r.rack,
+      location: r.location,
+      pallet: r.pallet,
+      qty: r.qty,
+      first_in: r.first_in,
+      // null = item is not serialized here, so serial coverage is irrelevant.
+      sn_qty: serialSet.has(r.item_code) ? snByNode.get(`${r.item_code}|${r.rack}|${r.location}|${r.pallet}`) ?? 0 : null,
+    };
     if (arr) arr.push(entry);
     else locByItem.set(r.item_code, [entry]);
   }
+
+  // Open (status 0) pick slips already raised against this source doc. Their qty
+  // is subtracted from `remaining` above, so the UI must be able to name them —
+  // otherwise a forgotten pick slip just looks like "the system defaulted a wrong
+  // (too small) quantity".
+  const pendingDocs = await query<{ doc_no: string; doc_date: string | null; qty: string; remark: string | null }>(
+    // doc_no has no unique constraint on wms_product_out, so every non-grouped
+    // column has to be aggregated.
+    `SELECT o.doc_no,
+            to_char(MIN(o.doc_date), 'YYYY-MM-DD') AS doc_date,
+            SUM(d.qty)::numeric::text AS qty,
+            MAX(o.remark) AS remark
+     FROM public.wms_product_out o
+     JOIN public.wms_product_out_detail d ON d.doc_no = o.doc_no
+     WHERE COALESCE(o.status, 0) = 0 AND o.ref_doc_no = $1
+     GROUP BY o.doc_no
+     ORDER BY o.doc_no`,
+    [doc],
+  );
 
   const lines = lineRows.map((l) => ({
     item_code: l.item_code,
@@ -157,9 +224,11 @@ export async function GET(request: Request) {
     unit_code: l.unit_code,
     is_isn: l.is_isn,
     src_qty: l.src_qty,
+    issued_qty: l.issued_qty,
+    pending_qty: l.pending_qty,
     remaining: l.remaining,
     locations: locByItem.get(l.item_code) ?? [],
   }));
 
-  return NextResponse.json({ doc: headerRows[0], lines });
+  return NextResponse.json({ doc: headerRows[0], pending_docs: pendingDocs, lines });
 }

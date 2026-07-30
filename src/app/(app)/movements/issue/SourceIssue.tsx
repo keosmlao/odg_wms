@@ -47,13 +47,22 @@ type PendingDoc = {
   remark: string | null;
   line_count: number;
   remaining_qty: string;
+  pending_qty: string | null; // ຢູ່ໃນໃບ pick ຄ້າງຢືນຢັນ (ຫັກອອກຈາກ remaining_qty ແລ້ວ)
   aging_days: number | null;
   want_date: string | null;
   created_at: string | null;
   lines: PendingLine[];
 };
 
-type LocOpt = { rack: string; location: string; pallet: string; qty: string; first_in?: string | null };
+type LocOpt = {
+  rack: string;
+  location: string;
+  pallet: string;
+  qty: string;
+  first_in?: string | null;
+  /** In-stock serials at this node. null = item not serialized (not applicable). */
+  sn_qty?: number | null;
+};
 
 type SourceLine = {
   item_code: string;
@@ -61,9 +70,16 @@ type SourceLine = {
   unit_code: string | null;
   is_isn: number | null;
   src_qty: string;
+  issued_qty: string;
+  pending_qty: string;
   remaining: string;
   locations: LocOpt[];
 };
+
+/** An open (unconfirmed) pick slip already raised against the same source doc.
+ *  Its qty is netted out of every line's `remaining`, so it has to be shown —
+ *  otherwise the default allocation just looks short of what the doc ordered. */
+type PendingPick = { doc_no: string; doc_date: string | null; qty: string; remark: string | null };
 
 type SerialOption = { sn: string; isn: string | null; rack: string | null; location: string | null; pallet: string | null; received?: string | null; days?: number | null };
 
@@ -74,6 +90,8 @@ type WorkingLine = {
   unit_code: string | null;
   remaining: number;
   srcQty: number;
+  issuedQty: number; // already issued out of WMS for this source doc
+  pendingQty: number; // parked on an open pick slip for this source doc
   serialized: boolean;
   locations: LocOpt[];
   selIdx: number; // index into locations, -1 = none
@@ -210,6 +228,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
 
   const [selDoc, setSelDoc] = useState<PendingDoc | null>(null);
   const [lines, setLines] = useState<WorkingLine[]>([]);
+  const [pendingPicks, setPendingPicks] = useState<PendingPick[]>([]);
   const [loadingLines, setLoadingLines] = useState(false);
 
   const [serialPickerFor, setSerialPickerFor] = useState<string | null>(null);
@@ -300,7 +319,12 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
 
   /** Build allocation rows for one source line. If the needed qty exceeds the
    *  recommended (FIFO) location's stock, AUTO-SPLIT across the next locations
-   *  until the full qty is covered — no manual "+ location" needed. */
+   *  until the full qty is covered — no manual "+ location" needed.
+   *
+   *  For a serialized item on a warehouse that requires ISN on the pick slip, a
+   *  node whose WMS balance is not backed by serials cannot actually be picked
+   *  from, so those nodes are tried LAST (still tried, so the defaulted total
+   *  never comes up short — an uncoverable row is then flagged as incomplete). */
   function buildAllocations(l: SourceLine): WorkingLine[] {
     const remaining = Number.parseFloat(l.remaining) || 0;
     const serialized = (l.is_isn ?? 0) === 1;
@@ -311,6 +335,8 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
       unit_code: l.unit_code,
       remaining,
       srcQty: Number.parseFloat(l.src_qty) || 0,
+      issuedQty: Number.parseFloat(l.issued_qty) || 0,
+      pendingQty: Number.parseFloat(l.pending_qty) || 0,
       serialized,
       locations: l.locations,
       selIdx: -1,
@@ -321,15 +347,30 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
     };
     if (l.locations.length === 0) return [{ ...base, key: `${l.item_code}#a0` }];
 
+    // Try serial-backed nodes first when the pick slip must carry ISN; the
+    // dropdown itself stays in FIFO order, only the auto-fill order changes.
+    const needsSn = serialized && snPickRequired;
+    const order = l.locations.map((_, i) => i);
+    if (needsSn) {
+      const covered = (i: number) => (l.locations[i].sn_qty ?? 0) > 0;
+      order.sort((a, b) => Number(covered(b)) - Number(covered(a)));
+    }
+
     const allocs: WorkingLine[] = [];
     let need = Math.round(remaining);
-    for (let i = 0; i < l.locations.length && need > 0; i++) {
-      const locStock = Math.floor(Number.parseFloat(l.locations[i].qty) || 0);
+    for (const i of order) {
+      if (need <= 0) break;
+      const loc = l.locations[i];
+      let locStock = Math.floor(Number.parseFloat(loc.qty) || 0);
+      // An ISN-required pick can only take as many units as there are serials.
+      if (needsSn && (loc.sn_qty ?? 0) > 0) locStock = Math.min(locStock, loc.sn_qty ?? 0);
       if (locStock <= 0) continue;
       const take = Math.min(need, locStock);
       allocs.push({ ...base, key: `${l.item_code}#a${i}`, selIdx: i, qty: String(take) });
       need -= take;
     }
+    // Keep the rows in dropdown (FIFO) order regardless of the fill order.
+    allocs.sort((a, b) => a.selIdx - b.selIdx);
     // Nothing allocatable (all locations zero) → one empty row on the first loc.
     if (allocs.length === 0) allocs.push({ ...base, key: `${l.item_code}#a0`, selIdx: 0, qty: "" });
     return allocs;
@@ -343,15 +384,17 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
     try {
       const params = new URLSearchParams({ doc: doc.doc_no, type, wh: whCode });
       const res = await fetch(`/api/movements/issue/source?${params}`);
-      const data = (await res.json()) as { lines?: SourceLine[]; error?: string };
+      const data = (await res.json()) as { lines?: SourceLine[]; pending_docs?: PendingPick[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       const built = (data.lines ?? []).flatMap(buildAllocations);
       setLines(built);
+      setPendingPicks(data.pending_docs ?? []);
       // Eager-load serials for serialized lines so the global SN scan can match.
       for (const l of built) if (l.serialized && l.selIdx >= 0) void loadSerials(l);
     } catch (err) {
       showToast("err", err instanceof Error ? err.message : "ບໍ່ສຳເລັດ");
       setSelDoc(null);
+      setPendingPicks([]);
     } finally {
       setLoadingLines(false);
     }
@@ -544,6 +587,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   function resetToList() {
     setSelDoc(null);
     setLines([]);
+    setPendingPicks([]);
     setRemoved(new Set());
     setAssignee("");
     setReloadKey((k) => k + 1); // refresh pending so partial-issued docs show reduced remaining
@@ -814,6 +858,11 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                             <div className="text-[10px] uppercase text-zinc-400">ຄ້າງເບີກ</div>
                             <div className="font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatQty(d.remaining_qty)}</div>
                             <div className="text-[10px] text-zinc-400">{d.line_count} ລາຍການ</div>
+                            {Number.parseFloat(d.pending_qty ?? "0") > 0 && (
+                              <div className="mt-0.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" title="ຢູ່ໃນໃບ pick ທີ່ຍັງບໍ່ໄດ້ຢືນຢັນ — ຫັກອອກຈາກຄ້າງເບີກແລ້ວ">
+                                ໃນໃບ pick {formatQty(d.pending_qty)}
+                              </div>
+                            )}
                           </div>
                           <button type="button" onClick={(e) => { e.preventDefault(); openDoc(d); }} disabled={loadingLines} className="rounded-lg bg-gradient-to-r from-red-500 to-orange-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:shadow active:scale-95 disabled:opacity-50 cursor-pointer">ສ້າງໃບຈ່າຍ →</button>
                         </div>
@@ -902,6 +951,38 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
             </button>
           </div>
 
+          {/* ໃບ pick ຄ້າງຢືນຢັນ ຂອງເອກະສານนี้ — ຈຳນວນໃນໃບເຫຼົ່ານີ້ຖືກຫັກອອກຈາກ "ຄ້າງຈ່າຍ"
+              ດ້ານລຸ່ມແລ້ວ. ຖ້າບໍ່ບອກ ຜູ້ໃຊ້ຈະເຫັນວ່າ "ລະບົບ default ຈຳນວນຫຼຸດ". */}
+          {pendingPicks.length > 0 && (
+            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+              <div className="flex items-start gap-2">
+                <AlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-extrabold text-amber-800 dark:text-amber-300">
+                    ເອກະສານນີ້ມີໃບ pick ຄ້າງຢືນຢັນຢູ່ແລ້ວ {pendingPicks.length} ໃບ — ຈຳນວນໃນໃບເຫຼົ່ານີ້ຖືກຫັກອອກຈາກ “ຄ້າງຈ່າຍ” ດ້ານລຸ່ມແລ້ວ
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    {pendingPicks.map((p) => (
+                      <span key={p.doc_no} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200 dark:bg-zinc-900 dark:text-amber-300 dark:ring-amber-900/50">
+                        <span className="font-mono">{p.doc_no}</span>
+                        <span className="text-amber-500">·</span>
+                        <span className="tabular-nums">{formatQty(p.qty)} ໜ່ວຍ</span>
+                        {p.doc_date && <><span className="text-amber-500">·</span><span>{fmtDate(p.doc_date)}</span></>}
+                        <a href={`/print/pick/${encodeURIComponent(p.doc_no)}?auto=1`} target="_blank" rel="noopener" className="ml-0.5 rounded px-1 hover:bg-amber-100 dark:hover:bg-amber-950/60" title="ພິມໃບ pick">🖨</a>
+                      </span>
+                    ))}
+                    <a href="/movements/issue?tab=pending" className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700">
+                      ໄປຢືນຢັນ / ຍົກເລີກ ໃບ pick ຄ້າງ →
+                    </a>
+                  </div>
+                  <div className="mt-1.5 text-[11px] text-amber-700/80 dark:text-amber-400/80">
+                    ຢາກຈັດເຕັມຕາມເອກະສານ (ບໍ່ຫັກ) → ໄປຢືນຢັນ ຫຼື ລົບໃບ pick ຄ້າງກ່ອນ ແລ້ວກັບມາໜ້ານີ້ອີກເທື່ອໜຶ່ງ
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ມອບໝາຍ ຜູ້เก็บ (forklift) — บันทึกลงใบ pick */}
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200/70 bg-zinc-50/50 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-950/20">
             <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">🚜 ມອບໝາຍ ຜູ້ເກັບ:</span>
@@ -942,6 +1023,9 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                 const alloc = allocatedFor(g.item_code);
                 const complete = Math.abs(alloc - need) < 1e-6;
                 const noStock = g.line.locations.length === 0;
+                // How much of the ordered qty is NOT available to allocate here
+                // (already issued, or parked on an open pick slip).
+                const netted = g.line.issuedQty + g.line.pendingQty;
                 return (
                   <div key={g.item_code} className="overflow-hidden rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
                     <div className="flex items-center justify-between gap-2 bg-zinc-50/70 px-4 py-2.5 dark:bg-zinc-800/40">
@@ -951,6 +1035,21 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                           {g.line.serialized && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-extrabold text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">SN</span>}
                         </div>
                         <div className="max-w-md truncate text-xs font-bold text-zinc-700 dark:text-zinc-300" title={g.line.item_name ?? ""}>{g.line.item_name ?? "—"}</div>
+                        {/* ຂໍ → ຈ່າຍແລ້ວ → ໃນໃບ pick ຄ້າງ → ຄ້າງຈ່າຍ. ສະແດງສະເໝີເມື່ອ
+                            "ຄ້າງຈ່າຍ" ໜ້ອຍກວ່າ "ຂໍ" ເພື່ອບໍ່ໃຫ້ເບິ່ງຄືລະບົບ default ຜິດ. */}
+                        {netted > 0 && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] font-bold">
+                            <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">ຂໍ {formatQty(g.line.srcQty)}</span>
+                            {g.line.issuedQty > 0 && (
+                              <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/40">− ຈ່າຍແລ້ວ {formatQty(g.line.issuedQty)}</span>
+                            )}
+                            {g.line.pendingQty > 0 && (
+                              <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/40" title="ຢູ່ໃນໃບ pick ທີ່ຍັງບໍ່ໄດ້ຢືນຢັນ">− ໃນໃບ pick {formatQty(g.line.pendingQty)}</span>
+                            )}
+                            <span className="text-zinc-400">=</span>
+                            <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-700 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/40">ຄ້າງຈ່າຍ {formatQty(need)}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="flex shrink-0 items-center gap-3">
                         <div className="text-right">
@@ -974,7 +1073,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                               <div className="relative min-w-[210px] flex-1">
                                 <select value={l.selIdx} onChange={(e) => setLocation(l.key, Number.parseInt(e.target.value, 10))} className={`w-full rounded-lg bg-zinc-50/70 pl-3 pr-7 py-2 text-xs font-bold ring-1 dark:bg-zinc-950 appearance-none focus:outline-none focus:ring-2 focus:ring-red-500/30 cursor-pointer ${over ? "ring-amber-400 text-amber-700" : "ring-zinc-200 text-zinc-800 dark:ring-zinc-800 dark:text-zinc-200"}`}>
                                   <option value={-1}>— ເລືອກ location —</option>
-                                  {l.locations.map((loc, idx) => (<option key={`${loc.rack}/${loc.location}/${loc.pallet}`} value={idx}>{idx === 0 ? "⭐ " : ""}{[loc.rack, loc.location, loc.pallet].filter(Boolean).join(" / ") || "(ສາງ)"} · ມີ {formatQty(loc.qty)}{loc.first_in ? ` · ເຂົ້າ ${loc.first_in}` : ""}{idx === 0 ? " · FIFO" : ""}</option>))}
+                                  {l.locations.map((loc, idx) => (<option key={`${loc.rack}/${loc.location}/${loc.pallet}`} value={idx}>{idx === 0 ? "⭐ " : ""}{[loc.rack, loc.location, loc.pallet].filter(Boolean).join(" / ") || "(ສາງ)"} · ມີ {formatQty(loc.qty)}{loc.sn_qty != null ? ` · SN ${loc.sn_qty}${loc.sn_qty === 0 ? " ⚠" : ""}` : ""}{loc.first_in ? ` · ເຂົ້າ ${loc.first_in}` : ""}{idx === 0 ? " · FIFO" : ""}</option>))}
                                 </select>
                                 <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-[10px]">▾</span>
                               </div>

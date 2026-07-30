@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { WmsRole } from "@/lib/session-shared";
 import { ROLE_LABEL_LO } from "@/lib/session-shared";
+import { WMS_PERMS, type WmsPerm } from "@/lib/permissions-shared";
 import type { EmployeeRow, WarehouseRow } from "./page";
 
 const ROLE_OPTIONS: { value: WmsRole | ""; label: string }[] = [
@@ -185,6 +186,18 @@ export default function AccessClient({
                         )}
                       </div>
                     )}
+                    {/* Void grants — worth seeing at a glance from the list. */}
+                    {e.role === "manager" ? (
+                      <div className="mt-1 text-[10px] font-medium text-violet-600 dark:text-violet-400">🗑 ລົບໄດ້ທຸກຢ່າງ</div>
+                    ) : e.permissions.length > 0 ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {e.permissions.map((p) => (
+                          <span key={p} className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                            🗑 {WMS_PERMS.find((x) => x.key === p)?.label ?? p}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
@@ -232,6 +245,7 @@ function EditDrawer({
   const [selected, setSelected] = useState<Set<string>>(
     new Set(employee.warehouses),
   );
+  const [perms, setPerms] = useState<Set<WmsPerm>>(new Set(employee.permissions ?? []));
   const [whSearch, setWhSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -265,6 +279,7 @@ function EditDrawer({
         body: JSON.stringify({
           role: role || null,
           warehouses: role === "" ? [] : Array.from(selected),
+          permissions: Array.from(perms),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -272,6 +287,7 @@ function EditDrawer({
         ok?: boolean;
         role?: WmsRole | null;
         warehouses?: string[];
+        permissions?: WmsPerm[];
       };
       if (!res.ok || !data.ok) {
         setError(data.error ?? "ບັນທຶກບໍ່ສຳເລັດ");
@@ -281,6 +297,7 @@ function EditDrawer({
         ...employee,
         role: data.role ?? null,
         warehouses: data.warehouses ?? [],
+        permissions: data.permissions ?? [],
       });
     } catch {
       setError("ບໍ່ສາມາດເຊື່ອມຕໍ່ກັບເຊີບເວີໄດ້");
@@ -350,6 +367,48 @@ function EditDrawer({
             <p className="mb-3 rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:bg-violet-950 dark:text-violet-300">
               ຜູ້ຈັດການ: ປ່ອຍວ່າງ = ເຫັນ <strong>ທຸກສາງ</strong>. ເລືອກສະເພາະ = ຈຳກັດໃຫ້ເຫັນສະເພາະສາງທີ່ເລືອກເທົ່ານັ້ນ.
             </p>
+          )}
+
+          {/* Extra grants for destructive actions. A manager holds them all
+              implicitly, so the list is only offered to the other roles. */}
+          {role !== "" && (
+            <div className="mb-4">
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                ສິດພິເສດ (ລົບເອກະສານ)
+              </label>
+              {role === "manager" ? (
+                <p className="rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:bg-violet-950 dark:text-violet-300">
+                  ຜູ້ຈັດການມີ <strong>ທຸກສິດ</strong> ໂດຍປະລິຍາຍ — ບໍ່ຕ້ອງເລືອກ.
+                </p>
+              ) : (
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  {WMS_PERMS.map((p) => (
+                    <label
+                      key={p.key}
+                      className="flex cursor-pointer items-start gap-2.5 border-b border-zinc-100 px-3 py-2.5 text-sm last:border-b-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={perms.has(p.key)}
+                        onChange={() =>
+                          setPerms((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(p.key)) next.delete(p.key);
+                            else next.add(p.key);
+                            return next;
+                          })
+                        }
+                        className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-rose-600 focus:ring-rose-500 dark:border-zinc-700"
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-medium text-zinc-800 dark:text-zinc-200">{p.label}</span>
+                        <span className="block text-xs text-zinc-500 dark:text-zinc-400">{p.hint}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {showWarehousePicker && (

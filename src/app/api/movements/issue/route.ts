@@ -124,10 +124,14 @@ export async function POST(request: Request) {
         await client.query("ROLLBACK");
         return NextResponse.json({ error: `ສິນຄ້າ ${line.item_code} ມີ serial — ຕ້ອງເລືອກ/ຍິງ serial ກ່ອນສ້າງໃບ pick` }, { status: 400 });
       }
+      // NOTE: no `status` filter — status=1 marks the outbound (−1) leg of an
+      // internal bin relocation (trans_flag 77), not a void. Filtering it out
+      // would leave a moved-out bin showing its old balance and let a pick be
+      // saved against stock that is no longer there. Same rule as the balance page.
       const balRes = await client.query<{ before: string }>(
         `SELECT COALESCE(SUM(t.qty * t.calc_flag), 0)::numeric::text AS before
          FROM public.odg_wms_trans_detail t
-         WHERE (t.status = 0 OR t.status IS NULL) AND t.wh_code = $1
+         WHERE t.wh_code = $1
            AND COALESCE(NULLIF(TRIM(t.shelf_code), ''), '')  = $2
            AND COALESCE(NULLIF(TRIM(t.shelf_code1), ''), '') = $3
            AND COALESCE(NULLIF(TRIM(t.pallet), ''), '')      = $4

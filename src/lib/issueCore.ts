@@ -76,12 +76,15 @@ export async function executeIssue(client: PoolClient, p: ExecuteIssueParams): P
   const dualBrands = snOn ? await getSnDualBrands(client) : [];
 
   // 1) Validate each line: qty ≤ node balance; serials in stock here.
+  //    NOTE: no `status` filter on the balance — status=1 marks the outbound (−1)
+  //    leg of an internal bin relocation (trans_flag 77), not a void, so excluding
+  //    it would credit a bin the goods were already moved out of. Same rule as the
+  //    balance page.
   for (const line of lines) {
     const balRes = await client.query<{ before: string }>(
       `SELECT COALESCE(SUM(t.qty * t.calc_flag), 0)::numeric::text AS before
        FROM public.odg_wms_trans_detail t
-       WHERE (t.status = 0 OR t.status IS NULL)
-         AND t.wh_code = $1
+       WHERE t.wh_code = $1
          AND COALESCE(NULLIF(TRIM(t.shelf_code), ''), '')  = $2
          AND COALESCE(NULLIF(TRIM(t.shelf_code1), ''), '') = $3
          AND COALESCE(NULLIF(TRIM(t.pallet), ''), '')      = $4

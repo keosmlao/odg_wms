@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import {
   type ErpItem,
+  IN_TRANSIT_LOC,
   IN_TRANSIT_WH,
   TRANSFER_FORMAT,
   nextErpDocNo,
@@ -142,21 +143,66 @@ export async function moveFromTransit(
   }
 
   // 3) ERP ໃບໂອນ (70+72): 9903 → whTo.
-  const items: ErpItem[] = active.map((l) => ({ item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: l.qty }));
+  //
+  // The ERP storage conditions (ທີ່ເກັບ) for this leg come from the 124 request,
+  // which is the only place that records both ends: `shelf_code` = the source
+  // condition, `shelf_code_2` = the destination condition. A receive lands at the
+  // destination, a return goes back to the source — so each stage reads the end
+  // it is actually moving TO. Falls back to the request header when the lines
+  // carry no condition.
+  const cond = await client.query<{ item_code: string; shelf_code: string | null; shelf_code_2: string | null }>(
+    `SELECT item_code, NULLIF(TRIM(shelf_code), '') AS shelf_code, NULLIF(TRIM(shelf_code_2), '') AS shelf_code_2
+     FROM public.ic_trans_detail WHERE doc_no = $1 AND trans_flag = 124 ORDER BY line_number`,
+    [refDoc],
+  );
+  const destCondByItem = new Map<string, string | null>();
+  for (const r of cond.rows) {
+    if (!destCondByItem.has(r.item_code)) {
+      destCondByItem.set(r.item_code, stage === "receive" ? r.shelf_code_2 : r.shelf_code);
+    }
+  }
+  const reqHdr = await client.query<{ location_to: string | null; location_from: string | null }>(
+    `SELECT NULLIF(TRIM(location_to), '') AS location_to, NULLIF(TRIM(location_from), '') AS location_from
+     FROM public.ic_trans WHERE doc_no = $1 AND trans_flag = 124 LIMIT 1`,
+    [refDoc],
+  );
+  const hdrDestCond = stage === "receive" ? reqHdr.rows[0]?.location_to ?? null : reqHdr.rows[0]?.location_from ?? null;
+  // Doc-level destination condition: an explicit one from the screen wins, then
+  // the request's per-line condition, then its header.
+  const destCond = locTo || [...destCondByItem.values()].find(Boolean) || hdrDestCond || null;
+
+  // The outbound ໃບໂອນ this receive is the second half of — the FT the SOURCE
+  // warehouse posted against the same 124 (its `wh_to` is the in-transit wh, which
+  // is what separates it from the inbound FT being written right here). Named in
+  // the remark so a receive can be traced back to the shipment it closes.
+  const outFt = await client.query<{ doc_no: string }>(
+    `SELECT DISTINCT doc_no FROM public.ic_trans
+     WHERE doc_ref = $1 AND doc_format_code = $2 AND wh_to = $3 ORDER BY doc_no`,
+    [refDoc, TRANSFER_FORMAT, IN_TRANSIT_WH],
+  );
+  const srcFt = outFt.rows.map((r) => r.doc_no).join(", ");
+
+  const items: ErpItem[] = active.map((l) => ({
+    item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: l.qty,
+    // Goods leave the in-transit staging area, so the source condition is always
+    // 990399 — never the ref doc, which is only a WMS tag on the 9903 balance.
+    shelfCode: IN_TRANSIT_LOC,
+    shelfCode2: destCondByItem.get(l.item_code) ?? destCond,
+  }));
   const erpDoc = await nextErpDocNo(client, TRANSFER_FORMAT);
-  const label = stage === "receive" ? "ຮັບໂອນ" : "ຮັບຄືນ";
+  const label = stage === "receive" ? "ຮັບຈາກຂໍໂອນ" : "ຮັບຄືນຈາກຂໍໂອນ";
   await postErpTransfer(client, {
     docNo: erpDoc,
     format: TRANSFER_FORMAT,
     items,
     whFrom: IN_TRANSIT_WH,
-    locFrom: refDoc,
+    locFrom: IN_TRANSIT_LOC,
     whTo,
-    locTo: locTo || null,
+    locTo: destCond,
     refDoc,
     user,
     wmsDoc,
-    remark: `WMS ${label} ${refDoc}`,
+    remark: `WMS ${label} ${refDoc}${srcFt ? ` ເລກທີໂອນຕົ້ນທາງ ${srcFt}` : ""}`,
   });
 
   // Short-movement reasons (best-effort; never blocks the commit).

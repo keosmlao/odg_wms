@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { query } from "@/lib/db";
 import DeleteIssueButton from "./DeleteIssueButton";
+import ScanLogPanel from "./ScanLogPanel";
+import { hasPerm } from "@/lib/permissions";
 import { type Session, accessibleWarehouses } from "@/lib/session-shared";
 import { Chip, KpiCard, EmptyState } from "@/components/ui/Card";
 import {
@@ -191,6 +193,20 @@ export default async function IssueHistory({
     if (arr) arr.push(l);
     else linesByDoc.set(l.doc_no, [l]);
   }
+
+  // Which of these DP docs are transfer-OUTs — they parked goods in the in-transit
+  // warehouse, so voiding one needs the `delete_transfer_out` grant. A plain
+  // consumption issue keeps its old role+warehouse rule.
+  const transferOutDocs = docNos.length
+    ? new Set(
+        (await query<{ doc_no: string }>(
+          `SELECT DISTINCT doc_no FROM public.odg_wms_trans_detail
+           WHERE doc_no = ANY($1) AND calc_flag = 1 AND wh_code = '9903'`,
+          [docNos],
+        )).map((r) => r.doc_no),
+      )
+    : new Set<string>();
+  const canDeleteTransferOut = await hasPerm(session, "delete_transfer_out");
 
   // Related ERP documents this issue posted, plus the FULL document chain of a
   // transfer request: the request (124) is fulfilled from the SOURCE at issue-
@@ -385,8 +401,19 @@ export default async function IssueHistory({
                   <a href={`/print/wms/${encodeURIComponent(d.doc_no)}`} target="_blank" rel="noopener"
                     title="ເບິ່ງລາຍລະອຽດ SN / ISN + ບ່ອນຈ່າຍອອກ" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-blue-50 hover:text-blue-600 dark:ring-zinc-800">👁</a>
                   <a href={`/print/wms/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener"
-                    title="ພິມໃບຈ່າຍ" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-slate-50 hover:text-slate-700 dark:ring-zinc-800">🖨</a>
-                  <DeleteIssueButton docNo={d.doc_no} />
+                    title="ພິມໃບຈ່າຍ / ໃບໂອນ (ມີ SN + ບ່ອນເກັບ)" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-slate-50 hover:text-slate-700 dark:ring-zinc-800">🖨</a>
+                  <a href={`/print/wms/${encodeURIComponent(d.doc_no)}/bill?auto=1`} target="_blank" rel="noopener"
+                    title="ພິມໃບບິນໂອນ (ສະເພາະສິນຄ້າ + ຈຳນວນ · ບໍ່ມີບ່ອນເກັບ)" className="shrink-0 rounded-lg px-2 py-2 text-[10px] font-bold text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-emerald-50 hover:text-emerald-700 dark:ring-zinc-800">🧾 ບິນ</a>
+                  {transferOutDocs.has(d.doc_no) && !canDeleteTransferOut ? (
+                    <span
+                      title="ບໍ່ມີສິດລົບໃບໂອນອອກ — ໃຫ້ຜູ້ຈັດການເປີດສິດໃນ ຕັ້ງຄ່າ › ຈັດການສິດເຂົ້າເຖິງ"
+                      className="shrink-0 cursor-not-allowed rounded-lg bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-300 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-600 dark:ring-zinc-800"
+                    >
+                      🔒 ລົບ
+                    </span>
+                  ) : (
+                    <DeleteIssueButton docNo={d.doc_no} />
+                  )}
                 </summary>
 
                 <div className="border-t border-zinc-100 dark:border-zinc-800">
@@ -435,6 +462,11 @@ export default async function IssueHistory({
                     {(erpByDoc.get(d.doc_no) ?? []).length === 0 && (
                       <span className="text-[10px] text-zinc-400">(ບໍ່ມີ ERP doc ຫຼື ຍັງບໍ່ post)</span>
                     )}
+                  </div>
+
+                  {/* ປະຫວັດການຍິງ SN ຕອນຢືນຢັນ — ໄວ້ກວດຄືນເມື່ອຈ່າຍຜິດບ່ອນ / ຜິດໜ່ວຍ */}
+                  <div className="border-t border-zinc-100 p-3 dark:border-zinc-800">
+                    <ScanLogPanel issue={d.doc_no} />
                   </div>
                 </div>
               </details>

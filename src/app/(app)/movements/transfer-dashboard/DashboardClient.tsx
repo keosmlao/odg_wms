@@ -10,7 +10,15 @@ type Row = {
   created_at: string | null; issued_at: string | null; received_at: string | null;
 };
 
+/** ບັນທັດສິນຄ້າ ທີ່ກົງກັບຄຳຄົ້ນຫາ (ຈາກ /transfer-dashboard/items). */
+type ItemHit = {
+  doc_no: string; item_code: string; item_name: string | null; unit_code: string | null;
+  req: string; to_transit: string; in_transit: string; received: string;
+};
+
 const n = (s: string) => Number.parseFloat(s) || 0;
+/** trim trailing zeros so 10.000 shows as 10 */
+const q3 = (v: number) => (Math.round(v * 1000) / 1000).toString();
 const fmtD = (s: string | null) => (s ? s.split("-").reverse().join("-") : "—");
 const ms = (s: string | null) => (s ? new Date(s.replace(" ", "T")).getTime() : NaN);
 /** Duration "N ມື້ HH:MM:SS" between two epoch ms. */
@@ -64,6 +72,8 @@ export default function DashboardClient() {
   const [mine, setMine] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [itemHits, setItemHits] = useState<Map<string, ItemHit[]>>(() => new Map());
+  const [itemBusy, setItemBusy] = useState(false);
   const [selWh, setSelWh] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const today = new Date().toISOString().slice(0, 10);
@@ -85,6 +95,29 @@ export default function DashboardClient() {
     })();
   }, []);
 
+  // ຄົ້ນຫາ ລະຫັດ/ຊື່ ສິນຄ້າ → ໃບໂອນທີ່ຍັງມີສິນຄ້ານັ້ນຄ້າງຢູ່ (debounced server lookup).
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setItemHits(new Map()); setItemBusy(false); return; }
+    let alive = true;
+    setItemBusy(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/movements/transfer-dashboard/items?q=${encodeURIComponent(term)}`, { cache: "no-store" });
+        const j = await r.json();
+        if (!alive) return;
+        const m = new Map<string, ItemHit[]>();
+        for (const it of (Array.isArray(j.matches) ? j.matches : []) as ItemHit[]) {
+          const arr = m.get(it.doc_no);
+          if (arr) arr.push(it); else m.set(it.doc_no, [it]);
+        }
+        setItemHits(m);
+      } catch { if (alive) setItemHits(new Map()); }
+      if (alive) setItemBusy(false);
+    }, 350);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q]);
+
   // Warehouses the user manages (that appear in the data) — for the selector.
   const whOptions = useMemo(() => {
     const m = new Map<string, string>();
@@ -99,11 +132,13 @@ export default function DashboardClient() {
   // require a warehouse selection; auto-pick if the user owns only one.
   useEffect(() => { if (!selWh && whOptions.length === 1) setSelWh(whOptions[0][0]); }, [whOptions, selWh]);
 
+  // ຄົ້ນຫາໄດ້ທັງ ເລກທີ່ໃບໂອນ / ຊື່ສາງ ແລະ ລະຫັດ-ຊື່ ສິນຄ້າ (ຈາກ itemHits).
   const bySearch = useMemo(() => {
     const term = q.trim().toLowerCase();
     if (!term) return rows;
-    return rows.filter((d) => `${d.doc_no} ${d.wh_from_name ?? ""} ${d.wh_to_name ?? ""}`.toLowerCase().includes(term));
-  }, [rows, q]);
+    return rows.filter((d) =>
+      `${d.doc_no} ${d.wh_from_name ?? ""} ${d.wh_to_name ?? ""}`.toLowerCase().includes(term) || itemHits.has(d.doc_no));
+  }, [rows, q, itemHits]);
   // Combined list — both จ่าย (ต้นทาง) and รับ (ปลายทาง) of the selected warehouse.
   const combined = useMemo(() => {
     const items: { d: Row; role: "out" | "in" }[] = [];
@@ -115,6 +150,10 @@ export default function DashboardClient() {
   }, [bySearch, selWh]);
   const nOut = combined.filter((x) => x.role === "out").length;
   const nIn = combined.filter((x) => x.role === "in").length;
+  const nItemDocs = useMemo(
+    () => new Set(combined.filter((x) => itemHits.has(x.d.doc_no)).map((x) => x.d.doc_no)).size,
+    [combined, itemHits],
+  );
 
   return (
     <div className="space-y-5">
@@ -139,8 +178,18 @@ export default function DashboardClient() {
           <option value="">— ເລືອກສາງ —</option>
           {whOptions.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
         </select>
-        {selWh && <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 ຄົ້ນຫາ ໃບຂໍໂອນ…"
-          className="min-w-[200px] flex-1 sm:max-w-md rounded-xl bg-white px-4 py-2.5 text-sm ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-violet-500" />}
+        {selWh && (
+          <div className="min-w-[200px] flex-1 sm:max-w-md">
+            <div className="relative">
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 ຄົ້ນຫາ ໃບຂໍໂອນ / ລະຫັດສິນຄ້າ / ຊື່ສິນຄ້າ…"
+                className="w-full rounded-xl bg-white px-4 py-2.5 pr-16 text-sm ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-violet-500" />
+              {itemBusy && <span className="absolute right-9 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">…</span>}
+              {q && <button type="button" onClick={() => setQ("")} title="ລ້າງ"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600">✕</button>}
+            </div>
+            <p className="mt-1 px-1 text-[11px] text-slate-400">ພິມ ລະຫັດ/ຊື່ ສິນຄ້າ ເພື່ອເບິ່ງວ່າ ຄ້າງຢູ່ໃບໂອນໃດ (ຢ່າງໜ້ອຍ 2 ຕົວອັກສອນ)</p>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -152,15 +201,18 @@ export default function DashboardClient() {
           <p className="mt-1 text-xs text-slate-400">ເລືອກສາງ เพื่อดูงานโอน ໃນฐานะ ຕົ້ນທາງ (จ่าย) ແລະ ປາຍທາງ (รับ)</p>
         </div>
       ) : combined.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">ບໍ່ມີ ໃບຂໍໂອນ ທີ່ກຳລັງດำเนินการ ໃນສางนี้</div>
+        <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
+          {q.trim() ? (itemBusy ? "ກຳລັງຄົ້ນຫາ…" : `ບໍ່ພົບ ໃບຂໍໂອນ ທີ່ຍັງບໍ່ສຳເລັດ ສຳລັບ “${q.trim()}”`) : "ບໍ່ມີ ໃບຂໍໂອນ ທີ່ກຳລັງດำเนินการ ໃນສางนี้"}
+        </div>
       ) : (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
             ຕິດຕາມ {combined.length} ລາຍການ
             <span className="rounded-full bg-red-50 px-2 py-0.5 text-red-600">📤 ຈ່າຍ (ຕົ້ນທາງ) {nOut}</span>
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">📥 ຮັບ (ປາຍທາງ) {nIn}</span>
+            {nItemDocs > 0 && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">🔎 ພົບສິນຄ້າໃນ {nItemDocs} ໃບໂອນ</span>}
           </div>
-          {combined.map(({ d, role }) => <TrackCard key={`${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} />)}
+          {combined.map(({ d, role }) => <TrackCard key={`${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />)}
         </div>
       )}
     </div>
@@ -180,7 +232,33 @@ function roleAction(role: "out" | "in", d: Row, t: ReturnType<typeof track>) {
   return null;
 }
 
-function TrackCard({ d, role, now, today }: { d: Row; role: "out" | "in"; now: number; today: string }) {
+/** ບັນທັດສິນຄ້າທີ່ກົງກັບການຄົ້ນຫາ — ບອກວ່າສິນຄ້ານັ້ນຄ້າງຢູ່ຂັ້ນຕອນໃດ ໃນໃບໂອນນີ້. */
+function ItemHits({ hits }: { hits: ItemHit[] }) {
+  return (
+    <div className="mt-3 rounded-xl bg-violet-50/70 p-2.5 ring-1 ring-violet-100">
+      <div className="mb-1.5 text-[10px] font-bold text-violet-700">🔎 ສິນຄ້າທີ່ຄົ້ນຫາ ໃນໃບນີ້</div>
+      <div className="space-y-1">
+        {hits.map((it) => {
+          const req = n(it.req), toT = n(it.to_transit), inT = n(it.in_transit), rcv = n(it.received);
+          const unit = it.unit_code ? ` ${it.unit_code}` : "";
+          return (
+            <div key={it.item_code} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+              <span className="font-mono font-bold text-slate-700">{it.item_code}</span>
+              <span className="text-slate-500">{it.item_name ?? "—"}</span>
+              <span className="rounded-md bg-white px-1.5 py-0.5 font-semibold text-slate-500 ring-1 ring-slate-200">ຂໍ {q3(req)}{unit}</span>
+              {req - toT > 1e-6 && <span className="rounded-md bg-red-50 px-1.5 py-0.5 font-semibold text-red-600">ຍັງບໍ່ຈ່າຍ {q3(req - toT)}</span>}
+              {inT > 1e-6 && <span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-600">ຄ້າງລະຫວ່າງທາງ {q3(inT)}</span>}
+              {rcv > 1e-6 && <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-600">ຮັບແລ້ວ {q3(rcv)}</span>}
+              {req - rcv <= 1e-6 && <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700">ຄົບ ✓</span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TrackCard({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; now: number; today: string; hits?: ItemHit[] }) {
   const t = track(d);
   const overdue = !!d.want_date && d.want_date < today && !t.done;
   const act = roleAction(role, d, t);
@@ -229,6 +307,8 @@ function TrackCard({ d, role, now, today }: { d: Row; role: "out" | "in"; now: n
           );
         })}
       </div>
+
+      {hits && hits.length > 0 && <ItemHits hits={hits} />}
 
       {!t.done && !t.rejected && (
         <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-2.5 text-[11px]">

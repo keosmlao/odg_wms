@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import Barcode from "@/components/Barcode";
+import PrintLetterhead from "@/components/PrintLetterhead";
 import AutoPrint from "../../wms/[doc]/AutoPrint";
 
 /**
@@ -21,17 +21,6 @@ type Line = { item_code: string; item_name: string | null; unit_code: string | n
 function whLabel(code: string | null, name: string | null) {
   if (!code) return "—";
   return name ? `${code} ${name}` : code;
-}
-
-/** ODIEN GROUP wordmark (black "ODIEN" over a blue "GROUP" bar) as inline SVG — no external image asset needed. */
-function OdienLogo({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 300 130" className={className} role="img" aria-label="ODIEN GROUP">
-      <text x="0" y="95" fontFamily="Arial, Helvetica, sans-serif" fontWeight="900" fontSize="100" letterSpacing="-4" textLength="300" lengthAdjust="spacingAndGlyphs" fill="#000">ODIEN</text>
-      <rect x="45" y="103" width="255" height="24" fill="#2f6da6" />
-      <text x="292" y="121" textAnchor="end" fontFamily="Arial, Helvetica, sans-serif" fontStyle="italic" fontWeight="700" fontSize="19" fill="#fff">GROUP</text>
-    </svg>
-  );
 }
 
 export default async function PrintTransferRequestPage({ params, searchParams }: { params: Promise<{ doc: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
@@ -70,20 +59,7 @@ export default async function PrintTransferRequestPage({ params, searchParams }:
         <p className="text-center text-rose-600">ບໍ່ພົບເອກະສານ {docNo}</p>
       ) : (
         <div className="flex flex-1 flex-col">
-          <div className="mb-3 flex items-start justify-between gap-4 border-b border-slate-300 pb-2">
-            <div className="flex items-start gap-3">
-              <OdienLogo className="h-12 w-auto shrink-0" />
-              <div className="text-[11px] leading-tight">
-                <div>ບ ຂົວຫຼວງ, ມ ຈັນທະບູລີ, ນະຄອນຫຼວງວຽງຈັນ</div>
-                <div>Tel: (+856-21) 412663, 412659, 450443, 451434, 263412, fax: 263411</div>
-                <div>info@odien.net</div>
-              </div>
-            </div>
-            <div className="w-40 shrink-0 text-center">
-              <Barcode value={h.doc_no} height={36} />
-              <div className="mt-0.5 font-mono text-[10px]">{h.doc_no}</div>
-            </div>
-          </div>
+          <PrintLetterhead docNo={h.doc_no} />
 
           <div className="mb-3 text-center text-base font-bold">ໃບຂໍໂອນສິນຄ້າ</div>
 
@@ -113,8 +89,9 @@ export default async function PrintTransferRequestPage({ params, searchParams }:
               {lines.map((l, i) => (
                 <tr key={l.item_code}>
                   <td className="border border-slate-300 px-1.5 py-1 text-center">{i + 1}</td>
-                  <td className="border border-slate-300 px-1.5 py-1 font-mono font-bold">{l.item_code}</td>
-                  <td className="border border-slate-300 px-1.5 py-1 truncate">{l.item_name}</td>
+                  {/* wrap, never clip — a printed code ending in "…" is unusable */}
+                  <td className="border border-slate-300 px-1.5 py-1 align-top font-mono font-bold" style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{l.item_code}</td>
+                  <td className="border border-slate-300 px-1.5 py-1 align-top leading-tight" style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{l.item_name}</td>
                   <td className="border border-slate-300 px-1.5 py-1">{l.unit_code ?? ""}</td>
                   <td className="border border-slate-300 px-1.5 py-1 text-right font-mono">{Number.parseFloat(l.qty)}</td>
                 </tr>

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { MOVE_REASONS } from "@/lib/moveReasons";
 import type { ROption } from "@/components/ui/RSelect";
 import { PutawayPicker } from "@/app/(app)/movements/receive/_receiveUI";
+import MoveDetailDrawer from "./MoveDetailDrawer";
 
 type DocRow = {
   doc_no: string; doc_date: string | null; wh_from: string | null; wh_to: string | null;
@@ -56,7 +57,17 @@ function loadTransitState(mode: TransitMoveMode, doc: string): SavedTransitState
   } catch { return null; }
 }
 
-export default function TransitMoveClient({ endpoint, mode }: { endpoint: string; mode: TransitMoveMode }) {
+export default function TransitMoveClient({
+  endpoint,
+  mode,
+  canDelete = false,
+}: {
+  endpoint: string;
+  mode: TransitMoveMode;
+  /** Holder of `delete_transfer_in` — may void a doc they already posted. The
+   *  server re-checks the grant, this only decides whether to offer the button. */
+  canDelete?: boolean;
+}) {
   const t = T[mode];
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [view, setView] = useState<"pending" | "history">("pending");
@@ -104,6 +115,34 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
 
   useEffect(() => { void loadList(); }, [loadList]);
   useEffect(() => { if (view === "history") void loadHistory(); }, [view, loadHistory]);
+
+  // Which posted doc's detail drawer is open (SN/ISN + landing bins + ERP docs).
+  const [detailDoc, setDetailDoc] = useState<string | null>(null);
+
+  /** Void a doc this warehouse posted: stock goes back to the in-transit wh, the
+   *  serials follow, and the ERP ໃບໂອນ is reversed. Refuses when a later stage
+   *  already consumed it — the server owns that rule. */
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const deleteDoc = useCallback(async (docNo: string) => {
+    if (!window.confirm(
+      `ລົບໃບ ${docNo}?\n\n` +
+      `· ສິນຄ້າຈະຄືນໄປສາງລະຫວ່າງທາງ (9903) ຄືນຄ້າງ${t.verb}ໃໝ່\n` +
+      `· SN / ISN ຈະຄືນຕາມ\n` +
+      `· ໃບໂອນ ERP ຈະຖືກຍົກເລີກ\n\nຢືນຢັນລົບ?`,
+    )) return;
+    setDeleting(docNo);
+    try {
+      const r = await fetch(`/api/movements/issue/${encodeURIComponent(docNo)}`, { method: "DELETE" });
+      const j = (await r.json()) as { ok?: boolean; error?: string; erp_reversed?: string[] };
+      if (!r.ok || !j.ok) throw new Error(j.error ?? "ລົບບໍ່ສຳເລັດ");
+      setMsg({ tone: "ok", text: `ລົບ ${docNo} ແລ້ວ${j.erp_reversed?.length ? ` · ຍົກເລີກ ERP ${j.erp_reversed.join(", ")}` : ""}` });
+      await Promise.all([loadHistory(), loadList()]);
+    } catch (e) {
+      setMsg({ tone: "err", text: e instanceof Error ? e.message : "ລົບບໍ່ສຳເລັດ" });
+    } finally {
+      setDeleting(null);
+    }
+  }, [loadHistory, loadList, t.verb]);
   const searchParams = useSearchParams();
   const autoOpened = useRef(false);
 
@@ -427,8 +466,12 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
           <div className={`flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm font-semibold ${msg.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
             <span>{msg.text}</span>
             {msg.tone === "ok" && lastDoc && (
-              <a href={`/print/wms/${encodeURIComponent(lastDoc)}?auto=1`} target="_blank" rel="noopener"
-                className="shrink-0 rounded-md bg-white px-2.5 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">🖨 ພິมໃບຮັບ</a>
+              <span className="flex shrink-0 items-center gap-2">
+                <a href={`/print/wms/${encodeURIComponent(lastDoc)}?auto=1`} target="_blank" rel="noopener"
+                  className="rounded-md bg-white px-2.5 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">🖨 ພິມໃບຮັບ</a>
+                <a href={`/print/wms/${encodeURIComponent(lastDoc)}/bill?auto=1`} target="_blank" rel="noopener"
+                  className="rounded-md bg-white px-2.5 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50">🧾 ບິນໂອນ</a>
+              </span>
             )}
           </div>
         )}
@@ -561,8 +604,24 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500">{Number.parseFloat(d.qty)} ใน {d.items} ລາຍการ</span>
+              <button type="button" onClick={() => setDetailDoc(d.doc_no)}
+                title="ເບິ່ງລາຍລະອຽດ — SN / ISN, ບ່ອນທີ່ຮັບເຂົ້າ, ເອກະສານ ERP"
+                className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-50">
+                🔍 ລາຍລະອຽດ
+              </button>
               <a href={`/print/wms/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener"
+                title="ມີ SN + ບ່ອນເກັບ"
                 className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">🖨 ພິມ</a>
+              <a href={`/print/wms/${encodeURIComponent(d.doc_no)}/bill?auto=1`} target="_blank" rel="noopener"
+                title="ສະເພາະສິນຄ້າ + ຈຳນວນ · ບໍ່ມີບ່ອນເກັບ"
+                className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100">🧾 ບິນໂອນ</a>
+              {canDelete && (
+                <button type="button" disabled={deleting === d.doc_no} onClick={() => void deleteDoc(d.doc_no)}
+                  title={`ລົບໃບນີ້ — ສິນຄ້າຄືນໄປສາງລະຫວ່າງທາງ ແລະ ຄ້າງ${t.verb}ໃໝ່`}
+                  className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50 disabled:opacity-50">
+                  {deleting === d.doc_no ? "ກຳລັງລົບ…" : "🗑 ລົບ"}
+                </button>
+              )}
             </div>
           </div>
         ))
@@ -586,6 +645,8 @@ export default function TransitMoveClient({ endpoint, mode }: { endpoint: string
           </button>
         ))
       )}
+
+      <MoveDetailDrawer docNo={detailDoc} onClose={() => setDetailDoc(null)} />
     </div>
   );
 }

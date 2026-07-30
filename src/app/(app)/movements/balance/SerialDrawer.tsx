@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type SerialRow = {
-  sn: string;
+  /** Canonical id = factory_sn ?? isn — what /serials/[sn] matches on. */
+  sn: string | null;
+  factory_sn: string | null; // manufacturer serial — absent on internal-only units
+  isn: string | null;        // this company's own running serial
   wh_code: string;
   item_brand: string | null;
   status_name: string | null;
@@ -22,6 +25,10 @@ function ageDays(d: string | null): number | null {
 /**
  * In-page drawer: in-stock serials of one item at one warehouse, with age since
  * entry (ມື້ຊື້/ເຂົ້າ) and time at this warehouse (ມື້ມາສາງ). Links to detail.
+ *
+ * Every unit shows BOTH ids — the factory SN and this company's ISN — because
+ * they are searched and scanned interchangeably, and a large share of stock has
+ * only an ISN (no factory serial was ever recorded).
  */
 export default function SerialDrawer({
   open,
@@ -43,6 +50,7 @@ export default function SerialDrawer({
   const [rows, setRows] = useState<SerialRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
 
   const scopeRack = scope?.rack ?? "";
   const scopeLoc = scope?.location ?? "";
@@ -51,6 +59,7 @@ export default function SerialDrawer({
 
   useEffect(() => {
     if (!open || !itemCode || !warehouse) return;
+    setFilter("");
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -78,6 +87,15 @@ export default function SerialDrawer({
     };
   }, [open, itemCode, warehouse, scoped, scopeRack, scopeLoc, scopePallet]);
 
+  // One box searches both ids — the operator may have either one in hand.
+  const shown = useMemo(() => {
+    const term = filter.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter(
+      (r) => (r.factory_sn ?? "").toLowerCase().includes(term) || (r.isn ?? "").toLowerCase().includes(term),
+    );
+  }, [rows, filter]);
+
   if (!open) return null;
 
   return (
@@ -90,7 +108,8 @@ export default function SerialDrawer({
             <div className="font-mono text-xs text-zinc-500 dark:text-zinc-400">{itemCode}</div>
             <h3 className="truncate text-base font-semibold text-zinc-900 dark:text-zinc-50">{itemName ?? "—"}</h3>
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-              Serial ຄົງເຫຼືອ{warehouse ? ` · ສາງ ${warehouse}` : ""}{scoped && (scopePallet || scopeLoc || scopeRack) ? ` · ${scopePallet || scopeLoc || scopeRack}` : ""} ({rows.length.toLocaleString("en-US")})
+              Serial ຄົງເຫຼືອ{warehouse ? ` · ສາງ ${warehouse}` : ""}{scoped && (scopePallet || scopeLoc || scopeRack) ? ` · ${scopePallet || scopeLoc || scopeRack}` : ""}
+              {" "}({filter.trim() ? `${shown.length.toLocaleString("en-US")} / ` : ""}{rows.length.toLocaleString("en-US")})
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="close" className="rounded-lg p-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">
@@ -99,6 +118,19 @@ export default function SerialDrawer({
             </svg>
           </button>
         </div>
+
+        {/* Search — matches either identifier (scan or type) */}
+        {rows.length > 0 && (
+          <div className="border-b border-zinc-200 px-5 py-3 dark:border-zinc-800">
+            <input
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="ຄົ້ນຫາ / ສະແກນ SN ຫຼື ISN..."
+              className="w-full rounded-lg bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-900 ring-1 ring-zinc-200 outline-none transition focus:bg-white focus:ring-2 focus:ring-violet-500/40 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+            />
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
@@ -109,21 +141,40 @@ export default function SerialDrawer({
           {!loading && !error && rows.length === 0 && (
             <div className="px-5 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">ບໍ່ມີ serial ຄົງເຫຼືອ</div>
           )}
+          {!loading && !error && rows.length > 0 && shown.length === 0 && (
+            <div className="px-5 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">ບໍ່ພົບ SN / ISN ທີ່ຄົ້ນຫາ</div>
+          )}
           <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {rows.map((r) => {
+            {shown.map((r, idx) => {
               const age = ageDays(r.first_in);
               const whAge = ageDays(r.arrived_wh);
+              // The 2 units with neither id can't be linked — render them plainly.
+              const Row = r.sn ? Link : "div";
+              const rowProps = r.sn ? { href: `/serials/${encodeURIComponent(r.sn)}` } : {};
               return (
-                <li key={`${r.sn}-${r.wh_code}`}>
-                  <Link
-                    href={`/serials/${encodeURIComponent(r.sn)}`}
+                <li key={`${r.sn ?? r.isn ?? "?"}-${r.wh_code}-${idx}`}>
+                  <Row
+                    {...(rowProps as { href: string })}
                     className="block px-5 py-2.5 transition hover:bg-violet-50/40 dark:hover:bg-violet-950/20"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-mono text-xs font-semibold text-violet-700 dark:text-violet-300">{r.sn}</div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="w-7 shrink-0 text-[9px] font-bold uppercase tracking-wide text-zinc-400">SN</span>
+                          {r.factory_sn
+                            ? <span className="break-all font-mono text-xs font-semibold text-violet-700 dark:text-violet-300">{r.factory_sn}</span>
+                            : <span className="text-[11px] italic text-zinc-400">ບໍ່ມີ SN ໂຮງງານ</span>}
+                        </div>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="w-7 shrink-0 text-[9px] font-bold uppercase tracking-wide text-zinc-400">ISN</span>
+                          {r.isn
+                            ? <span className="break-all font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">{r.isn}</span>
+                            : <span className="text-[11px] italic text-zinc-400">ບໍ່ມີ ISN</span>}
+                        </div>
+                      </div>
                       {r.item_brand && <span className="shrink-0 text-[10px] text-zinc-400">{r.item_brand}</span>}
                     </div>
-                    <div className="mt-1 grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="mt-1.5 grid grid-cols-2 gap-2 text-[11px]">
                       <div className="rounded-md bg-zinc-50 px-2 py-1 dark:bg-zinc-800/40">
                         <div className="text-[9px] uppercase tracking-wide text-zinc-400">ອາຍຸ (ແຕ່ມື້ເຂົ້າ)</div>
                         <div className="font-semibold text-zinc-800 dark:text-zinc-200">
@@ -139,7 +190,7 @@ export default function SerialDrawer({
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  </Row>
                 </li>
               );
             })}

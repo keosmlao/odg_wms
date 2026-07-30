@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { WmsRole } from "@/lib/session-shared";
+import { type WmsPerm, permissionsForMany } from "@/lib/permissions";
 import AccessClient from "./AccessClient";
 import { Hero, Chip, KpiCard } from "@/components/ui/Card";
 import {
@@ -19,6 +20,8 @@ export type EmployeeRow = {
   department_code: string | null;
   role: WmsRole | null;
   warehouses: string[];
+  /** Extra grants beyond the role — empty for a manager, who holds them all. */
+  permissions: WmsPerm[];
 };
 
 export type WarehouseRow = { code: string; name: string | null };
@@ -28,8 +31,8 @@ export default async function AccessPage() {
   if (!session) redirect("/login");
   if (session.role !== "manager") redirect("/");
 
-  const [employees, warehouses] = await Promise.all([
-    query<EmployeeRow>(`
+  const [employeeRows, warehouses] = await Promise.all([
+    query<Omit<EmployeeRow, "permissions">>(`
       SELECT
         e.employee_id, e.employee_code, e.fullname_lo, e.nickname,
         e.position_code, e.department_code,
@@ -52,6 +55,13 @@ export default async function AccessPage() {
       ORDER BY code
     `),
   ]);
+
+  // Grants are stored per employee, in one round-trip rather than per row.
+  const permsByEmployee = await permissionsForMany(employeeRows.map((e) => e.employee_id));
+  const employees: EmployeeRow[] = employeeRows.map((e) => ({
+    ...e,
+    permissions: permsByEmployee[e.employee_id] ?? [],
+  }));
 
   const counts = {
     total: employees.length,

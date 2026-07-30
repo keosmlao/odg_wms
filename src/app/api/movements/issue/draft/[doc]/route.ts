@@ -4,17 +4,22 @@ import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { type IssueLine, executeIssue } from "@/lib/issueCore";
 import { saveMoveNotes } from "@/lib/moveReasons";
+import { appendScanLog, stampIssueDoc } from "@/lib/pickScanLog";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 import { getSnDualBrands } from "@/lib/snDualBrand";
 
 const SRC_TYPE: Record<number, string> = { 122: "req", 124: "transfer", 44: "sale" };
 
 type DraftHeader = { doc_no: string; warehouse_code: string | null; ref_doc_no: string | null; doc_type: number | null; status: number | null };
-type DetailRow = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; shelf_code: string | null; box_code: string | null };
+type DetailRow = { roworder: number; item_code: string; item_name: string | null; unit_code: string | null; qty: string; shelf_code: string | null; box_code: string | null };
 
 function parseNode(shelf: string | null): { rack: string; location: string; pallet: string } {
   const [rack = "", location = "", pallet = ""] = (shelf ?? "").split("|");
   return { rack, location, pallet };
+}
+/** shelf_code packs the whole node; box_code keeps the readable location. */
+function packNode(n: { rack: string; location: string; pallet: string }): string {
+  return `${n.rack}|${n.location}|${n.pallet}`;
 }
 
 async function loadDraft(docNo: string) {
@@ -24,7 +29,7 @@ async function loadDraft(docNo: string) {
   );
   if (hdr.length === 0) return null;
   const lines = await query<DetailRow>(
-    `SELECT item_code, item_name, unit_code, qty::text AS qty, shelf_code, box_code
+    `SELECT roworder, item_code, item_name, unit_code, qty::text AS qty, shelf_code, box_code
      FROM public.wms_product_out_detail WHERE doc_no = $1 ORDER BY roworder`,
     [docNo],
   );
@@ -35,7 +40,13 @@ async function loadDraft(docNo: string) {
   return { header: hdr[0], lines, serials };
 }
 
-/** GET — draft detail (lines + allocated serials) for the confirm/scan screen. */
+/**
+ * GET — draft detail for the confirm/scan screen. Per line it returns the planned
+ * node, the pre-allocated serials, `loc_options` (every bin in this warehouse that
+ * still holds the item — the operator may re-point the line to the bin they could
+ * actually reach) and `units` (every scannable unit of the item in the warehouse,
+ * each tagged with its node so the client can narrow them to the chosen bin).
+ */
 export async function GET(_request: Request, ctx: { params: Promise<{ doc: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "ກະລຸນາເຂົ້າສູ່ລະບົບ" }, { status: 401 });
@@ -78,6 +89,33 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
   const snIssueOn = await warehouseSnEnabled(wh, "issue");
   const trackedItems = new Set(avail.map((a) => a.item_code));
 
+  // Every node in this warehouse that still holds each item, so the confirm screen
+  // can RE-POINT a line to where the goods were actually taken from (the planned
+  // bin may be blocked/unreachable when the forklift gets there).
+  //   · no `status` filter — status=1 is the outbound leg of a bin relocation, not
+  //     a void; excluding it leaves emptied bins looking full (same as the balance page).
+  //   · FIFO order, matching how the pick screen suggests locations.
+  const locRows = items.length > 0
+    ? await query<{ item_code: string; rack: string; location: string; pallet: string; qty: string }>(
+        `SELECT t.item_code,
+                COALESCE(NULLIF(TRIM(t.shelf_code), ''), '')  AS rack,
+                COALESCE(NULLIF(TRIM(t.shelf_code1), ''), '') AS location,
+                COALESCE(NULLIF(TRIM(t.pallet), ''), '')      AS pallet,
+                SUM(t.qty * t.calc_flag)::text AS qty
+         FROM public.odg_wms_trans_detail t
+         WHERE t.wh_code = $1 AND t.item_code = ANY($2)
+         GROUP BY t.item_code, rack, location, pallet
+         HAVING SUM(t.qty * t.calc_flag) > 0.0001
+         ORDER BY t.item_code, MIN(t.doc_date) FILTER (WHERE t.calc_flag > 0) ASC NULLS LAST, SUM(t.qty * t.calc_flag) DESC`,
+        [wh, items],
+      )
+    : [];
+  const snCountByNode = new Map<string, number>();
+  for (const a of avail) {
+    const k = `${a.item_code}|${a.rack}|${a.location}|${a.pallet}`;
+    snCountByNode.set(k, (snCountByNode.get(k) ?? 0) + 1);
+  }
+
   // Items whose brand requires BOTH sn and isn (SAMSUNG etc.) — so the confirm
   // screen can flag a scanned unit that is missing one of the two.
   const dualBrands = await getSnDualBrands();
@@ -95,14 +133,23 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
     source_type: SRC_TYPE[draft.header.doc_type ?? 0] ?? "",
     lines: draft.lines.map((l) => {
       const node = parseNode(l.shelf_code);
-      const nodeUnits = avail.filter(
-        (a) => a.item_code === l.item_code && a.rack === node.rack && a.location === node.location && a.pallet === node.pallet,
-      );
-      const available = nodeUnits.flatMap((a) => [a.sn, a.isn].filter((v): v is string => !!v));
-      // Both ids of each scannable unit, so the UI can show sn + isn per row.
-      const units = nodeUnits.map((a) => ({ sn: a.sn, isn: a.isn }));
+      // ALL scannable units of the item in this warehouse, each tagged with its
+      // node — the client narrows them to whichever location the line currently
+      // points at, so re-pointing a line also re-points its valid serials.
+      const units = avail
+        .filter((a) => a.item_code === l.item_code)
+        .map((a) => ({ sn: a.sn, isn: a.isn, rack: a.rack, location: a.location, pallet: a.pallet }));
+      const loc_options = locRows
+        .filter((o) => o.item_code === l.item_code)
+        .map((o) => ({
+          rack: o.rack,
+          location: o.location,
+          pallet: o.pallet,
+          qty: o.qty,
+          sn_qty: snCountByNode.get(`${o.item_code}|${o.rack}|${o.location}|${o.pallet}`) ?? 0,
+        }));
       const serial_required = snIssueOn && trackedItems.has(l.item_code);
-      return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: l.qty, ...node, serials: serialsByItem[l.item_code] ?? [], available, units, serial_required, dual_required: dualItems.has(l.item_code) };
+      return { roworder: l.roworder, item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: l.qty, ...node, serials: serialsByItem[l.item_code] ?? [], units, loc_options, serial_required, dual_required: dualItems.has(l.item_code) };
     }),
   });
 }
@@ -181,7 +228,15 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ doc: stri
   }
 }
 
-/** POST — confirm by scan → finalize the issue (WMS + serial + ERP) and mark posted. */
+/**
+ * POST — confirm by scan → finalize the issue (WMS + serial + ERP) and mark posted.
+ *
+ * Body may carry `moves`: [{ roworder, rack, location, pallet }] — the picker took
+ * the goods from a different bin than the slip planned (blocked aisle, pallet
+ * buried, …). Those lines are re-pointed on `wms_product_out_detail` FIRST, so the
+ * saved pick slip, the stock deduction and any un-issued remainder all record the
+ * bin the goods actually came from.
+ */
 export async function POST(request: Request, ctx: { params: Promise<{ doc: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "ກະລຸນາເຂົ້າສູ່ລະບົບ" }, { status: 401 });
@@ -189,11 +244,21 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
   const { doc } = await ctx.params;
   const docNo = decodeURIComponent(doc).trim();
 
-  let body: { scanned?: unknown; notes?: unknown };
-  try { body = (await request.json()) as { scanned?: unknown; notes?: unknown }; } catch { body = {}; }
+  let body: { scanned?: unknown; notes?: unknown; moves?: unknown };
+  try { body = (await request.json()) as { scanned?: unknown; notes?: unknown; moves?: unknown }; } catch { body = {}; }
   const scanned = new Set(
     Array.isArray(body.scanned) ? (body.scanned as unknown[]).map((s) => String(s).trim().toUpperCase()).filter(Boolean) : [],
   );
+  // Location overrides, keyed by the detail row's primary key.
+  const moves: { roworder: number; rack: string; location: string; pallet: string }[] = [];
+  if (Array.isArray(body.moves)) {
+    for (const m of body.moves as Record<string, unknown>[]) {
+      const roworder = Number.parseInt(String(m.roworder ?? ""), 10);
+      if (!Number.isFinite(roworder)) continue;
+      const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+      moves.push({ roworder, rack: str(m.rack), location: str(m.location), pallet: str(m.pallet) });
+    }
+  }
   // Short-pick reasons per item (forklift couldn't find the full qty).
   const reasonByItem = new Map<string, string>();
   if (Array.isArray(body.notes)) {
@@ -221,12 +286,39 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
     }
 
+    // Re-point moved lines BEFORE anything reads the detail, so the pick slip on
+    // record, the stock deduction and the un-issued remainder all agree on the bin
+    // the goods actually came from. `roworder` is the detail table's primary key;
+    // scoping the UPDATE by doc_no too keeps a stale/forged roworder harmless.
+    let movedRows = 0;
+    for (const m of moves) {
+      const res = await client.query(
+        `UPDATE public.wms_product_out_detail
+            SET shelf_code = $3, box_code = $4, last_update_datetime = now()
+          WHERE doc_no = $1 AND roworder = $2 AND shelf_code IS DISTINCT FROM $3`,
+        [docNo, m.roworder, packNode(m), m.location || null],
+      );
+      movedRows += res.rowCount ?? 0;
+    }
+
     const detail = (
       await client.query<DetailRow>(
-        `SELECT item_code, item_name, unit_code, qty::text AS qty, shelf_code, box_code FROM public.wms_product_out_detail WHERE doc_no = $1 ORDER BY roworder`,
+        `SELECT roworder, item_code, item_name, unit_code, qty::text AS qty, shelf_code, box_code FROM public.wms_product_out_detail WHERE doc_no = $1 ORDER BY roworder`,
         [docNo],
       )
     ).rows;
+    // A move can collapse two split rows of one item onto the same bin. The
+    // deduction would still be right, but the remainder-collapse below keys on
+    // item_code and would lose a node — reject it with a clear message instead.
+    const nodeSeen = new Set<string>();
+    for (const d of detail) {
+      const k = `${d.item_code}@${d.shelf_code ?? ""}`;
+      if (nodeSeen.has(k)) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ error: `ສິນຄ້າ ${d.item_code}: ມີ 2 ແຖວຢູ່ບ່ອນຈັດເກັບດຽວກັນ — ກະລຸນາເລືອກ location ຕ່າງກັນ` }, { status: 400 });
+      }
+      nodeSeen.add(k);
+    }
     // Items that must be issued by serial = those actually serial-tracked in this
     // warehouse (have scannable units in sn_inventory), gated by the issue-SN
     // policy — NOT the pick's pre-selected serials. So a location-only pick
@@ -330,6 +422,34 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       await saveMoveNotes(client, { docNo: result.issueCode, refDoc: hdr.ref_doc_no, stage: "issue", user: session.employee_code ?? null, notes: shortNotes });
     }
 
+    // Close the audit trail: record what was actually issued per line and tie the
+    // whole trail to the DP doc, so it stays findable once this pick slip is gone.
+    // Best-effort — a logging failure must not roll back a posted issue.
+    await appendScanLog(
+      {
+        docNo, refDoc: hdr.ref_doc_no, wh, user: session.employee_code ?? null,
+        events: [
+          ...lines.filter((l) => l.qty > 0).map((l) => ({
+            event: "confirm" as const,
+            result: "ok",
+            item_code: l.item_code,
+            rack: l.rack, location: l.location, pallet: l.pallet,
+            qty: l.qty,
+            note: `ຈ່າຍອອກ · ${l.serials.length} SN`,
+          })),
+          ...shortNotes.map((n) => ({
+            event: "confirm" as const,
+            result: "short",
+            item_code: n.item_code,
+            qty: n.short_qty,
+            note: `ຈ່າຍບໍ່ຄົບ · ເຫດຜົນ ${n.reason_code}`,
+          })),
+        ],
+      },
+      client,
+    );
+    await stampIssueDoc(client, docNo, result.issueCode);
+
     // Reduce the pending to the UN-issued remainder. Items fully issued are removed;
     // partially-issued (serial short) keep their remaining qty/serials so the rest
     // can still be issued from pending. Only when nothing is left → status 1 (done).
@@ -369,7 +489,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
     );
 
     await client.query("COMMIT");
-    return NextResponse.json({ ok: true, pending_code: docNo, issue_code: result.issueCode, erp_doc: result.erpDoc, serials: result.serials, partial: anyRemaining });
+    return NextResponse.json({ ok: true, pending_code: docNo, issue_code: result.issueCode, erp_doc: result.erpDoc, serials: result.serials, partial: anyRemaining, moved: movedRows });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     return NextResponse.json({ error: err instanceof Error ? err.message : "ບໍ່ສຳເລັດ" }, { status: 500 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { requireManager } from "@/lib/session";
 import type { WmsRole } from "@/lib/session-shared";
+import { type WmsPerm, isWmsPerm, setPermissions } from "@/lib/permissions";
 
 const ALLOWED_ROLES: readonly WmsRole[] = ["manager", "supervisor", "keeper"];
 
@@ -22,7 +23,7 @@ export async function PUT(
     return NextResponse.json({ error: "ID ບໍ່ຖືກຕ້ອງ" }, { status: 400 });
   }
 
-  let body: { role?: unknown; warehouses?: unknown };
+  let body: { role?: unknown; warehouses?: unknown; permissions?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -61,6 +62,12 @@ export async function PUT(
   // for a manager keeps the "all warehouses" default; a non-empty list narrows
   // their scope. Role "none" carries no warehouses.
   const finalWarehouses = role === null ? [] : warehouses;
+
+  // Extra permissions (voiding transfers). A manager holds them implicitly, so
+  // nothing is stored for one; role "none" holds nothing at all.
+  const rawPerms = Array.isArray(body.permissions) ? body.permissions : [];
+  const finalPerms: WmsPerm[] =
+    role === null || role === "manager" ? [] : rawPerms.filter(isWmsPerm);
 
   const client = await pool.connect();
   try {
@@ -105,12 +112,22 @@ export async function PUT(
       );
     }
 
+    await setPermissions(client, employeeId, finalPerms, guard.session.employee_code);
+
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("update employee role failed:", err);
+    // The permission table is the newest piece here — name it, so a missing
+    // migration reads as "run 026", not as a mysterious save failure.
+    const missingPermTable =
+      err instanceof Error && /wms_user_permission/.test(err.message);
     return NextResponse.json(
-      { error: "ບັນທຶກບໍ່ສຳເລັດ" },
+      {
+        error: missingPermTable
+          ? "ບັນທຶກບໍ່ສຳເລັດ — ຍັງບໍ່ໄດ້ຕິດຕັ້ງຕາຕະລາງສິດ (ຮັນ migration 026 ກ່ອນ)"
+          : "ບັນທຶກບໍ່ສຳເລັດ",
+      },
       { status: 500 },
     );
   } finally {
@@ -122,5 +139,6 @@ export async function PUT(
     employee_id: employeeId,
     role,
     warehouses: finalWarehouses,
+    permissions: finalPerms,
   });
 }
