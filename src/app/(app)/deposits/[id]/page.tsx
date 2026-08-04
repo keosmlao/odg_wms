@@ -5,7 +5,11 @@ import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { ChevronRightIcon } from "@/components/ui/Icons";
 import {
+  AGING_TONE,
   calculateFee,
+  depositAging,
+  formatDate,
+  formatDateTime,
   formatMoney,
   formatPct,
   type DepositRow,
@@ -14,17 +18,8 @@ import {
 import SettleForm from "./SettleForm";
 import ReopenButton from "./ReopenButton";
 import DeleteButton from "./DeleteButton";
-
-type BillRow = {
-  doc_no: string;
-  trans_flag: number;
-  doc_date: string | null;
-  cust_code: string | null;
-  lines: number;
-  items: number;
-  qty_sum: string;
-  value_sum: string;
-};
+import BillsPanel, { type DepositBill } from "./BillsPanel";
+import EditHeaderForm from "./EditHeaderForm";
 
 type PaymentRow = {
   payment_id: number;
@@ -93,14 +88,18 @@ export default async function DepositDetailPage({
     await query<
       DepositRow & {
         wh_name: string | null;
+        sale_code: string | null;
+        sale_name: string | null;
         created_employee: string | null;
         settled_employee: string | null;
+        updated_employee: string | null;
+        updated_at: string | null;
       }
     >(
       `SELECT
          d.deposit_id, d.deposit_code, d.wh_code,
          w.name_1 AS wh_name,
-         d.cust_code, d.cust_name,
+         d.cust_code, d.cust_name, d.sale_code, d.sale_name,
          d.start_date::text AS start_date,
          d.end_date::text   AS end_date,
          d.status,
@@ -123,12 +122,15 @@ export default async function DepositDetailPage({
          d.created_at::text  AS created_at,
          d.settled_by,
          d.settled_at::text  AS settled_at,
+         d.updated_at::text AS updated_at,
          eC.fullname_lo AS created_employee,
-         eS.fullname_lo AS settled_employee
+         eS.fullname_lo AS settled_employee,
+         eU.fullname_lo AS updated_employee
        FROM public.wms_deposit d
        LEFT JOIN public.ic_warehouse w  ON w.code = d.wh_code
        LEFT JOIN public.odg_employee  eC ON eC.employee_id = d.created_by
        LEFT JOIN public.odg_employee  eS ON eS.employee_id = d.settled_by
+       LEFT JOIN public.odg_employee  eU ON eU.employee_id = d.updated_by
        WHERE d.deposit_id = $1`,
       [depositId],
     )
@@ -147,8 +149,9 @@ export default async function DepositDetailPage({
   }
 
   const [bills, payments] = await Promise.all([
-    query<BillRow>(
-      `SELECT doc_no, trans_flag, doc_date::text AS doc_date, cust_code,
+    query<DepositBill>(
+      `SELECT doc_no, trans_flag, doc_date::text AS doc_date,
+              cust_code, cust_name, sale_name, currency_code,
               lines, items,
               qty_sum::text   AS qty_sum,
               value_sum::text AS value_sum
@@ -189,21 +192,64 @@ export default async function DepositDetailPage({
         total_value: detail.total_value,
       })
     : null;
+  const age = isActive ? depositAging(detail, detail.start_date) : null;
+  const ageTone = age ? AGING_TONE[age.level] : null;
 
   return (
     <div className="w-full">
-      <nav className="mb-3 flex items-center gap-2 text-sm">
-        <Link
-          href="/deposits"
-          className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+      <nav className="mb-3 flex items-center justify-between gap-2 text-sm">
+        <div className="flex items-center gap-2">
+          <Link
+            href="/deposits"
+            className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+          >
+            ຮັບຝາກເຄື່ອງ
+          </Link>
+          <ChevronRightIcon className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
+          <span className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            {detail.deposit_code}
+          </span>
+        </div>
+        <a
+          href={`/print/deposit/${detail.deposit_id}?auto=1`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          ຮັບຝາກເຄື່ອງ
-        </Link>
-        <ChevronRightIcon className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
-        <span className="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-          {detail.deposit_code}
-        </span>
+          🖨 ພິມໃບຮັບຝາກ
+        </a>
       </nav>
+
+      {/* Aging alert — anything past the free period is red */}
+      {age?.over && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 dark:border-rose-900/50 dark:bg-rose-950/25">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-600 text-sm font-bold text-white">
+              !
+            </span>
+            <div>
+              <p className="text-sm font-bold text-rose-800 dark:text-rose-200">
+                ຝາກມາແລ້ວ {age.days} ມື້ — {age.label}
+              </p>
+              <p className="text-[11px] text-rose-700/80 dark:text-rose-300/80">
+                ເກີນໄລຍະຟຣີ {detail.free_days_max} ມື້ · ອັດຕາປະຈຸບັນ{" "}
+                {formatPct(age.pct)} ຂອງມູນຄ່າສິນຄ້າ
+              </p>
+            </div>
+          </div>
+          {age.nextAtDays !== null && (
+            <p
+              className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold ${
+                age.soon
+                  ? "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"
+                  : "bg-white/70 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+              }`}
+            >
+              ອີກ {age.daysToNext} ມື້ ຂຶ້ນເປັນ {formatPct(age.nextPct ?? 0)}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Hero */}
       <section className="mb-4 overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:ring-white/[0.03]">
@@ -229,9 +275,19 @@ export default async function DepositDetailPage({
             </span>
             <span className="text-zinc-300 dark:text-zinc-600">·</span>
             <span>
-              ເລີ່ມ {detail.start_date}
-              {detail.end_date && ` → ${detail.end_date}`}
+              ເລີ່ມ {formatDate(detail.start_date)}
+              {detail.end_date && ` → ${formatDate(detail.end_date)}`}
             </span>
+            {age && (
+              <>
+                <span className="text-zinc-300 dark:text-zinc-600">·</span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${ageTone!.chip}`}
+                >
+                  {age.days} ມື້
+                </span>
+              </>
+            )}
             {detail.cust_code || detail.cust_name ? (
               <>
                 <span className="text-zinc-300 dark:text-zinc-600">·</span>
@@ -284,64 +340,13 @@ export default async function DepositDetailPage({
       <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
         {/* LEFT: bills + payments */}
         <div className="min-w-0 space-y-4">
-          <section className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/90 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-800/70 dark:bg-zinc-900/80 dark:ring-white/[0.03]">
-            <div className="border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
-              <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-50">
-                ບິນທີ່ຝາກ ({bills.length})
-              </h2>
-            </div>
-            {bills.length === 0 ? (
-              <div className="py-8 text-center text-sm text-zinc-500">
-                ບໍ່ມີບິນ
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-zinc-50/60 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:bg-zinc-900/40 dark:text-zinc-400">
-                    <tr>
-                      <th className="px-4 py-2 text-left">doc_no</th>
-                      <th className="hidden px-4 py-2 text-left sm:table-cell">
-                        ວັນທີ
-                      </th>
-                      <th className="hidden px-4 py-2 text-left lg:table-cell">
-                        ລູກຄ້າ
-                      </th>
-                      <th className="px-4 py-2 text-right">ສິນຄ້າ</th>
-                      <th className="px-4 py-2 text-right">qty</th>
-                      <th className="px-4 py-2 text-right">ມູນຄ່າ</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                    {bills.map((b) => (
-                      <tr key={`${b.doc_no}::${b.trans_flag}`}>
-                        <td className="px-4 py-2 font-mono text-xs font-semibold">
-                          {b.doc_no}
-                          <div className="text-[10px] font-normal text-zinc-500">
-                            flag {b.trans_flag}
-                          </div>
-                        </td>
-                        <td className="hidden px-4 py-2 text-xs text-zinc-600 sm:table-cell dark:text-zinc-300">
-                          {b.doc_date ?? "—"}
-                        </td>
-                        <td className="hidden px-4 py-2 text-xs text-zinc-600 lg:table-cell dark:text-zinc-300">
-                          {b.cust_code ?? "—"}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono tabular-nums">
-                          {b.items} / {b.lines}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono tabular-nums">
-                          {formatQty(b.qty_sum)}
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono font-semibold tabular-nums">
-                          {formatMoney(b.value_sum, detail.currency)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+          <BillsPanel
+            depositId={detail.deposit_id}
+            whCode={detail.wh_code}
+            currency={detail.currency}
+            bills={bills}
+            editable={isActive}
+          />
 
           {/* Payments */}
           {payments.length > 0 && (
@@ -363,7 +368,7 @@ export default async function DepositDetailPage({
                           {p.method}
                         </span>
                         <span className="text-xs text-zinc-500">
-                          {p.paid_at?.slice(0, 16)}
+                          {formatDateTime(p.paid_at)}
                         </span>
                       </div>
                       {p.received_employee && (
@@ -406,7 +411,19 @@ export default async function DepositDetailPage({
               totalValue={detail.total_value}
               currency={detail.currency}
             />
-          ) : (
+          ) : null}
+
+          {isActive && (
+            <EditHeaderForm
+              depositId={detail.deposit_id}
+              startDate={detail.start_date}
+              custCode={detail.cust_code}
+              custName={detail.cust_name}
+              note={detail.note}
+            />
+          )}
+
+          {!isActive && (
             <div className="rounded-2xl border border-zinc-200/70 bg-white/90 p-5 dark:border-zinc-800/70 dark:bg-zinc-900/80">
               <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-200">
                 ສະຫຼຸບການຝາກ
@@ -423,7 +440,7 @@ export default async function DepositDetailPage({
                   <Row k="ສຳເລັດໂດຍ" v={detail.settled_employee} />
                 )}
                 {detail.settled_at && (
-                  <Row k="ເວລາ" v={detail.settled_at.slice(0, 16)} />
+                  <Row k="ເວລາ" v={formatDateTime(detail.settled_at)} />
                 )}
               </dl>
               {isManager && detail.status !== "active" && (

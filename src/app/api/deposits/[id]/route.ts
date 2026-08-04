@@ -227,6 +227,78 @@ export async function PATCH(
 }
 
 /**
+ * Edit the header of an active deposit: start date (which drives the fee),
+ * customer, and note. Settled/cancelled deposits are frozen — reopen first.
+ *
+ * Body: { start_date?, cust_code?, cust_name?, note? }
+ */
+export async function PUT(
+  request: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  const { id } = await ctx.params;
+  const depositId = Number.parseInt(id, 10);
+  if (!Number.isFinite(depositId)) {
+    return NextResponse.json({ error: "id ບໍ່ຖືກຕ້ອງ" }, { status: 400 });
+  }
+
+  const guard = await requireDepositAccess(depositId);
+  if (!guard.ok) return guard.response;
+  if (guard.row.status !== "active") {
+    return NextResponse.json(
+      { error: "ແກ້ໄຂໄດ້ສະເພາະຮັບຝາກທີ່ຍັງ active" },
+      { status: 409 },
+    );
+  }
+
+  let body: {
+    start_date?: unknown;
+    cust_code?: unknown;
+    cust_name?: unknown;
+    note?: unknown;
+  } = {};
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: "ຂໍ້ມູນບໍ່ຖືກຕ້ອງ" }, { status: 400 });
+  }
+
+  const startDate =
+    typeof body.start_date === "string" && body.start_date.trim()
+      ? body.start_date.trim()
+      : guard.row.start_date;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+    return NextResponse.json(
+      { error: "ວັນທີ່ເລີ່ມຝາກບໍ່ຖືກຕ້ອງ" },
+      { status: 400 },
+    );
+  }
+  const text = (v: unknown) =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+
+  await query(
+    `UPDATE public.wms_deposit
+        SET start_date = $2::date,
+            cust_code  = $3,
+            cust_name  = $4,
+            note       = $5,
+            updated_at = CURRENT_TIMESTAMP,
+            updated_by = $6
+      WHERE deposit_id = $1`,
+    [
+      depositId,
+      startDate,
+      text(body.cust_code),
+      text(body.cust_name),
+      text(body.note),
+      guard.session.employee_id,
+    ],
+  );
+
+  return NextResponse.json({ ok: true });
+}
+
+/**
  * Hard-delete a deposit (manager-only). Cascades to bill snapshot rows and
  * payment rows via the FK ON DELETE CASCADE on those tables.
  *
