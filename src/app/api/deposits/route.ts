@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { getDepositSettings, nextDepositCode } from "@/lib/deposit-server";
+import { normalizeCurrency } from "@/lib/deposit";
 
 /**
  * Create a new deposit from a set of pending bills.
@@ -152,6 +153,19 @@ export async function POST(request: Request) {
       totalValue += Number.parseFloat(r.value_sum) || 0;
     }
 
+    // The fee is charged in the bills' own currency (THB for sales bills).
+    // Mixed-currency selections fall back to the configured default — the
+    // picker already warns the user about that case.
+    const currencies = new Set(
+      cacheRes.rows
+        .map((r) => (r.currency_code ?? "").trim())
+        .filter((c) => c.length > 0),
+    );
+    const depositCurrency =
+      currencies.size === 1
+        ? normalizeCurrency(Array.from(currencies)[0], settings.currency)
+        : settings.currency;
+
     // Auto-detect cust_code / cust_name / sale info from bills if not provided
     const firstWithCust = cacheRes.rows.find((r) => r.cust_code);
     const firstWithSale = cacheRes.rows.find((r) => r.sale_code);
@@ -208,7 +222,7 @@ export async function POST(request: Request) {
         settings.tier4_pct,
         settings.min_charge,
         settings.max_charge,
-        settings.currency,
+        depositCurrency,
         totalItems,
         totalQty,
         totalValue,

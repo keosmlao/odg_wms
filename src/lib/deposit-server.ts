@@ -1,4 +1,5 @@
 import "server-only";
+import type { PoolClient } from "pg";
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
@@ -47,6 +48,231 @@ export async function getDepositSettings(): Promise<DepositSettings> {
     max_charge: num(m.get("max_charge") ?? null, DEFAULT_SETTINGS.max_charge),
     currency: m.get("currency") ?? DEFAULT_SETTINGS.currency,
   };
+}
+
+/**
+ * Elapsed days for an active deposit, matching `elapsedDays()` on the client:
+ * any partial day counts as a full day, minimum 1.
+ */
+const DAYS_SQL = `GREATEST(1, CEIL(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - d.start_date::timestamp)) / 86400.0))::int`;
+
+/** Aging buckets selectable from the list screen. */
+export type AgingFilter = "" | "over" | "tier2" | "tier3" | "tier4" | "soon";
+
+export type DepositListFilters = {
+  status?: string;
+  q?: string;
+  aging?: AgingFilter;
+  from?: string;
+  to?: string;
+};
+
+export type DepositListRow = {
+  deposit_id: number;
+  deposit_code: string;
+  wh_code: string;
+  wh_name: string | null;
+  cust_code: string | null;
+  cust_name: string | null;
+  sale_code: string | null;
+  sale_name: string | null;
+  start_date: string;
+  end_date: string | null;
+  status: DepositRow["status"];
+  free_days_max: number;
+  tier1_days_max: number;
+  tier1_pct: string;
+  tier2_days_max: number;
+  tier2_pct: string;
+  tier3_days_max: number;
+  tier3_pct: string;
+  tier4_pct: string;
+  min_charge: string;
+  max_charge: string;
+  currency: string;
+  total_items: number;
+  total_qty: string;
+  total_value: string;
+  bill_count: number;
+  settled_fee: string | null;
+  settled_days: number | null;
+  days_elapsed: number;
+  created_at: string;
+  created_employee: string | null;
+};
+
+/**
+ * Build the deposit list query shared by the list screen and the CSV export so
+ * the two can never drift. Search, date range and aging are all resolved in
+ * SQL — filtering in JS after a LIMIT would silently hide older matches.
+ */
+export function buildDepositListQuery(
+  filters: DepositListFilters,
+  accessible: string[] | null,
+  limit: number,
+): { sql: string; args: unknown[] } {
+  const args: unknown[] = [];
+  const where: string[] = [];
+
+  if (Array.isArray(accessible)) {
+    args.push(accessible);
+    where.push(`d.wh_code = ANY($${args.length})`);
+  }
+  const status = filters.status ?? "";
+  if (status === "active" || status === "settled" || status === "cancelled") {
+    args.push(status);
+    where.push(`d.status = $${args.length}`);
+  }
+  const q = (filters.q ?? "").trim();
+  if (q) {
+    args.push(`%${q}%`);
+    const i = args.length;
+    where.push(
+      `(d.deposit_code ILIKE $${i} OR d.cust_code ILIKE $${i} OR d.cust_name ILIKE $${i}
+        OR d.wh_code ILIKE $${i} OR d.sale_name ILIKE $${i})`,
+    );
+  }
+  if (filters.from) {
+    args.push(filters.from);
+    where.push(`d.start_date >= $${args.length}::date`);
+  }
+  if (filters.to) {
+    args.push(filters.to);
+    where.push(`d.start_date <= $${args.length}::date`);
+  }
+
+  // Aging only means anything while the goods are still in the warehouse.
+  const agingWhere: string[] = [];
+  switch (filters.aging) {
+    case "over":
+      agingWhere.push("x.days_elapsed > x.free_days_max");
+      break;
+    case "tier2":
+      agingWhere.push("x.days_elapsed > x.tier1_days_max");
+      break;
+    case "tier3":
+      agingWhere.push("x.days_elapsed > x.tier2_days_max");
+      break;
+    case "tier4":
+      agingWhere.push("x.days_elapsed > x.tier3_days_max");
+      break;
+    case "soon":
+      agingWhere.push(`(
+        (x.free_days_max  - x.days_elapsed) BETWEEN 0 AND 1
+        OR (x.tier1_days_max - x.days_elapsed) BETWEEN 0 AND 1
+        OR (x.tier2_days_max - x.days_elapsed) BETWEEN 0 AND 1
+        OR (x.tier3_days_max - x.days_elapsed) BETWEEN 0 AND 1
+      )`);
+      break;
+    default:
+      break;
+  }
+  if (agingWhere.length) agingWhere.push("x.status = 'active'");
+
+  args.push(limit);
+  const limitIdx = args.length;
+
+  const sql = `
+    SELECT * FROM (
+      SELECT
+        d.deposit_id, d.deposit_code, d.wh_code,
+        w.name_1 AS wh_name,
+        d.cust_code, d.cust_name, d.sale_code, d.sale_name,
+        d.start_date::text AS start_date,
+        d.end_date::text   AS end_date,
+        d.status,
+        d.free_days_max,
+        d.tier1_days_max, d.tier1_pct::text AS tier1_pct,
+        d.tier2_days_max, d.tier2_pct::text AS tier2_pct,
+        d.tier3_days_max, d.tier3_pct::text AS tier3_pct,
+        d.tier4_pct::text  AS tier4_pct,
+        d.min_charge::text AS min_charge,
+        d.max_charge::text AS max_charge,
+        d.currency,
+        d.total_items,
+        d.total_qty::text   AS total_qty,
+        d.total_value::text AS total_value,
+        (SELECT count(*)::int FROM public.wms_deposit_bill b
+          WHERE b.deposit_id = d.deposit_id) AS bill_count,
+        d.settled_fee::text AS settled_fee,
+        d.settled_days,
+        ${DAYS_SQL} AS days_elapsed,
+        d.created_at::text AS created_at,
+        e.fullname_lo      AS created_employee
+      FROM public.wms_deposit d
+      LEFT JOIN public.ic_warehouse w ON w.code = d.wh_code
+      LEFT JOIN public.odg_employee e ON e.employee_id = d.created_by
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    ) x
+    ${agingWhere.length ? `WHERE ${agingWhere.join(" AND ")}` : ""}
+    ORDER BY x.start_date DESC, x.deposit_id DESC
+    LIMIT $${limitIdx}
+  `;
+  return { sql, args };
+}
+
+/** Count + value of the active deposits in each aging bucket. */
+export type AgingSummaryRow = {
+  level: "free" | "tier1" | "tier2" | "tier3" | "tier4";
+  n: number;
+  value: string;
+};
+
+export async function agingSummary(
+  accessible: string[] | null,
+): Promise<AgingSummaryRow[]> {
+  const args: unknown[] = [];
+  let whClause = "";
+  if (Array.isArray(accessible)) {
+    args.push(accessible);
+    whClause = `AND d.wh_code = ANY($${args.length})`;
+  }
+  return query<AgingSummaryRow>(
+    `SELECT
+       CASE
+         WHEN days_elapsed <= free_days_max  THEN 'free'
+         WHEN days_elapsed <= tier1_days_max THEN 'tier1'
+         WHEN days_elapsed <= tier2_days_max THEN 'tier2'
+         WHEN days_elapsed <= tier3_days_max THEN 'tier3'
+         ELSE 'tier4'
+       END AS level,
+       count(*)::int      AS n,
+       SUM(total_value)::text AS value
+     FROM (
+       SELECT d.free_days_max, d.tier1_days_max, d.tier2_days_max,
+              d.tier3_days_max, d.total_value,
+              ${DAYS_SQL} AS days_elapsed
+       FROM public.wms_deposit d
+       WHERE d.status = 'active' ${whClause}
+     ) x
+     GROUP BY 1`,
+    args,
+  );
+}
+
+/**
+ * Re-sum a deposit's cached header totals from its bill snapshot rows. Called
+ * after bills are added to or removed from an active deposit.
+ */
+export async function recalcDepositTotals(
+  client: PoolClient,
+  depositId: number,
+): Promise<void> {
+  await client.query(
+    `UPDATE public.wms_deposit d
+        SET total_items = COALESCE(t.items, 0),
+            total_qty   = COALESCE(t.qty, 0),
+            total_value = COALESCE(t.value, 0)
+       FROM (
+         SELECT SUM(items)::int AS items,
+                SUM(qty_sum)    AS qty,
+                SUM(value_sum)  AS value
+         FROM public.wms_deposit_bill
+         WHERE deposit_id = $1
+       ) t
+      WHERE d.deposit_id = $1`,
+    [depositId],
+  );
 }
 
 export type DepositGuard =
