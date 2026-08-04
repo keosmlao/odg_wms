@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { genDocNo, writeCountSerials, DOC_TYPE, RECEIVE_STATUS } from "@/lib/receive";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
+import { PACKING_STATUS, unapprovedPos } from "@/lib/packingList";
 
 /**
  * Count sheets (ໃບກວດນັບ) — a draft goods-receipt built from a packing list,
@@ -17,7 +18,7 @@ import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 type SerialIn = { serial_number?: unknown };
 type LineIn = { item_code?: unknown; item_name?: unknown; unit_code?: unknown; qty?: unknown; serials?: unknown };
 type PoIn = { po_no?: unknown; supplier_code?: unknown };
-type Body = { po_no?: unknown; pos?: unknown; pack_no?: unknown; wh_code?: unknown; supplier_code?: unknown; remark?: unknown; lines?: unknown };
+type Body = { po_no?: unknown; pos?: unknown; pack_no?: unknown; packing_doc_no?: unknown; wh_code?: unknown; supplier_code?: unknown; remark?: unknown; lines?: unknown };
 
 /** Normalise the PO list from either `pos[]` (multi) or the legacy scalar `po_no`. */
 function readPos(body: Body): { po_no: string; supplier_code: string | null }[] {
@@ -100,6 +101,7 @@ export async function POST(request: Request) {
 
   const posList = readPos(body);
   const pack = str(body.pack_no);
+  const packingDoc = str(body.packing_doc_no);
   const wh = str(body.wh_code);
   const supplier = str(body.supplier_code);
   const remark = str(body.remark);
@@ -127,6 +129,16 @@ export async function POST(request: Request) {
   if (dup[0]) {
     return NextResponse.json(
       { error: `ໃບສັ່ງຊື້ ${dup[0].po_no} ມີໃບກວດນັບຄ້າງຢູ່ແລ້ວ: ${dup[0].doc_no}`, existing_count_no: dup[0].doc_no },
+      { status: 409 },
+    );
+  }
+
+  // ຮັບເຂົ້າໄດ້ສະເພາະ PO ທີ່ອະນຸມັດແລ້ວ — ດ່ານກັນນີ້ໃຊ້ກັບທຸກທາງເຂົ້າ
+  // (ໃບ packing, ລາຍການຄ້າງຮັບ, ຫຼື ພິມເລກ PO ເອງ).
+  const notApproved = await unapprovedPos(pool, poNos);
+  if (notApproved.length > 0) {
+    return NextResponse.json(
+      { error: `ໃບສັ່ງຊື້ຍັງບໍ່ອະນຸມັດ: ${notApproved.join(", ")}`, unapproved_pos: notApproved },
       { status: 409 },
     );
   }
@@ -165,9 +177,9 @@ export async function POST(request: Request) {
     await client.query(
       `INSERT INTO public.wms_product_receive
          (doc_no, doc_date, doc_time, status, doc_type, warehouse_code, supplier_code,
-          remark, creator_code, ref_doc_no, create_datetime, create_date_time_now)
-       VALUES ($1, CURRENT_DATE, to_char(now(),'HH24:MI'), $2, $3, $4, $5, $6, $7, $8, now(), now())`,
-      [docNo, RECEIVE_STATUS.draft, DOC_TYPE.count, wh, primarySupplier, remark || null, session.employee_code, primaryPo],
+          remark, creator_code, ref_doc_no, packing_doc_no, create_datetime, create_date_time_now)
+       VALUES ($1, CURRENT_DATE, to_char(now(),'HH24:MI'), $2, $3, $4, $5, $6, $7, $8, $9, now(), now())`,
+      [docNo, RECEIVE_STATUS.draft, DOC_TYPE.count, wh, primarySupplier, remark || null, session.employee_code, primaryPo, packingDoc || null],
     );
     // The sheet's PO list (1 header → N POs).
     for (let i = 0; i < posList.length; i++) {
@@ -183,6 +195,18 @@ export async function POST(request: Request) {
          VALUES ($1, $2, 1, now())`,
         [docNo, pack],
       );
+    }
+    // ໃບ packing ຂອງ WMS → ໝາຍວ່າໃຊ້ແລ້ວ ແລະ ຜູກກັບໃບກວດນັບນີ້.
+    if (packingDoc) {
+      const upd = await client.query(
+        `UPDATE public.wms_packing_list
+            SET status = $3, count_doc_no = $2
+          WHERE doc_no = $1 AND wh_code = $4 AND status <> $5`,
+        [packingDoc, docNo, PACKING_STATUS.used, wh, PACKING_STATUS.used],
+      );
+      if (upd.rowCount === 0) {
+        throw new Error(`ໃບ packing ${packingDoc} ໃຊ້ບໍ່ໄດ້ (ສ້າງໃບກວດນັບແລ້ວ ຫຼື ຄົນລະສາງ)`);
+      }
     }
 
     for (const line of lines) {

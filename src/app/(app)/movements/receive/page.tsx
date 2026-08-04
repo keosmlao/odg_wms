@@ -10,9 +10,10 @@ import ReceiveClient, { type WarehouseOption } from "./ReceiveClient";
 import ReceiveHistory from "./ReceiveHistory";
 import PendingList from "./PendingList";
 import CountSheetList from "./CountSheetList";
+import PackingListTab from "./PackingListTab";
 
 type SearchParams = Record<string, string | string[] | undefined>;
-type Tab = "pending" | "count" | "receive" | "history";
+type Tab = "packing" | "pending" | "count" | "receive" | "history";
 
 export default async function ReceivePage({
   searchParams,
@@ -33,10 +34,11 @@ export default async function ReceivePage({
   const params = await searchParams;
   const rawTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
   const tab: Tab =
-    rawTab === "count" ? "count"
+    rawTab === "pending" ? "pending"
+    : rawTab === "count" ? "count"
     : rawTab === "receive" ? "receive"
     : rawTab === "history" ? "history"
-    : "pending";
+    : "packing";
 
   const warehouses =
     tab === "receive"
@@ -50,17 +52,19 @@ export default async function ReceivePage({
           )
       : [];
 
-  // Workflow steps: ① ຄ້າງຮັບ → ② ໃບກວດນັບ → ຮັບເຂົ້າ. History is separate.
+  // Workflow steps: ① ໃບ packing → ② ຄ້າງຮັບ (PO) → ③ ໃບກວດນັບ → ຮັບເຂົ້າ.
+  // History is separate.
   const steps = [
-    { key: "pending", href: "/movements/receive", n: 1, label: "ລາຍການຄ້າງຮັບ", sub: "ບິນ PO", icon: <PackageIcon className="h-4 w-4" /> },
-    { key: "count", href: "/movements/receive?tab=count", n: 2, label: "ໃບກວດນັບ", sub: "ນັບ·ຮັບເຂົ້າ", icon: <CheckIcon className="h-4 w-4" /> },
+    { key: "packing", href: "/movements/receive", n: 1, label: "ໃບ packing", sub: "ນຳເຂົ້າ·ກວດ PO", icon: <PackageIcon className="h-4 w-4" /> },
+    { key: "pending", href: "/movements/receive?tab=pending", n: 2, label: "ລາຍການຄ້າງຮັບ", sub: "ບິນ PO", icon: <PackageIcon className="h-4 w-4" /> },
+    { key: "count", href: "/movements/receive?tab=count", n: 3, label: "ໃບກວດນັບ", sub: "ນັບ·ຮັບເຂົ້າ", icon: <CheckIcon className="h-4 w-4" /> },
   ];
 
   return (
     <div className="w-full space-y-5">
       <Hero
         title="ຮັບສິນຄ້າເຂົ້າສາງ"
-        description="ບິນຄ້າງຮັບ → ສ້າງໃບກວດນັບ (ອີງ packing list) → ຮັບເຂົ້າ WMS"
+        description="ໃບ packing (Excel/PDF) → ກວດ PO ອະນຸມັດ → ໃບກວດນັບ → ຮັບເຂົ້າ WMS"
         icon={<ArrowDownIcon className="h-6 w-6" />}
         tone="emerald"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
@@ -110,6 +114,8 @@ export default async function ReceivePage({
       <Suspense key={`${tab}:${Array.isArray(params.q) ? params.q[0] : params.q ?? ""}:${Array.isArray(params.page) ? params.page[0] : params.page ?? ""}`} fallback={<ListSkeleton />}>
         {tab === "history" ? (
           <ReceiveHistory session={session} params={params} />
+        ) : tab === "packing" ? (
+          <PackingListTab session={session} params={params} />
         ) : tab === "count" ? (
           <CountSheetList session={session} params={params} />
         ) : tab === "receive" ? (
