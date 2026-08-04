@@ -270,6 +270,8 @@ export default async function Home() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {[
                   { label: "ຄວາມຖືກຕ້ອງ stock", href: "/movements/accuracy", desc: "WMS ທຽບ SML/ERP — % ຄວາມแม่นยำ", icon: <TrendIcon className="h-5 w-5" />, tone: "blue" as const },
+                  { label: "ຄ້າງຈ່າຍອອກສາງ", href: "/movements/pending-out", desc: "ໃບເບີກ/ໂອນ/ຂາຍ ທີ່ຈ່າຍອອກບໍ່ຄົບ", icon: <ArrowUpIcon className="h-5 w-5" />, tone: "amber" as const },
+                  { label: "ເຄື່ອນໄຫວປະຈຳວັນ", href: "/movements/daily", desc: "ຍອດຍົກມາ · ເປີດບິນ · ຮັບ/ຈ່າຍ · ຍົກໄປ", icon: <TrendIcon className="h-5 w-5" />, tone: "blue" as const },
                   { label: "ສິນຄ້າຄ້າງ (Aging)", href: "/movements/aging", desc: "dead stock ບໍ່ເຄື່ອນໄຫວ > 90 ມື້", icon: <SearchIcon className="h-5 w-5" />, tone: "amber" as const },
                   { label: "ກວດ SN vs Stock", href: "/movements/sn-check", desc: "serial ທຽບ location — ປັບໃຫ້ຕົງ", icon: <PackageIcon className="h-5 w-5" />, tone: "violet" as const },
                   { label: "ປັບປຸງ stock", href: "/movements/adjust", desc: "ນັບ + ປັບ ISN/serial", icon: <CheckIcon className="h-5 w-5" />, tone: "emerald" as const },

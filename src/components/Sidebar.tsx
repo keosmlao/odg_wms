@@ -9,6 +9,7 @@ import {
   ArrowLeftRightIcon,
   ArrowUpIcon,
   BuildingIcon,
+  CalendarIcon,
   CheckIcon,
   ChevronRightIcon,
   HomeIcon,
@@ -148,6 +149,16 @@ const groups: Group[] = [
     basePath: "/movements/reports",
     icon: <ListIcon className="h-4.5 w-4.5" />,
     items: [
+      {
+        label: "ເຄື່ອນໄຫວປະຈຳວັນ",
+        href: "/movements/daily",
+        icon: <CalendarIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ຄ້າງຈ່າຍອອກສາງ",
+        href: "/movements/pending-out",
+        icon: <ArrowUpIcon className="h-3.5 w-3.5" />,
+      },
       {
         label: "ສິນຄ້າຄ້າງ (Aging)",
         href: "/movements/aging",
