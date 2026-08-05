@@ -261,6 +261,15 @@ function pNodePath(i: { rack: string; location: string; pallet: string }) {
 function sameNode(a: { rack: string; location: string; pallet: string }, b: { rack: string; location: string; pallet: string }) {
   return a.rack === b.rack && a.location === b.location && a.pallet === b.pallet;
 }
+/**
+ * Balance the "ຢູ່ປະຈຸບັນ" chips already report for a node — lets the line's
+ * ຍອດບ່ອນນີ້ follow a chip click instantly, before the server confirms it.
+ * null = this node is not one of the item's known holdings.
+ */
+function knownNodeQty(nodes: StockNode[], node: { rack: string; location: string; pallet: string }) {
+  const hit = nodes.find((n) => sameNode(n, node));
+  return hit ? Number.parseFloat(hit.qty) || 0 : null;
+}
 
 /** Read-only "where it sits now" summary, shown on each search result. */
 function NodeSummary({ nodes, unit }: { nodes: StockNode[]; unit: string | null }) {
@@ -380,10 +389,17 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
    * line's before_qty. Node + item passed explicitly (not read from `items`)
    * so callers can fire this right after a state update. Race-guarded.
    */
-  async function loadBalance(lineId: string, node: { rack: string; location: string; pallet: string }, itemCode: string) {
+  async function loadBalance(
+    lineId: string,
+    node: { rack: string; location: string; pallet: string },
+    itemCode: string,
+    // quiet = the chips already gave us this node's balance, so keep showing it
+    // and let the server value replace it silently instead of flashing "…".
+    quiet = false,
+  ) {
     if (!whCode) return;
     const reqKey = pNodeKey({ item_code: itemCode, ...node });
-    setItems((prev) => prev.map((i) => (i.id === lineId ? { ...i, balLoading: true } : i)));
+    if (!quiet) setItems((prev) => prev.map((i) => (i.id === lineId ? { ...i, balLoading: true } : i)));
     try {
       const params = new URLSearchParams({
         warehouse: whCode,
@@ -419,6 +435,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     // Another node is one chip-click away, and step 2 restates it before posting.
     const def = nodes[0];
     const node = { rack: def?.rack ?? "", location: def?.location ?? "", pallet: def?.pallet ?? "" };
+    const known = knownNodeQty(nodes, node);
     const id = newLineId();
     setItems((prev) => [
       {
@@ -428,8 +445,8 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
         unit_code: hit.unit_code,
         wh_balance: whBal,
         ...node,
-        before_qty: 0,
-        balLoading: false,
+        before_qty: known ?? 0,
+        balLoading: known === null,
         locations: nodes,
         counted: "",
         serialized: (hit.is_isn ?? 0) === 1,
@@ -439,7 +456,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
       },
       ...prev,
     ]);
-    void loadBalance(id, node, hit.item_code);
+    void loadBalance(id, node, hit.item_code, known !== null);
     setTimeout(() => searchRef.current?.focus(), 50);
   }
 
@@ -458,6 +475,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     const taken = new Set(items.filter((i) => i.item_code === src.item_code).map((i) => pNodeKey(i)));
     const free = src.locations.find((n) => !taken.has(pNodeKey({ item_code: src.item_code, ...n })));
     const node = { rack: free?.rack ?? "", location: free?.location ?? "", pallet: free?.pallet ?? "" };
+    const known = knownNodeQty(src.locations, node);
     const id = newLineId();
     setItems((prev) => {
       const idx = prev.findIndex((i) => i.id === lineId);
@@ -466,8 +484,8 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
         ...src,
         id,
         ...node,
-        before_qty: 0,
-        balLoading: false,
+        before_qty: known ?? 0,
+        balLoading: known === null,
         counted: "",
         serialsRemove: [],
         serialsAdd: [],
@@ -477,28 +495,30 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
       next.splice(idx + 1, 0, row);
       return next;
     });
-    void loadBalance(id, node, src.item_code);
+    void loadBalance(id, node, src.item_code, known !== null);
   }
 
   /** Change one node field on a line, then refresh its system balance. */
   function setLineNode(lineId: string, patch: Partial<Pick<PWorking, "rack" | "location" | "pallet">>) {
-    let nextNode: { rack: string; location: string; pallet: string } | null = null;
-    let itemCode = "";
+    const line = items.find((i) => i.id === lineId);
+    if (!line) return;
+    const nextNode = { rack: line.rack, location: line.location, pallet: line.pallet, ...patch };
+    // The chips carry each node's balance already — move ຍອດບ່ອນນີ້ in the same
+    // paint as the node itself; the fetch below only confirms it.
+    const known = knownNodeQty(line.locations, nextNode);
     setItems((prev) =>
       prev.map((i) => {
         if (i.id !== lineId) return i;
-        const next = { ...i, ...patch };
+        const next = { ...i, ...nextNode, before_qty: known ?? 0, balLoading: known === null };
         if (bySerial(i, snOn)) {
           next.serialsRemove = [];
           next.serialsAdd = [];
           next.serialsGenerate = 0;
         }
-        nextNode = { rack: next.rack, location: next.location, pallet: next.pallet };
-        itemCode = next.item_code;
         return next;
       }),
     );
-    if (nextNode) void loadBalance(lineId, nextNode, itemCode);
+    void loadBalance(lineId, nextNode, line.item_code, known !== null);
   }
 
   function setCounted(lineId: string, value: string) {
