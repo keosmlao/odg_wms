@@ -133,14 +133,14 @@ export default async function Home() {
       href: "/movements/balance",
       desc: "tree ຄົງເຫຼືອ 4 ລະດັບ",
       icon: <ListIcon className="h-5 w-5" />,
-      tone: "blue" as const,
+      tone: "navy" as const,
     },
     {
       label: "ຈັດການສິດ",
       href: "/settings/access",
       desc: "role + ສາງຂອງພະນັກງານ",
       icon: <ShieldIcon className="h-5 w-5" />,
-      tone: "violet" as const,
+      tone: "aqua" as const,
       managerOnly: true,
     },
   ];
@@ -240,7 +240,7 @@ export default async function Home() {
                     issueCount,
                 )}
                 sub="receive − issue"
-                tone="blue"
+                tone="navy"
                 highlight
               />
               <KpiCard
@@ -269,19 +269,19 @@ export default async function Home() {
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {[
-                  { label: "ຄວາມຖືກຕ້ອງ stock", href: "/movements/accuracy", desc: "WMS ທຽບ SML/ERP — % ຄວາມแม่นยำ", icon: <TrendIcon className="h-5 w-5" />, tone: "blue" as const },
+                  { label: "ຄວາມຖືກຕ້ອງ stock", href: "/movements/accuracy", desc: "WMS ທຽບ SML/ERP — % ຄວາມแม่นยำ", icon: <TrendIcon className="h-5 w-5" />, tone: "navy" as const },
                   { label: "ຄ້າງຈ່າຍອອກສາງ", href: "/movements/pending-out", desc: "ໃບເບີກ/ໂອນ/ຂາຍ ທີ່ຈ່າຍອອກບໍ່ຄົບ", icon: <ArrowUpIcon className="h-5 w-5" />, tone: "amber" as const },
-                  { label: "ເຄື່ອນໄຫວປະຈຳວັນ", href: "/movements/daily", desc: "ຍອດຍົກມາ · ເປີດບິນ · ຮັບ/ຈ່າຍ · ຍົກໄປ", icon: <TrendIcon className="h-5 w-5" />, tone: "blue" as const },
+                  { label: "ເຄື່ອນໄຫວປະຈຳວັນ", href: "/movements/daily", desc: "ຍອດຍົກມາ · ເປີດບິນ · ຮັບ/ຈ່າຍ · ຍົກໄປ", icon: <TrendIcon className="h-5 w-5" />, tone: "navy" as const },
                   { label: "ສິນຄ້າຄ້າງ (Aging)", href: "/movements/aging", desc: "dead stock ບໍ່ເຄື່ອນໄຫວ > 90 ມື້", icon: <SearchIcon className="h-5 w-5" />, tone: "amber" as const },
-                  { label: "ກວດ SN vs Stock", href: "/movements/sn-check", desc: "serial ທຽບ location — ປັບໃຫ້ຕົງ", icon: <PackageIcon className="h-5 w-5" />, tone: "violet" as const },
+                  { label: "ກວດ SN vs Stock", href: "/movements/sn-check", desc: "serial ທຽບ location — ປັບໃຫ້ຕົງ", icon: <PackageIcon className="h-5 w-5" />, tone: "aqua" as const },
                   { label: "ປັບປຸງ stock", href: "/movements/adjust", desc: "ນັບ + ປັບ ISN/serial", icon: <CheckIcon className="h-5 w-5" />, tone: "emerald" as const },
                   { label: "ປະກອບ Pallet", href: "/movements/pallet-load", desc: "ໂຫລດສິນຄ້າເຂົ້າ pallet", icon: <PackageIcon className="h-5 w-5" />, tone: "emerald" as const },
-                  { label: "ຍ້າຍ Pallet", href: "/movements/pallet-move", desc: "ຍ້າຍ pallet — ຂ້າມສາງໄດ້", icon: <LayersIcon className="h-5 w-5" />, tone: "blue" as const },
+                  { label: "ຍ້າຍ Pallet", href: "/movements/pallet-move", desc: "ຍ້າຍ pallet — ຂ້າມສາງໄດ້", icon: <LayersIcon className="h-5 w-5" />, tone: "navy" as const },
                   { label: "ໃບເກັບສິນຄ້າ (Pick)", href: "/movements/pick", desc: "ສ້າງໃບເກັບ — ຈັດ location walk order", icon: <ListIcon className="h-5 w-5" />, tone: "emerald" as const },
-                  { label: "ສິນຄ້າເຄື່ອນໄຫວ", href: "/movements/movers", desc: "fast movers + ແນວໂນ້ມ ເຂົ້າ/ອອກ", icon: <TrendIcon className="h-5 w-5" />, tone: "blue" as const },
+                  { label: "ສິນຄ້າເຄື່ອນໄຫວ", href: "/movements/movers", desc: "fast movers + ແນວໂນ້ມ ເຂົ້າ/ອອກ", icon: <TrendIcon className="h-5 w-5" />, tone: "navy" as const },
                   { label: "ບ່ອນວ່າງ (Putaway)", href: "/movements/putaway", desc: "ຫາ location ວ່າງ ໃສ່ສິນຄ້າ", icon: <BuildingIcon className="h-5 w-5" />, tone: "emerald" as const },
-                  { label: "ປະຫວັດ (Audit)", href: "/movements/ledger", desc: "ບັນທຶກລວມທຸກເອກະສານ", icon: <ListIcon className="h-5 w-5" />, tone: "violet" as const },
-                  { label: "ພິມ Label/Barcode", href: "/movements/labels", desc: "ປ້າຍ pallet / location ໄປ scan", icon: <PackageIcon className="h-5 w-5" />, tone: "violet" as const },
+                  { label: "ປະຫວັດ (Audit)", href: "/movements/ledger", desc: "ບັນທຶກລວມທຸກເອກະສານ", icon: <ListIcon className="h-5 w-5" />, tone: "aqua" as const },
+                  { label: "ພິມ Label/Barcode", href: "/movements/labels", desc: "ປ້າຍ pallet / location ໄປ scan", icon: <PackageIcon className="h-5 w-5" />, tone: "aqua" as const },
                 ].map((m) => (
                   <Link
                     key={m.href}
@@ -292,17 +292,17 @@ export default async function Home() {
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-105 ${
                         m.tone === "emerald"
                           ? "bg-emerald-100/80 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-                          : m.tone === "blue"
-                            ? "bg-blue-100/80 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+                          : m.tone === "navy"
+                            ? "bg-brand-100/80 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300"
                             : m.tone === "amber"
                               ? "bg-amber-100/80 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
-                              : "bg-violet-100/80 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
+                              : "bg-aqua-100/80 text-aqua-700 dark:bg-aqua-950/60 dark:text-aqua-300"
                       }`}
                     >
                       {m.icon}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-zinc-900 transition-colors group-hover:text-indigo-600 dark:text-zinc-50 dark:group-hover:text-indigo-400">
+                      <div className="truncate text-sm font-semibold text-zinc-900 transition-colors group-hover:text-brand-600 dark:text-zinc-50 dark:group-hover:text-brand-400">
                         {m.label}
                       </div>
                       <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
@@ -343,15 +343,15 @@ export default async function Home() {
                           ? "bg-emerald-100/80 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
                           : m.tone === "red"
                             ? "bg-red-100/80 text-red-700 dark:bg-red-950/60 dark:text-red-300"
-                            : m.tone === "blue"
-                              ? "bg-blue-100/80 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
-                              : "bg-violet-100/80 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
+                            : m.tone === "navy"
+                              ? "bg-brand-100/80 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300"
+                              : "bg-aqua-100/80 text-aqua-700 dark:bg-aqua-950/60 dark:text-aqua-300"
                       }`}
                     >
                       {m.icon}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold text-zinc-900 transition-colors group-hover:text-indigo-600 dark:text-zinc-50 dark:group-hover:text-indigo-400">
+                      <div className="text-sm font-semibold text-zinc-900 transition-colors group-hover:text-brand-600 dark:text-zinc-50 dark:group-hover:text-brand-400">
                         {m.label}
                       </div>
                       <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
@@ -364,9 +364,9 @@ export default async function Home() {
             </div>
           </section>
 
-          <div className="relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-gradient-to-br from-indigo-50 to-violet-50/50 p-5 shadow-sm dark:border-zinc-800/80 dark:from-indigo-950/10 dark:to-zinc-950">
-            <div className="absolute -right-6 -bottom-6 h-20 w-20 rounded-full bg-indigo-500/10 blur-xl" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+          <div className="relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-gradient-to-br from-brand-50 to-aqua-50/50 p-5 shadow-sm dark:border-zinc-800/80 dark:from-brand-950/10 dark:to-zinc-950">
+            <div className="absolute -right-6 -bottom-6 h-20 w-20 rounded-full bg-brand-500/10 blur-xl" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-brand-700 dark:text-brand-400">
               ຂໍ້ມູນຜູ້ໃຊ້ງານ
             </h3>
             <div className="mt-3.5 space-y-3">
@@ -382,7 +382,7 @@ export default async function Home() {
                 <span className="block text-[10px] text-zinc-500 dark:text-zinc-400">
                   ຕຳແໜ່ງ (Role)
                 </span>
-                <span className="inline-flex items-center rounded-md bg-indigo-100/60 px-2 py-0.5 text-xs font-semibold text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+                <span className="inline-flex items-center rounded-md bg-brand-100/60 px-2 py-0.5 text-xs font-semibold text-brand-800 dark:bg-brand-900/40 dark:text-brand-300">
                   {role ? ROLE_LABEL_LO[role] : "—"}
                 </span>
               </div>

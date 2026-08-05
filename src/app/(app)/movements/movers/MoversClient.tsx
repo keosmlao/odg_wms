@@ -49,7 +49,7 @@ export default function MoversClient({ warehouses }: { warehouses: WarehouseOpti
 
   const trendMax = useMemo(() => Math.max(1, ...trend.map((t) => Math.max(Number.parseFloat(t.inq) || 0, Number.parseFloat(t.outq) || 0))), [trend]);
 
-  const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+  const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
   return (
     <div className="space-y-4">
@@ -70,7 +70,7 @@ export default function MoversClient({ warehouses }: { warehouses: WarehouseOpti
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ຫາ</label>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inputCls} />
           </div>
-          <button type="button" onClick={load} disabled={loading || !wh} className="rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">{loading ? "..." : "ກອງ"}</button>
+          <button type="button" onClick={load} disabled={loading || !wh} className="rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">{loading ? "..." : "ກອງ"}</button>
         </div>
       </section>
 
@@ -78,7 +78,7 @@ export default function MoversClient({ warehouses }: { warehouses: WarehouseOpti
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Kard label="ຮັບເຂົ້າລວມ" value={fmt(kpi.total_in)} tone="emerald" />
           <Kard label="ຈ່າຍອອກລວມ" value={fmt(kpi.total_out)} tone="rose" />
-          <Kard label="ສິນຄ້າເຄື່ອນໄຫວ" value={kpi.active_items} tone="blue" />
+          <Kard label="ສິນຄ້າເຄື່ອນໄຫວ" value={kpi.active_items} tone="navy" />
           <Kard label="ມື້ມີການเคลื่อนไหว" value={kpi.active_days} tone="zinc" />
         </div>
       )}
@@ -114,7 +114,7 @@ export default function MoversClient({ warehouses }: { warehouses: WarehouseOpti
           <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Top 50 ສິນຄ້າເຄື່ອນໄຫວ</h3>
           <div className="flex gap-1 rounded-lg bg-zinc-100 p-0.5 text-[11px] dark:bg-zinc-800">
             {([["qout", "ອອກຫຼາຍ"], ["qin", "ເຂົ້າຫຼາຍ"], ["outmoves", "ຄັ້ງ"]] as [SortKey, string][]).map(([k, l]) => (
-              <button key={k} type="button" onClick={() => setSort(k)} className={`rounded-md px-2.5 py-1 font-semibold transition ${sort === k ? "bg-white text-blue-600 shadow-sm dark:bg-zinc-950 dark:text-blue-400" : "text-zinc-500"}`}>{l}</button>
+              <button key={k} type="button" onClick={() => setSort(k)} className={`rounded-md px-2.5 py-1 font-semibold transition ${sort === k ? "bg-white text-brand-600 shadow-sm dark:bg-zinc-950 dark:text-brand-400" : "text-zinc-500"}`}>{l}</button>
             ))}
           </div>
         </div>
@@ -125,7 +125,7 @@ export default function MoversClient({ warehouses }: { warehouses: WarehouseOpti
             {sorted.map((m, i) => (
               <tr key={m.item_code} className="transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
                 <td className="px-4 py-2.5 text-center font-mono text-xs text-zinc-400">{i + 1}</td>
-                <td className="px-4 py-2.5"><span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{m.item_code}</span><div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300" title={m.item_name ?? ""}>{m.item_name}</div></td>
+                <td className="px-4 py-2.5"><span className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{m.item_code}</span><div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300" title={m.item_name ?? ""}>{m.item_name}</div></td>
                 <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400">{Number.parseFloat(m.qin) > 0 ? fmt(m.qin) : "—"}</td>
                 <td className="px-4 py-2.5 text-right font-mono tabular-nums text-rose-600 dark:text-rose-400">{Number.parseFloat(m.qout) > 0 ? fmt(m.qout) : "—"}<span className="ml-1 text-[10px] text-zinc-400">{m.unit_code}</span></td>
                 <td className="px-4 py-2.5 text-center text-zinc-500">{m.outmoves}</td>
@@ -138,12 +138,12 @@ export default function MoversClient({ warehouses }: { warehouses: WarehouseOpti
   );
 }
 
-function Kard({ label, value, tone }: { label: string; value: string | number; tone: "zinc" | "emerald" | "rose" | "blue" }) {
+function Kard({ label, value, tone }: { label: string; value: string | number; tone: "zinc" | "emerald" | "rose" | "navy" }) {
   const t = {
     zinc: "text-zinc-700 dark:text-zinc-200",
     emerald: "text-emerald-600 dark:text-emerald-400",
     rose: "text-rose-600 dark:text-rose-400",
-    blue: "text-blue-600 dark:text-blue-400",
+    navy: "text-brand-600 dark:text-brand-400",
   }[tone];
   return (
     <div className="shadow-card rounded-xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">

@@ -79,7 +79,7 @@ export default function ExcelImport({ sessionId }: { sessionId: number }) {
         </div>
         <a
           href={`/api/stocktake/sessions/${sessionId}/import`}
-          className="text-xs font-semibold text-indigo-600 underline-offset-2 hover:underline dark:text-indigo-400"
+          className="text-xs font-semibold text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
         >
           ດາວໂຫຼດ template
         </a>
@@ -98,8 +98,8 @@ export default function ExcelImport({ sessionId }: { sessionId: number }) {
         }}
         className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition ${
           dragOver
-            ? "border-indigo-400 bg-indigo-50/40 dark:border-indigo-600 dark:bg-indigo-950/30"
-            : "border-zinc-200 hover:border-indigo-300 dark:border-zinc-700 dark:hover:border-indigo-700"
+            ? "border-brand-400 bg-brand-50/40 dark:border-brand-600 dark:bg-brand-950/30"
+            : "border-zinc-200 hover:border-brand-300 dark:border-zinc-700 dark:hover:border-brand-700"
         }`}
       >
         <input
@@ -133,7 +133,7 @@ export default function ExcelImport({ sessionId }: { sessionId: number }) {
           type="button"
           onClick={submit}
           disabled={!file || busy}
-          className="flex-1 rounded-lg bg-gradient-to-r from-indigo-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? "ກຳລັງນຳເຂົ້າ..." : "ນຳເຂົ້າ"}
         </button>

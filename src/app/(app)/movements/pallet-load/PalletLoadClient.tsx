@@ -186,7 +186,7 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
                   <button key={h.item_code} type="button" onClick={() => addHit(h)} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-800/70">
                     <PlusIcon className="h-4 w-4 shrink-0 text-emerald-500" />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5"><span className="font-mono text-[11px] font-bold text-emerald-600 dark:text-emerald-400">{h.item_code}</span>{(h.is_isn ?? 0) === 1 && <span className="rounded bg-violet-100 px-1 py-0.5 text-[9px] font-bold text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">SN</span>}</div>
+                      <div className="flex items-center gap-1.5"><span className="font-mono text-[11px] font-bold text-emerald-600 dark:text-emerald-400">{h.item_code}</span>{(h.is_isn ?? 0) === 1 && <span className="rounded bg-aqua-100 px-1 py-0.5 text-[9px] font-bold text-aqua-700 dark:bg-aqua-950/50 dark:text-aqua-300">SN</span>}</div>
                       <div className="truncate text-xs">{h.item_name}</div>
                     </div>
                     <div className="shrink-0 text-right text-[10px] text-zinc-400">ນີ້ {fmt(h.balance_qty)} · {h.unit_code}</div>
@@ -209,14 +209,14 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
                   {lines.map((l) => (
                     <tr key={l.item_code}>
                       <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-1.5"><span className="font-mono text-[11px] font-bold text-emerald-600 dark:text-emerald-400">{l.item_code}</span>{l.serialized && <span className="rounded bg-violet-100 px-1 py-0.5 text-[9px] font-bold text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">SN</span>}</div>
+                        <div className="flex items-center gap-1.5"><span className="font-mono text-[11px] font-bold text-emerald-600 dark:text-emerald-400">{l.item_code}</span>{l.serialized && <span className="rounded bg-aqua-100 px-1 py-0.5 text-[9px] font-bold text-aqua-700 dark:bg-aqua-950/50 dark:text-aqua-300">SN</span>}</div>
                         <div className="max-w-md truncate text-sm text-zinc-800 dark:text-zinc-200" title={l.item_name ?? ""}>{l.item_name ?? "—"}</div>
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums text-zinc-500">{fmt(l.before)}<span className="ml-1 text-[10px] uppercase text-zinc-400">{l.unit_code}</span></td>
                       <td className="px-4 py-2.5">
                         {l.serialized ? (
                           <div className="flex justify-center">
-                            <button type="button" onClick={() => setSerialItem(l.item_code)} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900/50"><LayersIcon className="h-3.5 w-3.5" />{addedOf(l) > 0 ? `+${addedOf(l)} SN` : "ຈັດການ SN"}</button>
+                            <button type="button" onClick={() => setSerialItem(l.item_code)} className="inline-flex items-center gap-1.5 rounded-lg bg-aqua-50 px-3 py-1.5 text-xs font-semibold text-aqua-700 ring-1 ring-aqua-200 hover:bg-aqua-100 dark:bg-aqua-950/40 dark:text-aqua-300 dark:ring-aqua-900/50"><LayersIcon className="h-3.5 w-3.5" />{addedOf(l) > 0 ? `+${addedOf(l)} SN` : "ຈັດການ SN"}</button>
                           </div>
                         ) : (
                           <div className="flex justify-center">

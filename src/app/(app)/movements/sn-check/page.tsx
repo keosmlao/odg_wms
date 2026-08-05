@@ -44,7 +44,7 @@ export default async function SnCheckPage({
       : [];
 
   const tabBase = "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition";
-  const tabActive = "bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-md shadow-violet-500/20";
+  const tabActive = "bg-gradient-to-r from-aqua-600 to-brand-700 text-white shadow-md shadow-aqua-500/20";
   const tabIdle = "bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800";
 
   return (
@@ -53,7 +53,7 @@ export default async function SnCheckPage({
         title="ກວດ SN ທຽບ Stock"
         description="ກວດສິນຄ້າ serial ທີ່ location ຂອງ SN ≠ location ຂອງ WMS stock ແລ້ວຍ້າຍ SN ໄປໃຫ້ຕົງກັບ WMS (ຖື location WMS ເປັນຫຼັກ)"
         icon={<PackageIcon className="h-6 w-6" />}
-        tone="violet"
+        tone="aqua"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
 

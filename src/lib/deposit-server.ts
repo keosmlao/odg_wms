@@ -94,6 +94,12 @@ export type DepositListRow = {
   total_qty: string;
   total_value: string;
   bill_count: number;
+  /** Bill numbers on this deposit, comma-separated. */
+  bill_docs: string | null;
+  /** Selling department(s) of those bills, from ic_trans → erp_department_list. */
+  dept_names: string | null;
+  /** Salesperson to show: the deposit snapshot, else resolved from the bill. */
+  sale_display: string | null;
   settled_fee: string | null;
   settled_days: number | null;
   days_elapsed: number;
@@ -129,7 +135,9 @@ export function buildDepositListQuery(
     const i = args.length;
     where.push(
       `(d.deposit_code ILIKE $${i} OR d.cust_code ILIKE $${i} OR d.cust_name ILIKE $${i}
-        OR d.wh_code ILIKE $${i} OR d.sale_name ILIKE $${i})`,
+        OR d.wh_code ILIKE $${i} OR d.sale_name ILIKE $${i}
+        OR EXISTS (SELECT 1 FROM public.wms_deposit_bill sb
+                    WHERE sb.deposit_id = d.deposit_id AND sb.doc_no ILIKE $${i}))`,
     );
   }
   if (filters.from) {
@@ -192,8 +200,10 @@ export function buildDepositListQuery(
         d.total_items,
         d.total_qty::text   AS total_qty,
         d.total_value::text AS total_value,
-        (SELECT count(*)::int FROM public.wms_deposit_bill b
-          WHERE b.deposit_id = d.deposit_id) AS bill_count,
+        bl.bill_count,
+        bl.bill_docs,
+        bl.dept_names,
+        COALESCE(NULLIF(d.sale_name, ''), bl.bill_sale_names) AS sale_display,
         d.settled_fee::text AS settled_fee,
         d.settled_days,
         ${DAYS_SQL} AS days_elapsed,
@@ -202,6 +212,31 @@ export function buildDepositListQuery(
       FROM public.wms_deposit d
       LEFT JOIN public.ic_warehouse w ON w.code = d.wh_code
       LEFT JOIN public.odg_employee e ON e.employee_id = d.created_by
+      -- Bill numbers, and the selling department behind them. The deposit
+      -- snapshot keeps the customer/salesperson but not the department, so it
+      -- is read back from the source bill in ic_trans.
+      LEFT JOIN LATERAL (
+        SELECT
+          count(*)::int AS bill_count,
+          string_agg(DISTINCT b.doc_no, ', ' ORDER BY b.doc_no) AS bill_docs,
+          string_agg(
+            DISTINCT COALESCE(NULLIF(dl.name_1, ''), NULLIF(t.department_code, '')),
+            ', '
+          ) AS dept_names,
+          -- Fallback for deposits taken before the salesperson was snapshotted.
+          string_agg(
+            DISTINCT COALESCE(
+              NULLIF(b.sale_name, ''), NULLIF(se.fullname_lo, ''), NULLIF(t.sale_code, '')
+            ),
+            ', '
+          ) AS bill_sale_names
+        FROM public.wms_deposit_bill b
+        LEFT JOIN public.ic_trans t
+               ON t.doc_no = b.doc_no AND t.trans_flag = b.trans_flag
+        LEFT JOIN public.erp_department_list dl ON dl.code = t.department_code
+        LEFT JOIN public.odg_employee se ON se.employee_code = t.sale_code
+        WHERE b.deposit_id = d.deposit_id
+      ) bl ON TRUE
       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
     ) x
     ${agingWhere.length ? `WHERE ${agingWhere.join(" AND ")}` : ""}

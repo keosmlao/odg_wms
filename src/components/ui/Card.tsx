@@ -1,50 +1,50 @@
 import type { ReactNode } from "react";
 
-export type AccentTone = "neutral" | "emerald" | "red" | "violet" | "blue" | "amber" | "indigo";
+export type AccentTone = "neutral" | "emerald" | "red" | "aqua" | "navy" | "amber" | "brand";
 
 const iconColorMap: Record<AccentTone, string> = {
   neutral: "text-zinc-700 dark:text-zinc-200",
   emerald: "text-emerald-600 dark:text-emerald-400",
   red: "text-red-600 dark:text-red-400",
-  violet: "text-violet-600 dark:text-violet-400",
-  blue: "text-blue-600 dark:text-blue-400",
+  aqua: "text-aqua-600 dark:text-aqua-400",
+  navy: "text-brand-900 dark:text-brand-300",
   amber: "text-amber-600 dark:text-amber-400",
-  indigo: "text-indigo-600 dark:text-indigo-400",
+  brand: "text-brand-600 dark:text-brand-400",
 };
 
 const iconBgMap: Record<AccentTone, string> = {
   neutral: "bg-zinc-100 dark:bg-zinc-800",
   emerald: "bg-emerald-50 dark:bg-emerald-950/40",
   red: "bg-red-50 dark:bg-red-950/40",
-  violet: "bg-violet-50 dark:bg-violet-950/40",
-  blue: "bg-blue-50 dark:bg-blue-950/40",
+  aqua: "bg-aqua-50 dark:bg-aqua-950/40",
+  navy: "bg-brand-100 dark:bg-brand-900/50",
   amber: "bg-amber-50 dark:bg-amber-950/40",
-  indigo: "bg-indigo-50 dark:bg-indigo-950/40",
+  brand: "bg-brand-50 dark:bg-brand-950/40",
 };
 
 const valueColorMap: Record<AccentTone, string> = {
   neutral: "text-zinc-900 dark:text-zinc-50",
   emerald: "text-emerald-600 dark:text-emerald-400",
   red: "text-red-600 dark:text-red-400",
-  violet: "text-violet-600 dark:text-violet-400",
-  blue: "text-blue-600 dark:text-blue-400",
+  aqua: "text-aqua-600 dark:text-aqua-400",
+  navy: "text-brand-900 dark:text-brand-300",
   amber: "text-amber-600 dark:text-amber-400",
-  indigo: "text-indigo-600 dark:text-indigo-400",
+  brand: "text-brand-600 dark:text-brand-400",
 };
 
 const heroGradientMap: Record<AccentTone, string> = {
   neutral:
-    "from-indigo-500/10 via-violet-500/5 to-transparent dark:from-indigo-500/15 dark:via-violet-500/10",
+    "from-brand-500/10 via-aqua-500/5 to-transparent dark:from-brand-500/15 dark:via-aqua-500/10",
   emerald:
     "from-emerald-500/10 via-teal-500/5 to-transparent dark:from-emerald-500/15 dark:via-teal-500/10",
   red: "from-red-500/10 via-orange-500/5 to-transparent dark:from-red-500/15 dark:via-orange-500/10",
-  violet:
-    "from-violet-500/10 via-purple-500/5 to-transparent dark:from-violet-500/15 dark:via-purple-500/10",
-  blue: "from-blue-500/10 via-cyan-500/5 to-transparent dark:from-blue-500/15 dark:via-cyan-500/10",
+  aqua:
+    "from-aqua-500/10 via-sunset-500/5 to-transparent dark:from-aqua-500/15 dark:via-sunset-500/10",
+  navy: "from-brand-900/10 via-brand-500/5 to-transparent dark:from-brand-900/25 dark:via-brand-500/10",
   amber:
     "from-amber-500/10 via-orange-500/5 to-transparent dark:from-amber-500/15 dark:via-orange-500/10",
-  indigo:
-    "from-indigo-500/10 via-violet-500/5 to-transparent dark:from-indigo-500/15 dark:via-violet-500/10",
+  brand:
+    "from-brand-500/10 via-aqua-500/5 to-transparent dark:from-brand-500/15 dark:via-aqua-500/10",
 };
 
 export function accentClasses(tone: AccentTone) {
@@ -139,7 +139,7 @@ export function Chip({
   tone = "default",
 }: {
   children: ReactNode;
-  tone?: "default" | "primary" | "emerald" | "red" | "violet" | "blue" | "amber" | "indigo";
+  tone?: "default" | "primary" | "emerald" | "red" | "aqua" | "navy" | "amber" | "brand";
 }) {
   const colorMap: Record<string, string> = {
     default:
@@ -149,13 +149,13 @@ export function Chip({
     emerald:
       "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-900/50",
     red: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-950/50 dark:text-red-300 dark:ring-red-900/50",
-    violet:
-      "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200 dark:bg-violet-950/50 dark:text-violet-300 dark:ring-violet-900/50",
-    blue: "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:ring-blue-900/50",
+    aqua:
+      "bg-aqua-50 text-aqua-700 ring-1 ring-inset ring-aqua-200 dark:bg-aqua-950/50 dark:text-aqua-300 dark:ring-aqua-900/50",
+    navy: "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200 dark:bg-brand-950/50 dark:text-brand-300 dark:ring-brand-900/50",
     amber:
       "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-900/50",
-    indigo:
-      "bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:ring-indigo-900/50",
+    brand:
+      "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200 dark:bg-brand-950/50 dark:text-brand-300 dark:ring-brand-900/50",
   };
   return (
     <span
@@ -258,51 +258,51 @@ export function Notice({
   action,
 }: {
   icon?: ReactNode;
-  tone?: "amber" | "blue" | "red" | "emerald" | "indigo";
+  tone?: "amber" | "navy" | "red" | "emerald" | "brand";
   title: string;
   description?: string;
   action?: ReactNode;
 }) {
   const ringMap: Record<string, string> = {
     amber: "ring-amber-200 dark:ring-amber-900/50",
-    blue: "ring-blue-200 dark:ring-blue-900/50",
+    navy: "ring-brand-200 dark:ring-brand-900/50",
     red: "ring-red-200 dark:ring-red-900/50",
     emerald: "ring-emerald-200 dark:ring-emerald-900/50",
-    indigo: "ring-indigo-200 dark:ring-indigo-900/50",
+    brand: "ring-brand-200 dark:ring-brand-900/50",
   };
   const bgMap: Record<string, string> = {
     amber:
       "bg-gradient-to-br from-amber-50 to-amber-50/30 dark:from-amber-950/30 dark:to-amber-950/10",
-    blue: "bg-gradient-to-br from-blue-50 to-blue-50/30 dark:from-blue-950/30 dark:to-blue-950/10",
+    navy: "bg-gradient-to-br from-brand-50 to-brand-50/30 dark:from-brand-950/30 dark:to-brand-950/10",
     red: "bg-gradient-to-br from-red-50 to-red-50/30 dark:from-red-950/30 dark:to-red-950/10",
     emerald:
       "bg-gradient-to-br from-emerald-50 to-emerald-50/30 dark:from-emerald-950/30 dark:to-emerald-950/10",
-    indigo:
-      "bg-gradient-to-br from-indigo-50 to-indigo-50/30 dark:from-indigo-950/30 dark:to-indigo-950/10",
+    brand:
+      "bg-gradient-to-br from-brand-50 to-aqua-50/30 dark:from-brand-950/30 dark:to-brand-950/10",
   };
   const iconBg: Record<string, string> = {
     amber:
       "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
-    blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400",
+    navy: "bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-400",
     red: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400",
     emerald:
       "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400",
-    indigo:
-      "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400",
+    brand:
+      "bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-400",
   };
   const titleColor: Record<string, string> = {
     amber: "text-amber-900 dark:text-amber-200",
-    blue: "text-blue-900 dark:text-blue-200",
+    navy: "text-brand-900 dark:text-brand-200",
     red: "text-red-900 dark:text-red-200",
     emerald: "text-emerald-900 dark:text-emerald-200",
-    indigo: "text-indigo-900 dark:text-indigo-200",
+    brand: "text-brand-900 dark:text-brand-200",
   };
   const subColor: Record<string, string> = {
     amber: "text-amber-700 dark:text-amber-300",
-    blue: "text-blue-700 dark:text-blue-300",
+    navy: "text-brand-700 dark:text-brand-300",
     red: "text-red-700 dark:text-red-300",
     emerald: "text-emerald-700 dark:text-emerald-300",
-    indigo: "text-indigo-700 dark:text-indigo-300",
+    brand: "text-brand-700 dark:text-brand-300",
   };
   return (
     <div className={`rounded-2xl ${bgMap[tone]} p-4 ring-1 ${ringMap[tone]}`}>

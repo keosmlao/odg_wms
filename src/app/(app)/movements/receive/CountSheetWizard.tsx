@@ -357,14 +357,14 @@ export default function CountSheetWizard({ po = "", wh = "" }: { po?: string; wh
                   return (
                     <tr key={l.item_code} className="align-top">
                       <td className="px-4 py-2.5">
-                        <div className="font-mono text-[11px] font-bold text-emerald-700 dark:text-emerald-400">{l.item_code}{l.isIsn && <span className="ml-1 rounded bg-violet-100 px-1 text-[9px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">SN</span>}</div>
+                        <div className="font-mono text-[11px] font-bold text-emerald-700 dark:text-emerald-400">{l.item_code}{l.isIsn && <span className="ml-1 rounded bg-aqua-100 px-1 text-[9px] text-aqua-700 dark:bg-aqua-950/40 dark:text-aqua-300">SN</span>}</div>
                         <div className="max-w-md truncate text-xs text-zinc-700 dark:text-zinc-300" title={l.item_name ?? ""}>{l.item_name ?? "—"}</div>
                         {multiSrc && (
                           <div className="mt-0.5 flex flex-wrap gap-1 text-[9px] text-zinc-400">
                             {l.sources.map((s) => <span key={s.po_no} className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">{s.po_no}: {fmt(s.remaining)}</span>)}
                           </div>
                         )}
-                        {l.isIsn && <div className="mt-0.5 text-[10px] text-violet-500">gen ISN ອັດຕະໂນມັດ {Math.round(q ?? 0)} ໜ່ວຍ ຕອນບັນທຶກ</div>}
+                        {l.isIsn && <div className="mt-0.5 text-[10px] text-aqua-500">gen ISN ອັດຕະໂນມັດ {Math.round(q ?? 0)} ໜ່ວຍ ຕອນບັນທຶກ</div>}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-zinc-500">{fmt(l.ordered)}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold tabular-nums text-amber-600 dark:text-amber-400">{l.remaining > 0 ? fmt(l.remaining) : "—"}</td>
@@ -375,7 +375,7 @@ export default function CountSheetWizard({ po = "", wh = "" }: { po?: string; wh
                         </div>
                         {over && <div className="mt-0.5 text-center text-[10px] text-red-500">ເກີນຄ້າງ</div>}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-indigo-600 dark:text-indigo-400">
+                      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-brand-600 dark:text-brand-400">
                         {estimatePalletPositions(q ?? 0, l.pallet) > 0 ? `~${estimatePalletPositions(q ?? 0, l.pallet)}` : "—"}
                       </td>
                     </tr>
@@ -385,7 +385,7 @@ export default function CountSheetWizard({ po = "", wh = "" }: { po?: string; wh
               <tfoot>
                 <tr className="border-t border-zinc-200 bg-zinc-50 text-xs font-semibold dark:border-zinc-700 dark:bg-zinc-800/50">
                   <td className="px-4 py-2 text-zinc-600 dark:text-zinc-300" colSpan={4}>ພາເລດທີ່ຕ້ອງໃຊ້ລວມ</td>
-                  <td className="px-4 py-2 text-right font-mono tabular-nums text-indigo-600 dark:text-indigo-400">
+                  <td className="px-4 py-2 text-right font-mono tabular-nums text-brand-600 dark:text-brand-400">
                     ~{lines.reduce((s, l) => s + estimatePalletPositions(parsedQty(l.qty) ?? 0, l.pallet), 0)} ພາເລດ
                   </td>
                 </tr>

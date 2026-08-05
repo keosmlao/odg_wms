@@ -28,7 +28,7 @@ export default async function LedgerPage() {
         title="ປະຫວັດການເຄື່ອນໄຫວ (Audit)"
         description="ບັນທຶກລວມທຸກເອກະສານ — ຮັບ / ຈ່າຍ / ປັບປຸງ / ຍ້າຍ pallet & serial ໃນບ່ອນດຽວ"
         icon={<ListIcon className="h-6 w-6" />}
-        tone="blue"
+        tone="navy"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
       <LedgerClient warehouses={warehouses} />

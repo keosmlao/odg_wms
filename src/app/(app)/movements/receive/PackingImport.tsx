@@ -645,7 +645,7 @@ export default function PackingImport({ warehouses, defaultWh = "" }: { warehous
                         <td className="px-3 py-2">
                           <div className="font-mono text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
                             {l.item_code}
-                            {l.is_isn && <span className="ml-1 rounded bg-violet-100 px-1 text-[9px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">SN</span>}
+                            {l.is_isn && <span className="ml-1 rounded bg-aqua-100 px-1 text-[9px] text-aqua-700 dark:bg-aqua-950/40 dark:text-aqua-300">SN</span>}
                           </div>
                           <div className="max-w-sm truncate text-[11px] text-zinc-600 dark:text-zinc-400" title={l.item_name ?? ""}>{l.item_name ?? "—"}</div>
                         </td>
@@ -760,10 +760,10 @@ export default function PackingImport({ warehouses, defaultWh = "" }: { warehous
 
       {/* ເບິ່ງກ່ອນນຳເຂົ້າ — ຍັງບໍ່ໄດ້ບັນທຶກຫຍັງລົງລະບົບ */}
       {filePreview?.summary && (
-        <div className="rounded-xl ring-2 ring-indigo-300 dark:ring-indigo-800">
-          <div className="flex flex-wrap items-center gap-2 rounded-t-xl bg-indigo-50 px-4 py-2.5 dark:bg-indigo-950/30">
-            <span className="text-sm font-extrabold text-indigo-800 dark:text-indigo-300">ເບິ່ງກ່ອນນຳເຂົ້າ (ຍັງບໍ່ໄດ້ບັນທຶກ)</span>
-            <span className="text-[11px] text-indigo-700/80 dark:text-indigo-400/80">
+        <div className="rounded-xl ring-2 ring-brand-300 dark:ring-brand-800">
+          <div className="flex flex-wrap items-center gap-2 rounded-t-xl bg-brand-50 px-4 py-2.5 dark:bg-brand-950/30">
+            <span className="text-sm font-extrabold text-brand-800 dark:text-brand-300">ເບິ່ງກ່ອນນຳເຂົ້າ (ຍັງບໍ່ໄດ້ບັນທຶກ)</span>
+            <span className="text-[11px] text-brand-700/80 dark:text-brand-400/80">
               ອ່ານ {filePreview.summary.rows_read} ແຖວ · ໃຊ້ໄດ້ {filePreview.summary.lines}
               {filePreview.summary.skipped > 0 ? ` · ຂ້າມ ${filePreview.summary.skipped}` : ""}
             </span>
@@ -780,7 +780,7 @@ export default function PackingImport({ warehouses, defaultWh = "" }: { warehous
             <div className="flex flex-wrap gap-1.5 border-b border-zinc-100 px-4 py-2 dark:border-zinc-800">
               <span className="text-[11px] font-semibold text-zinc-500">ຈະເຂົ້າ PO:</span>
               {(filePreview.po_summary ?? []).map((p) => (
-                <span key={p.po_no} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300 dark:ring-indigo-900/50">
+                <span key={p.po_no} className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-700 ring-1 ring-brand-200 dark:bg-brand-950/30 dark:text-brand-300 dark:ring-brand-900/50">
                   {p.po_no} · {p.lines} ລາຍການ · {fmt(p.qty)}
                 </span>
               ))}

@@ -57,13 +57,13 @@ const STATUS_TABS: Array<{
   {
     value: "active",
     label: "ກຳລັງຝາກ",
-    dot: "bg-indigo-500",
-    pillActive: "border-indigo-500 bg-indigo-500 text-white shadow-sm",
+    dot: "bg-brand-500",
+    pillActive: "border-brand-500 bg-brand-500 text-white shadow-sm",
     pill:
-      "border-zinc-200 text-zinc-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-indigo-950/30",
-    accentBar: "bg-indigo-500",
+      "border-zinc-200 text-zinc-700 hover:border-brand-300 hover:bg-brand-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-brand-950/30",
+    accentBar: "bg-brand-500",
     chip:
-      "bg-indigo-50 text-indigo-700 ring-indigo-200/70 dark:bg-indigo-950/40 dark:text-indigo-300 dark:ring-indigo-900/50",
+      "bg-brand-50 text-brand-700 ring-brand-200/70 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50",
   },
   {
     value: "settled",
@@ -226,7 +226,7 @@ export default async function DepositsListPage({
           </a>
           <Link
             href="/deposits/new"
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-500"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-500"
           >
             <PlusIcon className="h-4 w-4" />
             ຮັບຝາກໃໝ່
@@ -318,8 +318,8 @@ export default async function DepositsListPage({
               type="text"
               name="q"
               defaultValue={q}
-              placeholder="ຄົ້ນຫາ code, ລູກຄ້າ, ສາງ..."
-              className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 sm:w-56 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+              placeholder="ຄົ້ນຫາ code, ເລກບິນ, ລູກຄ້າ, ສາງ..."
+              className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 sm:w-56 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
             />
             <input
               type="date"
@@ -385,11 +385,17 @@ export default async function DepositsListPage({
                 <tr>
                   <th className="w-1 px-0" aria-hidden="true" />
                   <th className="px-4 py-3 text-left">ຮັບຝາກ</th>
+                  <th className="hidden px-4 py-3 text-left sm:table-cell">
+                    ເລກບິນ
+                  </th>
                   <th className="hidden px-4 py-3 text-left md:table-cell">
                     ສາງ
                   </th>
                   <th className="hidden px-4 py-3 text-left lg:table-cell">
                     ລູກຄ້າ
+                  </th>
+                  <th className="hidden px-4 py-3 text-left xl:table-cell">
+                    ພະນັກງານຂາຍ / ພະແນກ
                   </th>
                   <th className="px-4 py-3 text-left">ສະຖານະ</th>
                   <th className="px-4 py-3 text-left">ໄລຍະ</th>
@@ -434,7 +440,7 @@ export default async function DepositsListPage({
                       className={`group relative transition ${
                         age?.over
                           ? "bg-rose-50/40 hover:bg-rose-50/80 dark:bg-rose-950/15 dark:hover:bg-rose-950/30"
-                          : "hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
+                          : "hover:bg-brand-50/40 dark:hover:bg-brand-950/20"
                       }`}
                     >
                       <td className="relative w-1 p-0">
@@ -450,13 +456,26 @@ export default async function DepositsListPage({
                           href={`/deposits/${r.deposit_id}`}
                           className="block"
                         >
-                          <div className="font-mono font-semibold text-zinc-900 group-hover:text-indigo-700 dark:text-white dark:group-hover:text-indigo-300">
+                          <div className="font-mono font-semibold text-zinc-900 group-hover:text-brand-700 dark:text-white dark:group-hover:text-brand-300">
                             {r.deposit_code}
                           </div>
                           <div className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
                             {r.bill_count} ບິນ · {r.total_items} ສິນຄ້າ
                           </div>
                         </Link>
+                      </td>
+                      <td className="hidden px-4 py-3 sm:table-cell">
+                        <div
+                          className="max-w-[190px] truncate font-mono text-xs font-semibold text-zinc-800 dark:text-zinc-200"
+                          title={r.bill_docs ?? ""}
+                        >
+                          {r.bill_docs ?? "—"}
+                        </div>
+                        {r.bill_count > 1 && (
+                          <div className="mt-0.5 text-[10px] text-zinc-500">
+                            {r.bill_count} ບິນ
+                          </div>
+                        )}
                       </td>
                       <td className="hidden px-4 py-3 text-zinc-700 md:table-cell dark:text-zinc-300">
                         <div className="font-medium">{r.wh_code}</div>
@@ -475,6 +494,20 @@ export default async function DepositsListPage({
                             {r.cust_code}
                           </div>
                         )}
+                      </td>
+                      <td className="hidden px-4 py-3 xl:table-cell">
+                        <div
+                          className="max-w-[160px] truncate text-sm text-zinc-700 dark:text-zinc-300"
+                          title={r.sale_display ?? ""}
+                        >
+                          {r.sale_display ?? "—"}
+                        </div>
+                        <div
+                          className="max-w-[160px] truncate text-[11px] text-zinc-500"
+                          title={r.dept_names ?? ""}
+                        >
+                          {r.dept_names ?? "—"}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -539,7 +572,7 @@ export default async function DepositsListPage({
                       <td className="px-2 py-3 text-right">
                         <Link
                           href={`/deposits/${r.deposit_id}`}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-zinc-300 transition hover:bg-indigo-100 hover:text-indigo-600 group-hover:text-zinc-500 dark:text-zinc-600"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-zinc-300 transition hover:bg-brand-100 hover:text-brand-600 group-hover:text-zinc-500 dark:text-zinc-600"
                           aria-label="open"
                         >
                           <ChevronRightIcon className="h-4 w-4" />

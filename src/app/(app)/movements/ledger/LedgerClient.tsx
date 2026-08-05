@@ -37,12 +37,12 @@ function op(r: Row): { label: string; cls: string } {
   const dn = r.doc_no.toUpperCase();
   const net = Number.parseFloat(r.net) || 0;
   if (dn.startsWith("ADJ")) return { label: "ປັບປຸງ", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50" };
-  if (dn.startsWith("PMV")) return { label: "ຍ້າຍ Pallet", cls: "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-900/50" };
-  if (dn.startsWith("SNMV")) return { label: "ຍ້າຍ Serial", cls: "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900/50" };
+  if (dn.startsWith("PMV")) return { label: "ຍ້າຍ Pallet", cls: "bg-brand-50 text-brand-700 ring-brand-200 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50" };
+  if (dn.startsWith("SNMV")) return { label: "ຍ້າຍ Serial", cls: "bg-aqua-50 text-aqua-700 ring-aqua-200 dark:bg-aqua-950/40 dark:text-aqua-300 dark:ring-aqua-900/50" };
   if (dn.startsWith("DP")) return { label: "ຈ່າຍອອກ", cls: "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50" };
   if (net > 0.0001) return { label: "ຮັບເຂົ້າ", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50" };
   if (net < -0.0001) return { label: "ຈ່າຍອອກ", cls: "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50" };
-  return { label: "ໂອນ/ຍ້າຍ", cls: "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-900/50" };
+  return { label: "ໂອນ/ຍ້າຍ", cls: "bg-brand-50 text-brand-700 ring-brand-200 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50" };
 }
 
 export default function LedgerClient({ warehouses }: { warehouses: WarehouseOption[] }) {
@@ -89,7 +89,7 @@ export default function LedgerClient({ warehouses }: { warehouses: WarehouseOpti
     }
   }
 
-  const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+  const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
   return (
     <div className="space-y-4">
@@ -123,7 +123,7 @@ export default function LedgerClient({ warehouses }: { warehouses: WarehouseOpti
               <input type="text" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load(0)} placeholder="ເລກ doc ຫຼື ລະຫັດສິນຄ້າ..." className={`${inputCls} w-full pl-8`} />
             </div>
           </div>
-          <button type="button" onClick={() => load(0)} disabled={loading} className="rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">
+          <button type="button" onClick={() => load(0)} disabled={loading} className="rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">
             {loading ? "..." : "ກອງ"}
           </button>
           <a
@@ -186,7 +186,7 @@ export default function LedgerClient({ warehouses }: { warehouses: WarehouseOpti
                               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                                 {lines[key].map((l, i) => (
                                   <tr key={i} className="bg-white dark:bg-zinc-900/50">
-                                    <td className="px-3 py-1.5"><span className="font-mono font-semibold text-blue-600 dark:text-blue-400">{l.item_code}</span> <span className="text-zinc-600 dark:text-zinc-300">{l.item_name}</span></td>
+                                    <td className="px-3 py-1.5"><span className="font-mono font-semibold text-brand-600 dark:text-brand-400">{l.item_code}</span> <span className="text-zinc-600 dark:text-zinc-300">{l.item_name}</span></td>
                                     <td className={`px-3 py-1.5 text-right font-mono tabular-nums ${l.calc_flag < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>{l.calc_flag < 0 ? "−" : "+"}{fmt(l.qty)} {l.unit_code}</td>
                                     <td className="px-3 py-1.5 font-mono text-[11px] text-zinc-500">{[l.rack, l.location, l.pallet].filter(Boolean).join(" / ") || "—"}</td>
                                   </tr>

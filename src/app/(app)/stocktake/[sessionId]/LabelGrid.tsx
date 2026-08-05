@@ -107,8 +107,8 @@ export default function LabelGrid({
                       href={`/stocktake/${sessionId}/count/${l.label_id}`}
                       className={
                         counted
-                          ? "block overflow-hidden rounded-2xl border border-indigo-300/40 bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-900 p-4 text-white shadow-lg shadow-indigo-900/25 ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-900/30"
-                          : "block overflow-hidden rounded-2xl border-2 border-dashed border-indigo-200 bg-white/95 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-400 hover:bg-white hover:shadow-md dark:border-indigo-900/50 dark:bg-slate-900/80 dark:hover:border-indigo-500"
+                          ? "block overflow-hidden rounded-2xl border border-brand-300/40 bg-gradient-to-br from-brand-600 via-brand-700 to-slate-900 p-4 text-white shadow-lg shadow-brand-900/25 ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand-900/30"
+                          : "block overflow-hidden rounded-2xl border-2 border-dashed border-brand-200 bg-white/95 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-400 hover:bg-white hover:shadow-md dark:border-brand-900/50 dark:bg-slate-900/80 dark:hover:border-brand-500"
                       }
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -145,7 +145,7 @@ export default function LabelGrid({
                               className={
                                 counted
                                   ? "mt-1 truncate font-mono text-[10px] font-medium text-white/85"
-                                  : "mt-1 truncate font-mono text-[10px] font-semibold text-indigo-700 dark:text-indigo-300"
+                                  : "mt-1 truncate font-mono text-[10px] font-semibold text-brand-700 dark:text-brand-300"
                               }
                             >
                               📍 {l.rack_code ?? "—"}

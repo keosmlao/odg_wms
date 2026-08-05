@@ -301,7 +301,7 @@ export default async function BalancePage({
       <header className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/40 dark:text-brand-400">
               <PackageIcon className="h-6 w-6" />
             </div>
             <div>
@@ -338,7 +338,7 @@ export default async function BalancePage({
 
             <div className="text-right">
               <div className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">ຍອດລວມຄົງເຫຼືອ</div>
-              <div className={`font-mono text-3xl font-bold tabular-nums ${summary.totalQty < 0 ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"}`}>
+              <div className={`font-mono text-3xl font-bold tabular-nums ${summary.totalQty < 0 ? "text-red-600 dark:text-red-400" : "text-brand-600 dark:text-brand-400"}`}>
                 {formatQty(summary.totalQty)}
               </div>
             </div>
@@ -383,7 +383,7 @@ export default async function BalancePage({
                 {filtered ? "ບໍ່ພົບຜົນຕາມເງື່ອນໄຂ" : "ບໍ່ພົບລາຍການຄົງເຫຼືອ"}
               </p>
               {filtered && (
-                <Link href="/movements/balance?view=table" className="mt-3 inline-block text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400">
+                <Link href="/movements/balance?view=table" className="mt-3 inline-block text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400">
                   ລ້າງການກອງ
                 </Link>
               )}
@@ -431,7 +431,7 @@ export default async function BalancePage({
                 {filtered ? "ບໍ່ພົບຜົນຕາມເງື່ອນໄຂ" : "ບໍ່ພົບລາຍການຄົງເຫຼືອ"}
               </p>
               {filtered && (
-                <Link href="/movements/balance" className="mt-3 inline-block text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400">
+                <Link href="/movements/balance" className="mt-3 inline-block text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400">
                   ລ້າງການກອງ
                 </Link>
               )}
@@ -538,7 +538,7 @@ function WarehouseTreeNode({ warehouse, defaultOpen, q = "" }: { warehouse: Ware
     <details open={defaultOpen} className="group/wh">
       <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
         <Chevron />
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 font-mono text-xs font-bold text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 font-mono text-xs font-bold text-brand-600 dark:bg-brand-950/40 dark:text-brand-400">
           {warehouse.code.slice(-2)}
         </div>
         <div className="min-w-0 flex-1">
@@ -592,7 +592,7 @@ function LocationTreeNode({ warehouse, rack, location, q = "" }: { warehouse: st
     <details className="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
       <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-2 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
         <Chevron small />
-        <MapPinIcon className="h-4 w-4 shrink-0 text-blue-500" />
+        <MapPinIcon className="h-4 w-4 shrink-0 text-brand-500" />
         <div className="min-w-0 flex-1">
           <div className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{location.label}</div>
           <div className="text-xs text-zinc-500 dark:text-zinc-400">

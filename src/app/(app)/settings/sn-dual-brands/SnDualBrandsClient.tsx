@@ -58,9 +58,9 @@ export default function SnDualBrandsClient({ initialBrands }: { initialBrands: s
       ) : (
         <div className="flex flex-wrap gap-2">
           {brands.map((b) => (
-            <span key={b} className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 ring-1 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-900/40">
+            <span key={b} className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700 ring-1 ring-brand-200 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/40">
               {b}
-              <button type="button" onClick={() => removeBrand(b)} className="text-blue-400 hover:text-rose-500" aria-label={`ລົບ ${b}`}>✕</button>
+              <button type="button" onClick={() => removeBrand(b)} className="text-brand-400 hover:text-rose-500" aria-label={`ລົບ ${b}`}>✕</button>
             </span>
           ))}
         </div>
@@ -68,7 +68,7 @@ export default function SnDualBrandsClient({ initialBrands }: { initialBrands: s
 
       <div className="flex items-center justify-end gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
         {toast && <span className={`text-xs font-semibold ${toast.k === "ok" ? "text-emerald-600" : "text-rose-600"}`}>{toast.t}</span>}
-        <button type="button" onClick={save} disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+        <button type="button" onClick={save} disabled={saving} className="rounded-lg bg-brand-600 px-5 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
           {saving ? "ກຳລັງບັນທຶກ..." : "ບັນທຶກ"}
         </button>
       </div>

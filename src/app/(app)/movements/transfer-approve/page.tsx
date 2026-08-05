@@ -20,7 +20,7 @@ export default async function TransferApprovePage() {
         title="ອະນຸມັດ ໃບຂໍໂອນ"
         description="ສາງຕົ້ນທາງ ກວດ ແລະ ອະນຸມັດ ໃບຂໍໂອນ ກ່ອນ — ສະເພาะໃບທີ່ອະນຸມັດแล้วจึงจ่ายออกได้"
         icon={<CheckIcon className="h-6 w-6" />}
-        tone="indigo"
+        tone="brand"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
       <ApproveClient />

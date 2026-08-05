@@ -425,7 +425,7 @@ export default function Counter({
             </p>
           </div>
 
-          <div className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1 text-right text-white shadow-sm shadow-indigo-500/25">
+          <div className="shrink-0 rounded-lg bg-brand-600 px-2.5 py-1 text-right text-white shadow-sm shadow-brand-500/25">
             <div className="font-mono text-base font-black leading-none tabular-nums sm:text-lg">
               {formatQty(totalQty)}
             </div>
@@ -518,13 +518,13 @@ export default function Counter({
                     }
                   }}
                   placeholder="ຄົ້ນຫາລະຫັດສິນຄ້າ ຫຼື COM..."
-                  className="relative z-0 h-11 w-full rounded-xl border-none bg-white pl-9 pr-12 text-sm font-medium shadow-sm ring-1 ring-zinc-200 transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:bg-zinc-900 dark:ring-zinc-800"
+                  className="relative z-0 h-11 w-full rounded-xl border-none bg-white pl-9 pr-12 text-sm font-medium shadow-sm ring-1 ring-zinc-200 transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-500 dark:bg-zinc-900 dark:ring-zinc-800"
                 />
                 <button
                   type="button"
                   title="ສະແກນບາໂຄດ"
                   onClick={() => setScannerOpen(true)}
-                  className="absolute inset-y-1 right-1 z-20 flex w-9 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm transition hover:bg-indigo-500 active:scale-95"
+                  className="absolute inset-y-1 right-1 z-20 flex w-9 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm transition hover:bg-brand-500 active:scale-95"
                   aria-label="ສະແກນບາໂຄດ"
                 >
                   <svg
@@ -553,7 +553,7 @@ export default function Counter({
                         className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800/70 dark:active:bg-zinc-800"
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="font-mono text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                          <div className="font-mono text-[10px] font-bold text-brand-600 dark:text-brand-400">
                             {h.item_code}
                           </div>
                           <div className="mt-0.5 truncate text-xs font-medium">
@@ -586,7 +586,7 @@ export default function Counter({
                     <select
                       value={rackCode}
                       onChange={(e) => setRackCode(e.target.value)}
-                      className="h-9 w-full rounded-lg bg-white px-2 text-xs font-semibold shadow-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-900 dark:ring-zinc-800"
+                      className="h-9 w-full rounded-lg bg-white px-2 text-xs font-semibold shadow-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-900 dark:ring-zinc-800"
                     >
                       <option value="">— ບໍ່ລະບຸ —</option>
                       {racks.map((r) => (
@@ -603,7 +603,7 @@ export default function Counter({
                     <select
                       value={locationCode}
                       onChange={(e) => setLocationCode(e.target.value)}
-                      className="h-9 w-full rounded-lg bg-white px-2 text-xs font-semibold shadow-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-900 dark:ring-zinc-800"
+                      className="h-9 w-full rounded-lg bg-white px-2 text-xs font-semibold shadow-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-900 dark:ring-zinc-800"
                     >
                       <option value="">— ບໍ່ລະບຸ —</option>
                       {availableLocations.map((l) => (
@@ -618,7 +618,7 @@ export default function Counter({
 
               {/* Selected item card */}
               {selected && (
-                <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-700 text-white shadow-lg shadow-indigo-600/25 dark:from-indigo-500 dark:to-indigo-600">
+                <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 to-brand-700 text-white shadow-lg shadow-brand-600/25 dark:from-brand-500 dark:to-brand-600">
                   <div className="flex items-start justify-between gap-2 px-4 pb-1 pt-3">
                     <div className="min-w-0">
                       <div className="font-mono text-[10px] font-bold uppercase tracking-wider opacity-80">
@@ -683,7 +683,7 @@ export default function Counter({
                       type="button"
                       onClick={() => addLine()}
                       disabled={submitting || !qty}
-                      className="mt-3 hidden h-10 w-full items-center justify-center gap-2 rounded-lg bg-white text-sm font-bold text-indigo-700 shadow-sm transition hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50 lg:flex"
+                      className="mt-3 hidden h-10 w-full items-center justify-center gap-2 rounded-lg bg-white text-sm font-bold text-brand-700 shadow-sm transition hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50 lg:flex"
                     >
                       <CheckIcon className="h-4 w-4" />
                       {submitting ? "ກຳລັງບັນທຶກ..." : "ຢືນຢັນການນັບ"}
@@ -740,7 +740,7 @@ export default function Counter({
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
                             {l.item_code}
                           </span>
                           {l.line_id < 0 && (
@@ -777,11 +777,11 @@ export default function Counter({
                               autoFocus
                               value={editingQty}
                               onChange={(e) => setEditingQty(e.target.value)}
-                              className="w-16 rounded bg-zinc-100 px-1.5 py-1 text-right font-mono text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-800"
+                              className="w-16 rounded bg-zinc-100 px-1.5 py-1 text-right font-mono text-xs font-bold focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-800"
                             />
                             <button
                               onClick={() => saveEdit(l.line_id)}
-                              className="rounded bg-indigo-600 p-1 text-white hover:bg-indigo-700"
+                              className="rounded bg-brand-600 p-1 text-white hover:bg-brand-700"
                               aria-label="ບັນທຶກ"
                             >
                               <CheckIcon className="h-3 w-3" />
@@ -793,7 +793,7 @@ export default function Counter({
                             onClick={() => startEdit(l)}
                             className="text-right transition active:scale-95 disabled:opacity-100"
                           >
-                            <div className="font-mono text-base font-black leading-none tabular-nums text-zinc-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400">
+                            <div className="font-mono text-base font-black leading-none tabular-nums text-zinc-900 hover:text-brand-600 dark:text-white dark:hover:text-brand-400">
                               {formatQty(l.qty)}
                             </div>
                             <div className="mt-0.5 text-[9px] font-bold uppercase text-zinc-400">
@@ -835,7 +835,7 @@ export default function Counter({
           <button
             onClick={() => addLine()}
             disabled={submitting || !qty}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-bold text-white shadow-md shadow-indigo-600/30 transition active:scale-[0.98] disabled:opacity-40"
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-600 text-sm font-bold text-white shadow-md shadow-brand-600/30 transition active:scale-[0.98] disabled:opacity-40"
           >
             <CheckIcon className="h-4 w-4" />
             {submitting ? "ກຳລັງບັນທຶກ..." : "ຢືນຢັນການນັບ"}

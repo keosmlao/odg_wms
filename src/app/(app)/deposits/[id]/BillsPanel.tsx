@@ -160,7 +160,7 @@ export default function BillsPanel({
           <button
             type="button"
             onClick={() => (picking ? setPicking(false) : openPicker())}
-            className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300"
+            className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-100 dark:border-brand-900/50 dark:bg-brand-950/40 dark:text-brand-300"
           >
             <PlusIcon className="h-3 w-3" />
             {picking ? "ປິດ" : "ເພີ່ມບິນ"}
@@ -191,7 +191,7 @@ export default function BillsPanel({
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="ຄົ້ນຫາ doc_no, ລູກຄ້າ..."
-                className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-8 pr-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+                className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-8 pr-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
               />
             </div>
             <button
@@ -205,7 +205,7 @@ export default function BillsPanel({
               type="button"
               onClick={addSelected}
               disabled={selected.size === 0 || busy === "add"}
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-40"
+              className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500 disabled:opacity-40"
             >
               {busy === "add" ? "ກຳລັງເພີ່ມ..." : `ເພີ່ມ (${selected.size})`}
             </button>
@@ -241,14 +241,14 @@ export default function BillsPanel({
                           }
                           className={`flex w-full items-center gap-2.5 px-3 py-2 text-left transition ${
                             on
-                              ? "bg-indigo-50/70 dark:bg-indigo-950/30"
+                              ? "bg-brand-50/70 dark:bg-brand-950/30"
                               : "hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
                           }`}
                         >
                           <span
                             className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
                               on
-                                ? "border-indigo-600 bg-indigo-600 text-white"
+                                ? "border-brand-600 bg-brand-600 text-white"
                                 : "border-zinc-300 dark:border-zinc-600"
                             }`}
                           >
@@ -266,7 +266,7 @@ export default function BillsPanel({
                             </span>
                           </span>
                           <span className="shrink-0 text-right">
-                            <span className="block font-mono text-[11px] font-semibold tabular-nums text-indigo-700 dark:text-indigo-300">
+                            <span className="block font-mono text-[11px] font-semibold tabular-nums text-brand-700 dark:text-brand-300">
                               {formatMoney(
                                 b.value_sum ?? 0,
                                 b.currency_code ?? currency,

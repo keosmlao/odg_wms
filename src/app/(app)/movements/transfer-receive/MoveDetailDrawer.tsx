@@ -118,7 +118,7 @@ export default function MoveDetailDrawer({ docNo, onClose }: { docNo: string | n
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="text-[11px] font-bold text-zinc-500 dark:text-zinc-400">ເອກະສານ ERP:</span>
                     {Array.from(new Map(data.erp.map((e) => [e.doc_no, e])).values()).map((e) => (
-                      <span key={e.doc_no} className="rounded-md bg-white px-2 py-1 font-mono text-[11px] font-bold text-blue-700 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-blue-400 dark:ring-zinc-700"
+                      <span key={e.doc_no} className="rounded-md bg-white px-2 py-1 font-mono text-[11px] font-bold text-brand-700 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-brand-400 dark:ring-zinc-700"
                         title={e.wh_from === IN_TRANSIT ? "ໃບໂອນເຂົ້າ" : e.wh_to === IN_TRANSIT ? "ໃບໂອນອອກ" : "ERP"}>
                         {e.doc_no}
                       </span>

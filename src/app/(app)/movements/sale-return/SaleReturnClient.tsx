@@ -71,7 +71,7 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
     setSubmitting(false);
   };
 
-  const inputCls = "rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-violet-500";
+  const inputCls = "rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-aqua-500";
 
   return (
     <div className="space-y-4">
@@ -106,8 +106,8 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
             {hits.length > 0 && (
               <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
                 {hits.map((h) => (
-                  <button key={h.item_code} onClick={() => addHit(h)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-violet-50">
-                    <span><span className="font-mono text-xs font-bold text-violet-600">{h.item_code}</span> <span className="text-slate-600">{h.item_name}</span></span>
+                  <button key={h.item_code} onClick={() => addHit(h)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-aqua-50">
+                    <span><span className="font-mono text-xs font-bold text-aqua-600">{h.item_code}</span> <span className="text-slate-600">{h.item_name}</span></span>
                     <span className="text-[10px] text-slate-400">{h.unit_code}</span>
                   </button>
                 ))}
@@ -122,7 +122,7 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
               <div key={l.item_code} className="rounded-xl border border-slate-200 p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-mono text-xs font-bold text-violet-600">{l.item_code}</div>
+                    <div className="font-mono text-xs font-bold text-aqua-600">{l.item_code}</div>
                     <div className="truncate text-sm text-slate-700">{l.item_name}</div>
                   </div>
                   <button onClick={() => remove(i)} className="rounded p-1 text-slate-300 hover:text-rose-500">✕</button>
@@ -138,12 +138,12 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
                     <input value={l.serialInput} onChange={(e) => upd(i, { serialInput: e.target.value })}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSerial(i); } }}
                       placeholder="ຍິງ / ພິມ SN ແລ້ວ Enter (ถ้ามี serial)" className={`${inputCls} flex-1 font-mono text-xs`} />
-                    <button onClick={() => addSerial(i)} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-700">ເພີ່ມ SN</button>
+                    <button onClick={() => addSerial(i)} className="rounded-lg bg-aqua-600 px-3 py-2 text-xs font-bold text-white hover:bg-aqua-700">ເພີ່ມ SN</button>
                   </div>
                   {l.serials.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {l.serials.map((sn) => (
-                        <span key={sn} className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 font-mono text-[11px] text-violet-700 ring-1 ring-violet-200">
+                        <span key={sn} className="inline-flex items-center gap-1 rounded-md bg-aqua-50 px-2 py-0.5 font-mono text-[11px] text-aqua-700 ring-1 ring-aqua-200">
                           {sn}<button onClick={() => rmSerial(i, sn)} className="text-rose-400 hover:text-rose-600">✕</button>
                         </span>
                       ))}
@@ -157,7 +157,7 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
           <div className="mt-4 flex items-center justify-between">
             {lastDoc && <a href={`/print/wms/${encodeURIComponent(lastDoc)}?auto=1`} target="_blank" rel="noopener" className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">🖨 ພິมໃບຮັບคืน {lastDoc}</a>}
             <button onClick={submit} disabled={submitting || lines.length === 0}
-              className="ml-auto inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 px-6 py-3 text-sm font-bold text-white shadow-md hover:shadow-lg active:scale-98 transition disabled:opacity-50 cursor-pointer">
+              className="ml-auto inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-aqua-700 to-brand-800 px-6 py-3 text-sm font-bold text-white shadow-md hover:shadow-lg active:scale-98 transition disabled:opacity-50 cursor-pointer">
               {submitting ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : "✓"} ບັນທຶก ຮັບคืน
             </button>
           </div>

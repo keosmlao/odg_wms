@@ -71,7 +71,7 @@ export default function AccuracyClient({ warehouses }: { warehouses: WarehouseOp
     : "text-zinc-500";
 
   const inputCls =
-    "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+    "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
   return (
     <div className="space-y-5">
@@ -87,7 +87,7 @@ export default function AccuracyClient({ warehouses }: { warehouses: WarehouseOp
               ))}
             </select>
           </div>
-          <button type="button" onClick={() => load(false)} disabled={!whCode || loading} className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:shadow-lg disabled:opacity-50">
+          <button type="button" onClick={() => load(false)} disabled={!whCode || loading} className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg disabled:opacity-50">
             <SearchIcon className="h-4 w-4" />
             {loading ? "ກຳລັງກວດ..." : "ກວດຄວາມຖືກຕ້ອງ"}
           </button>
@@ -167,7 +167,7 @@ export default function AccuracyClient({ warehouses }: { warehouses: WarehouseOp
                     {filtered.map((r) => (
                       <tr key={r.item_code} className="align-middle">
                         <td className="px-4 py-2.5">
-                          <div className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{r.item_code}</div>
+                          <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{r.item_code}</div>
                           <div className="max-w-md truncate text-xs text-zinc-700 dark:text-zinc-300" title={r.item_name ?? ""}>{r.item_name ?? "—"}</div>
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums text-zinc-700 dark:text-zinc-200">{fmt(r.sml)}<span className="ml-1 text-[10px] uppercase text-zinc-400">{r.unit_code}</span></td>

@@ -59,7 +59,7 @@ export default function BalanceTableClient({
                 key={`${row.wh_code}-${row.rack_code}-${row.location_code}-${row.pallet_code}-${row.item_code}-${idx}`}
                 className="group transition-colors hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20"
               >
-                <td className="p-4 font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
+                <td className="p-4 font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
                   {row.wh_code}
                 </td>
                 <td className="p-4 font-mono text-xs text-zinc-600 dark:text-zinc-400">
@@ -96,7 +96,7 @@ export default function BalanceTableClient({
                     type="button"
                     onClick={() => setSnItem({ item_code: row.item_code, item_name: row.item_name, wh_code: row.wh_code, rack_code: row.rack_code, location_code: row.location_code, pallet_code: row.pallet_code })}
                     title="ເບິ່ງ serial number ຂອງສິນຄ້ານີ້"
-                    className="inline-flex items-center rounded-md bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300"
+                    className="inline-flex items-center rounded-md bg-aqua-50 px-2.5 py-1 text-[11px] font-bold text-aqua-700 transition hover:bg-aqua-100 dark:bg-aqua-950/40 dark:text-aqua-300"
                   >
                     SN
                   </button>

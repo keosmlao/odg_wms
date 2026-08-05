@@ -748,11 +748,11 @@ export default function RackVisualization({
         />
         <KpiCard
           compact
-          icon={<LayersIcon className="h-4.5 w-4.5 text-blue-500" />}
+          icon={<LayersIcon className="h-4.5 w-4.5 text-brand-500" />}
           label="ບໍລິມາດລວມທັງໝົດ"
           value={`${formatPallets(summary.capacityPallets)} ພາເລດ`}
           sub="ຄວາມຈຸຕຳແໜ່ງພາເລດຈາກພື້ນທີ່ Location"
-          tone="blue"
+          tone="navy"
           highlight
         />
         <KpiCard
@@ -766,11 +766,11 @@ export default function RackVisualization({
         />
         <KpiCard
           compact
-          icon={<BuildingIcon className="h-4.5 w-4.5 text-violet-500" />}
+          icon={<BuildingIcon className="h-4.5 w-4.5 text-aqua-500" />}
           label="ບໍລິມາດຄົງເຫຼືອຫວ່າງ"
           value={`${formatPallets(summary.remainingPallets)} ພາເລດ`}
           sub={`${summary.fullLocations} ຕຳແໜ່ງເຕັມ/ເກີນ`}
-          tone="violet"
+          tone="aqua"
           highlight
         />
         <KpiCard
@@ -865,7 +865,7 @@ export default function RackVisualization({
                   ? "bg-gradient-to-r from-red-500 to-rose-600"
                   : summary.palletUtilization >= 80
                     ? "bg-gradient-to-r from-amber-400 to-orange-500"
-                    : "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500"
+                    : "bg-gradient-to-r from-emerald-500 via-teal-500 to-aqua-500"
               }`}
               style={{ width: `${Math.min(100, summary.palletUtilization)}%` }}
             />
@@ -999,7 +999,7 @@ export default function RackVisualization({
                   <span className="text-[11px] text-zinc-500">ຫວ່າງ</span>
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-fuchsia-500" />
+                  <span className="h-3 w-3 rounded bg-sunset-500" />
                   <span className="text-[11px] text-zinc-500">ສິນຄ້າທີ່ຄົ້ນຫາ</span>
                 </span>
               </div>
@@ -1014,7 +1014,7 @@ export default function RackVisualization({
                   value={itemQuery}
                   onChange={(e) => setItemQuery(e.target.value)}
                   placeholder="ຄົ້ນຫາສິນຄ້າ (ລະຫັດ/ຊື່) → ເບິ່ງວ່າຢູ່ location ໃດ..."
-                  className="w-full rounded-lg border border-zinc-300 bg-white py-2 pl-9 pr-8 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                  className="w-full rounded-lg border border-zinc-300 bg-white py-2 pl-9 pr-8 text-sm outline-none focus:border-sunset-500 focus:ring-2 focus:ring-sunset-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                 />
                 {itemQuery && (
                   <button
@@ -1037,10 +1037,10 @@ export default function RackVisualization({
                         key={it.item_code}
                         type="button"
                         onClick={() => { setPickedItem(it); setSelectedCode(null); setFocusLoc(null); }}
-                        className="flex w-full items-center justify-between gap-2 border-b border-zinc-50 px-3 py-2 text-left last:border-0 hover:bg-fuchsia-50 dark:border-zinc-800 dark:hover:bg-fuchsia-950/30"
+                        className="flex w-full items-center justify-between gap-2 border-b border-zinc-50 px-3 py-2 text-left last:border-0 hover:bg-sunset-50 dark:border-zinc-800 dark:hover:bg-sunset-950/30"
                       >
                         <span className="min-w-0">
-                          <span className="block font-mono text-[11px] font-semibold text-fuchsia-700 dark:text-fuchsia-400">{it.item_code}</span>
+                          <span className="block font-mono text-[11px] font-semibold text-sunset-700 dark:text-sunset-400">{it.item_code}</span>
                           <span className="block truncate text-xs text-zinc-600 dark:text-zinc-300">{it.item_name ?? "—"}</span>
                         </span>
                         <span className="shrink-0 text-right text-[11px] text-zinc-500">
@@ -1075,16 +1075,16 @@ export default function RackVisualization({
 
               {/* "Found here" panel — locations of the searched product. */}
               {pickedItem && (
-                <div className="absolute right-4 top-4 z-20 max-h-[82%] w-64 overflow-y-auto rounded-xl border border-fuchsia-200 bg-white/95 p-3 shadow-xl backdrop-blur dark:border-fuchsia-900 dark:bg-zinc-900/95">
+                <div className="absolute right-4 top-4 z-20 max-h-[82%] w-64 overflow-y-auto rounded-xl border border-sunset-200 bg-white/95 p-3 shadow-xl backdrop-blur dark:border-sunset-900 dark:bg-zinc-900/95">
                   <div className="mb-1 flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-mono text-xs font-bold text-fuchsia-700 dark:text-fuchsia-400">📍 {pickedItem.item_code}</div>
+                      <div className="font-mono text-xs font-bold text-sunset-700 dark:text-sunset-400">📍 {pickedItem.item_code}</div>
                       <div className="truncate text-[11px] text-zinc-600 dark:text-zinc-300" title={pickedItem.item_name ?? ""}>{pickedItem.item_name ?? "—"}</div>
                     </div>
                     <button type="button" onClick={() => setPickedItem(null)} aria-label="close" className="shrink-0 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">✕</button>
                   </div>
                   <div className="mb-2 text-[11px] text-zinc-500">
-                    ຢູ່ <b className="text-fuchsia-600 dark:text-fuchsia-400">{pickedItem.locations.length}</b> ບ່ອນ · ລວມ {formatQty(pickedItem.totalQty)} {pickedItem.unit_code ?? ""}
+                    ຢູ່ <b className="text-sunset-600 dark:text-sunset-400">{pickedItem.locations.length}</b> ບ່ອນ · ລວມ {formatQty(pickedItem.totalQty)} {pickedItem.unit_code ?? ""}
                   </div>
                   <ul className="space-y-1">
                     {pickedItem.locations.map((l) => (
@@ -1094,14 +1094,14 @@ export default function RackVisualization({
                           onClick={() => { setSelectedCode(l.rack || null); setFocusLoc(l.location); }}
                           className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left transition ${
                             focusLoc === l.location
-                              ? "bg-fuchsia-600 text-white"
-                              : "bg-fuchsia-50 hover:bg-fuchsia-100 dark:bg-fuchsia-950/40 dark:hover:bg-fuchsia-900/40"
+                              ? "bg-sunset-700 text-white"
+                              : "bg-sunset-50 hover:bg-sunset-100 dark:bg-sunset-950/40 dark:hover:bg-sunset-900/40"
                           }`}
                         >
-                          <span className={`font-mono text-[11px] font-semibold ${focusLoc === l.location ? "text-white" : "text-fuchsia-800 dark:text-fuchsia-300"}`}>
+                          <span className={`font-mono text-[11px] font-semibold ${focusLoc === l.location ? "text-white" : "text-sunset-800 dark:text-sunset-300"}`}>
                             {l.rack ? `${l.rack} / ` : ""}{l.location}
                           </span>
-                          <span className={`text-[11px] ${focusLoc === l.location ? "text-fuchsia-100" : "text-zinc-600 dark:text-zinc-300"}`}>{formatQty(l.qty)}</span>
+                          <span className={`text-[11px] ${focusLoc === l.location ? "text-sunset-100" : "text-zinc-600 dark:text-zinc-300"}`}>{formatQty(l.qty)}</span>
                         </button>
                       </li>
                     ))}
@@ -1405,10 +1405,10 @@ function RackElevationMap({
                     style={{ gridColumn: i + 1, gridRow: 1 }}
                     className="flex flex-col items-center"
                   >
-                    <span className="whitespace-nowrap rounded bg-sky-600 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
+                    <span className="whitespace-nowrap rounded bg-aqua-600 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
                       🚪 {doorByCode.get(s.rack.code)}
                     </span>
-                    <span className="h-2 w-px bg-sky-500/60" />
+                    <span className="h-2 w-px bg-aqua-500/60" />
                   </div>
                 ) : null,
               )}
@@ -1600,7 +1600,7 @@ function ZonedFloorGrid({
               style={{ gridColumn: 2 + i, gridRow: 1 }}
               className="flex items-end justify-center"
             >
-              <span className="whitespace-nowrap rounded bg-sky-600 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
+              <span className="whitespace-nowrap rounded bg-aqua-600 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
                 🚪 {doorMap.get(rack.code)}
               </span>
             </div>
@@ -2239,7 +2239,7 @@ function RackElevationView({
                 ? "bg-gradient-to-r from-red-500 to-rose-600"
                 : palletUtilization >= 80
                   ? "bg-gradient-to-r from-amber-400 to-orange-500"
-                  : "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500",
+                  : "bg-gradient-to-r from-emerald-500 via-teal-500 to-aqua-500",
           }
         : {
             pill: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
@@ -2308,7 +2308,7 @@ function RackElevationView({
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <MiniStat label="ຄວາມຈຸ Rack" value={`${formatPallets(rack.capacityPallets)} ພາເລດ`} />
           <MiniStat label="ໃຊ້ແລ້ວ" value={`${formatPallets(rack.usedPallets)} ພາເລດ`} tone="emerald" />
-          <MiniStat label="ຍັງຫວ່າງ" value={`${formatPallets(remainingPallets)} ພາເລດ`} tone="blue" />
+          <MiniStat label="ຍັງຫວ່າງ" value={`${formatPallets(remainingPallets)} ພາເລດ`} tone="navy" />
           <MiniStat
             label="ໃຊ້ຄວາມຈຸ"
             value={`${palletUtilization.toFixed(1)}%`}
@@ -2716,7 +2716,7 @@ function Location3DPopup({
   return (
     <div className="pointer-events-auto absolute right-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-[20rem] max-w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-2xl ring-1 ring-black/5 backdrop-blur-md dark:border-white/10 dark:bg-slate-900/95">
       {/* Header */}
-      <div className="flex items-start justify-between gap-2 border-b border-zinc-100 bg-gradient-to-r from-sky-500/10 to-transparent px-4 py-3 dark:border-zinc-800">
+      <div className="flex items-start justify-between gap-2 border-b border-zinc-100 bg-gradient-to-r from-aqua-500/10 to-transparent px-4 py-3 dark:border-zinc-800">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-sm">📍</span>
@@ -2858,12 +2858,12 @@ function MiniStat({
 }: {
   label: string;
   value: number | string;
-  tone?: "neutral" | "emerald" | "blue" | "amber" | "red";
+  tone?: "neutral" | "emerald" | "navy" | "amber" | "red";
 }) {
   const colors = {
     neutral: "bg-zinc-100 border border-zinc-200/50 text-zinc-900 dark:bg-zinc-950 dark:border-zinc-850 dark:text-zinc-100",
     emerald: "bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-300",
-    blue: "bg-blue-500/10 border border-blue-500/20 text-blue-800 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-300",
+    navy: "bg-brand-500/10 border border-brand-500/20 text-brand-800 dark:bg-brand-950/20 dark:border-brand-900/30 dark:text-brand-300",
     amber: "bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-300",
     red: "bg-red-500/10 border border-red-500/20 text-red-850 dark:bg-red-950/20 dark:border-red-900/30 dark:text-red-400",
   };

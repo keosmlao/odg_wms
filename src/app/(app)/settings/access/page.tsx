@@ -77,7 +77,7 @@ export default async function AccessPage() {
         title="ຈັດການສິດເຂົ້າເຖິງ"
         description="ກຳນົດ role ແລະ ສາງທີ່ຮັບຜິດຊອບໃຫ້ແຕ່ລະພະນັກງານ"
         icon={<ShieldIcon className="h-6 w-6" />}
-        tone="violet"
+        tone="aqua"
         chips={
           <>
             <Chip tone="primary">ຜູ້ຈັດການ</Chip>
@@ -98,14 +98,14 @@ export default async function AccessPage() {
           icon={<ShieldIcon className="h-4 w-4" />}
           label="ຜູ້ຈັດການ"
           value={counts.manager}
-          tone="violet"
+          tone="aqua"
           highlight
         />
         <KpiCard
           icon={<UsersIcon className="h-4 w-4" />}
           label="Supervisor"
           value={counts.supervisor}
-          tone="blue"
+          tone="navy"
           highlight
         />
         <KpiCard

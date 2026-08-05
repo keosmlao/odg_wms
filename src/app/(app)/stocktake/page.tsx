@@ -294,7 +294,7 @@ export default async function StocktakeListPage({
               href={tabHref(t.value)}
               className={`group ${stPanel} flex items-center justify-between px-4 py-3.5 transition hover:border-zinc-300 hover:shadow-md dark:hover:border-zinc-600 ${
                 active
-                  ? "ring-2 ring-indigo-500/40 dark:ring-indigo-400/40"
+                  ? "ring-2 ring-brand-500/40 dark:ring-brand-400/40"
                   : ""
               }`}
             >
@@ -361,14 +361,14 @@ export default async function StocktakeListPage({
               name="q"
               defaultValue={q}
               placeholder="ຄົ້ນຫາ session, ສາງ..."
-              className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 sm:w-48 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+              className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 sm:w-48 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
             />
           </div>
           {whOptions.length > 1 && (
             <select
               name="wh"
               defaultValue={wh}
-              className="rounded-lg border border-zinc-200 bg-white py-1.5 pl-3 pr-8 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+              className="rounded-lg border border-zinc-200 bg-white py-1.5 pl-3 pr-8 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
             >
               <option value="">ທຸກສາງ</option>
               {whOptions.map((w) => (
@@ -424,7 +424,7 @@ export default async function StocktakeListPage({
                   return (
                     <tr
                       key={r.session_id}
-                      className="group relative transition hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
+                      className="group relative transition hover:bg-brand-50/40 dark:hover:bg-brand-950/20"
                     >
                       <td className="relative w-1 p-0">
                         <span
@@ -437,7 +437,7 @@ export default async function StocktakeListPage({
                           href={`/stocktake/${r.session_id}`}
                           className="block"
                         >
-                          <div className="font-medium text-zinc-900 group-hover:text-indigo-700 dark:text-white dark:group-hover:text-indigo-300">
+                          <div className="font-medium text-zinc-900 group-hover:text-brand-700 dark:text-white dark:group-hover:text-brand-300">
                             {r.name ?? r.session_code}
                           </div>
                           <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
@@ -503,7 +503,7 @@ export default async function StocktakeListPage({
                       <td className="hidden px-4 py-3 lg:table-cell">
                         <div className="flex flex-wrap items-center gap-1">
                           <SetupChip
-                            tone={r.snapshot_items > 0 ? "indigo" : "zinc"}
+                            tone={r.snapshot_items > 0 ? "brand" : "zinc"}
                             label="SML"
                             value={r.snapshot_items.toLocaleString("en-US")}
                           />
@@ -533,7 +533,7 @@ export default async function StocktakeListPage({
                         <Link
                           href={`/stocktake/${r.session_id}`}
                           aria-label={`ເປີດ ${r.session_code}`}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-zinc-300 transition hover:bg-indigo-100 hover:text-indigo-600 group-hover:text-zinc-500 dark:text-zinc-600 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-300"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-zinc-300 transition hover:bg-brand-100 hover:text-brand-600 group-hover:text-zinc-500 dark:text-zinc-600 dark:hover:bg-brand-950/50 dark:hover:text-brand-300"
                         >
                           <ChevronRightIcon className="h-4 w-4" />
                         </Link>
@@ -560,13 +560,13 @@ function SetupChip({
   label,
   value,
 }: {
-  tone: "indigo" | "amber" | "zinc";
+  tone: "brand" | "amber" | "zinc";
   label: string;
   value: string;
 }) {
   const toneMap = {
-    indigo:
-      "bg-indigo-50 text-indigo-700 ring-indigo-200/70 dark:bg-indigo-950/40 dark:text-indigo-300 dark:ring-indigo-900/50",
+    brand:
+      "bg-brand-50 text-brand-700 ring-brand-200/70 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50",
     amber:
       "bg-amber-50 text-amber-700 ring-amber-200/70 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/50",
     zinc:

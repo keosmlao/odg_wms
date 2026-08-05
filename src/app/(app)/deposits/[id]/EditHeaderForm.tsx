@@ -65,8 +65,8 @@ export default function EditHeaderForm({
   }
 
   return (
-    <div className="rounded-2xl border border-indigo-200/70 bg-white/90 p-5 dark:border-indigo-900/40 dark:bg-zinc-900/80">
-      <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+    <div className="rounded-2xl border border-brand-200/70 bg-white/90 p-5 dark:border-brand-900/40 dark:bg-zinc-900/80">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300">
         ແກ້ໄຂຂໍ້ມູນຮັບຝາກ
       </h2>
       <div className="mt-3 space-y-2.5">
@@ -77,7 +77,7 @@ export default function EditHeaderForm({
             onChange={(e) =>
               setForm((f) => ({ ...f, start_date: e.target.value }))
             }
-            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2.5 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
         </Field>
         <Field label="ລະຫັດລູກຄ້າ">
@@ -87,7 +87,7 @@ export default function EditHeaderForm({
             onChange={(e) =>
               setForm((f) => ({ ...f, cust_code: e.target.value }))
             }
-            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2.5 font-mono text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2.5 font-mono text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
         </Field>
         <Field label="ຊື່ລູກຄ້າ">
@@ -97,7 +97,7 @@ export default function EditHeaderForm({
             onChange={(e) =>
               setForm((f) => ({ ...f, cust_name: e.target.value }))
             }
-            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2.5 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
         </Field>
         <Field label="ບັນທຶກ">
@@ -105,7 +105,7 @@ export default function EditHeaderForm({
             rows={2}
             value={form.note}
             onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2.5 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
         </Field>
       </div>
@@ -119,7 +119,7 @@ export default function EditHeaderForm({
           type="button"
           onClick={save}
           disabled={saving}
-          className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50"
+          className="flex-1 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
         >
           {saving ? "ກຳລັງບັນທຶກ..." : "ບັນທຶກ"}
         </button>

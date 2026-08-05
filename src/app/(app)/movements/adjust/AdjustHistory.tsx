@@ -285,7 +285,7 @@ export default async function AdjustHistory({
   }
 
   const inputCls =
-    "w-full rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+    "w-full rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
   const labelCls = "mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300";
 
   return (
@@ -336,7 +336,7 @@ export default async function AdjustHistory({
               ທຸກວັນ
             </Link>
           </div>
-          <button type="submit" className="rounded-lg bg-gradient-to-r from-indigo-500 to-violet-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:shadow-lg">
+          <button type="submit" className="rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg">
             ກອງ
           </button>
         </div>
@@ -425,7 +425,7 @@ export default async function AdjustHistory({
                         return (
                           <tr key={`${l.doc_no}-${l.item_code}-${idx}`}>
                             <td className="px-4 py-2">
-                              <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{l.item_code}</div>
+                              <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{l.item_code}</div>
                               <div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={l.item_name ?? ""}>
                                 {l.item_name ?? "—"}
                               </div>

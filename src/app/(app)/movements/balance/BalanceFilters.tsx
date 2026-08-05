@@ -78,7 +78,7 @@ export default function BalanceFilters({
   const exportHref = `/api/movements/balance/export${exportSp.toString() ? `?${exportSp}` : ""}`;
 
   const selectCls =
-    "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+    "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
   return (
     <form onSubmit={submit} className="mt-4 space-y-2.5">
@@ -144,7 +144,7 @@ export default function BalanceFilters({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="ຄົ້ນຫາ ລະຫັດ/ຊື່ສິນຄ້າ ຫຼື pallet..."
-            className="w-full rounded-lg bg-white py-2 pl-9 pr-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+            className="w-full rounded-lg bg-white py-2 pl-9 pr-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
           />
         </div>
       </div>
@@ -152,7 +152,7 @@ export default function BalanceFilters({
       <div className="flex flex-wrap gap-2">
         <button
           type="submit"
-          className="rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:shadow-lg"
+          className="rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg"
         >
           ກອງ
         </button>

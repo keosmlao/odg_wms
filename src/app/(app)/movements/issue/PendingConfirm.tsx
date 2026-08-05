@@ -538,7 +538,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                   <div key={i} className={`overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-zinc-900 ${got >= need && need > 0 ? "border-emerald-300 dark:border-emerald-900/50" : "border-zinc-200 dark:border-zinc-800"}`}>
                     <div className="flex items-start justify-between gap-2 p-4">
                       <div className="min-w-0">
-                        <div className="font-mono text-[11px] text-zinc-400">{l.item_code}{isSer && <span className="ml-1.5 rounded bg-violet-100 px-1 text-[9px] font-bold text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">SN</span>}</div>
+                        <div className="font-mono text-[11px] text-zinc-400">{l.item_code}{isSer && <span className="ml-1.5 rounded bg-aqua-100 px-1 text-[9px] font-bold text-aqua-700 dark:bg-aqua-950/60 dark:text-aqua-300">SN</span>}</div>
                         <div className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">{l.item_name}</div>
                         {/* ບ່ອນຈັດເກັບ — ແກ້ໄດ້ ຖ້າໄປເອົາຂອງຕົວຈິງບ່ອນອື່ນ (ທາງຕັນ / ຈັບບໍ່ອອກ) */}
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

@@ -40,8 +40,8 @@ const STATUS_CONFIG: Record<
   active: {
     label: "ກຳລັງຝາກ",
     chip:
-      "bg-indigo-50 text-indigo-700 ring-indigo-200/70 dark:bg-indigo-950/40 dark:text-indigo-300 dark:ring-indigo-900/50",
-    dot: "bg-indigo-500",
+      "bg-brand-50 text-brand-700 ring-brand-200/70 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50",
+    dot: "bg-brand-500",
   },
   settled: {
     label: "ສຳເລັດ",
@@ -201,7 +201,7 @@ export default async function DepositDetailPage({
         <div className="flex items-center gap-2">
           <Link
             href="/deposits"
-            className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+            className="font-medium text-brand-600 hover:underline dark:text-brand-400"
           >
             ຮັບຝາກເຄື່ອງ
           </Link>
@@ -319,7 +319,7 @@ export default async function DepositDetailPage({
           <Stat
             label="ມູນຄ່າ"
             value={formatMoney(detail.total_value, detail.currency)}
-            tone="indigo"
+            tone="brand"
             mono
           />
           <Stat
@@ -520,14 +520,14 @@ function Stat({
 }: {
   label: string;
   value: string | number;
-  tone: "zinc" | "emerald" | "amber" | "indigo";
+  tone: "zinc" | "emerald" | "amber" | "brand";
   mono?: boolean;
 }) {
   const toneMap = {
     zinc: "text-zinc-900 dark:text-white",
     emerald: "text-emerald-600 dark:text-emerald-400",
     amber: "text-amber-600 dark:text-amber-400",
-    indigo: "text-indigo-600 dark:text-indigo-400",
+    brand: "text-brand-600 dark:text-brand-400",
   };
   return (
     <div className="px-4 py-3 sm:px-5 sm:py-4">

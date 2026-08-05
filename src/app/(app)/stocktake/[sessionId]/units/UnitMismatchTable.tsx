@@ -350,7 +350,7 @@ function LineRow({
           <button
             type="submit"
             disabled={pending}
-            className="rounded-md bg-indigo-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="rounded-md bg-brand-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
           >
             {pending ? "ກຳລັງ..." : "ບັນທຶກ"}
           </button>

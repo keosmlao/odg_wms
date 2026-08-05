@@ -15,9 +15,9 @@ const ROLE_OPTIONS: { value: WmsRole | ""; label: string }[] = [
 
 function roleBadgeClass(role: WmsRole | null) {
   if (role === "manager")
-    return "bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300";
+    return "bg-aqua-50 text-aqua-700 dark:bg-aqua-950 dark:text-aqua-300";
   if (role === "supervisor")
-    return "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
+    return "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300";
   if (role === "keeper")
     return "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
   return "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400";
@@ -188,7 +188,7 @@ export default function AccessClient({
                     )}
                     {/* Void grants — worth seeing at a glance from the list. */}
                     {e.role === "manager" ? (
-                      <div className="mt-1 text-[10px] font-medium text-violet-600 dark:text-violet-400">🗑 ລົບໄດ້ທຸກຢ່າງ</div>
+                      <div className="mt-1 text-[10px] font-medium text-aqua-600 dark:text-aqua-400">🗑 ລົບໄດ້ທຸກຢ່າງ</div>
                     ) : e.permissions.length > 0 ? (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {e.permissions.map((p) => (
@@ -364,7 +364,7 @@ function EditDrawer({
           </div>
 
           {role === "manager" && (
-            <p className="mb-3 rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:bg-violet-950 dark:text-violet-300">
+            <p className="mb-3 rounded-lg bg-aqua-50 px-3 py-2 text-xs text-aqua-800 dark:bg-aqua-950 dark:text-aqua-300">
               ຜູ້ຈັດການ: ປ່ອຍວ່າງ = ເຫັນ <strong>ທຸກສາງ</strong>. ເລືອກສະເພາະ = ຈຳກັດໃຫ້ເຫັນສະເພາະສາງທີ່ເລືອກເທົ່ານັ້ນ.
             </p>
           )}
@@ -377,7 +377,7 @@ function EditDrawer({
                 ສິດພິເສດ (ລົບເອກະສານ)
               </label>
               {role === "manager" ? (
-                <p className="rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:bg-violet-950 dark:text-violet-300">
+                <p className="rounded-lg bg-aqua-50 px-3 py-2 text-xs text-aqua-800 dark:bg-aqua-950 dark:text-aqua-300">
                   ຜູ້ຈັດການມີ <strong>ທຸກສິດ</strong> ໂດຍປະລິຍາຍ — ບໍ່ຕ້ອງເລືອກ.
                 </p>
               ) : (

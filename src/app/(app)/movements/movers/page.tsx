@@ -28,7 +28,7 @@ export default async function MoversPage() {
         title="ສິນຄ້າເຄື່ອນໄຫວ / Movers"
         description="ສິນຄ້າเคลื່อนไหวໄວສຸດ (fast movers) ແລະ ແນວໂນ້ມ ເຂົ້າ/ອອກ ຕາມເວລາ"
         icon={<TrendIcon className="h-6 w-6" />}
-        tone="blue"
+        tone="navy"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
       <MoversClient warehouses={warehouses} />

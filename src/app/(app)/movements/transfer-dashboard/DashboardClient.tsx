@@ -159,7 +159,7 @@ export default function DashboardClient() {
     <div className="space-y-5">
       {/* ปุ่มลัด workflow */}
       <div className="flex flex-wrap items-center gap-2">
-        <Link href="/movements/transfer-request" className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg active:scale-98">📝 ອອກໃບຂໍໂອນ</Link>
+        <Link href="/movements/transfer-request" className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-aqua-700 to-brand-800 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg active:scale-98">📝 ອອກໃບຂໍໂອນ</Link>
         <span className="text-slate-300">›</span>
         {[
           { label: "ອະນຸມັດ", href: "/movements/transfer-approve", icon: "✅" },
@@ -167,14 +167,14 @@ export default function DashboardClient() {
           { label: "ຮັບໂອນເຂົ້າ", href: "/movements/transfer-receive", icon: "📥" },
           { label: "ຮັບຄືນ", href: "/movements/transfer-return", icon: "↩️" },
         ].map((a) => (
-          <Link key={a.href} href={a.href} className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:bg-violet-50 hover:text-violet-700 hover:ring-violet-200"><span>{a.icon}</span>{a.label}</Link>
+          <Link key={a.href} href={a.href} className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:bg-aqua-50 hover:text-aqua-700 hover:ring-aqua-200"><span>{a.icon}</span>{a.label}</Link>
         ))}
       </div>
 
       {/* เลือกสาง (บังคับ) + ค้นหา */}
       <div className="flex flex-wrap items-center gap-2">
         <select value={selWh} onChange={(e) => setSelWh(e.target.value)}
-          className="rounded-xl bg-white px-3 py-2.5 text-sm font-bold ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-violet-500">
+          className="rounded-xl bg-white px-3 py-2.5 text-sm font-bold ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-aqua-500">
           <option value="">— ເລືອກສາງ —</option>
           {whOptions.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
         </select>
@@ -182,7 +182,7 @@ export default function DashboardClient() {
           <div className="min-w-[200px] flex-1 sm:max-w-md">
             <div className="relative">
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 ຄົ້ນຫາ ໃບຂໍໂອນ / ລະຫັດສິນຄ້າ / ຊື່ສິນຄ້າ…"
-                className="w-full rounded-xl bg-white px-4 py-2.5 pr-16 text-sm ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-violet-500" />
+                className="w-full rounded-xl bg-white px-4 py-2.5 pr-16 text-sm ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-aqua-500" />
               {itemBusy && <span className="absolute right-9 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">…</span>}
               {q && <button type="button" onClick={() => setQ("")} title="ລ້າງ"
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600">✕</button>}
@@ -210,7 +210,7 @@ export default function DashboardClient() {
             ຕິດຕາມ {combined.length} ລາຍການ
             <span className="rounded-full bg-red-50 px-2 py-0.5 text-red-600">📤 ຈ່າຍ (ຕົ້ນທາງ) {nOut}</span>
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">📥 ຮັບ (ປາຍທາງ) {nIn}</span>
-            {nItemDocs > 0 && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">🔎 ພົບສິນຄ້າໃນ {nItemDocs} ໃບໂອນ</span>}
+            {nItemDocs > 0 && <span className="rounded-full bg-aqua-50 px-2 py-0.5 text-aqua-700">🔎 ພົບສິນຄ້າໃນ {nItemDocs} ໃບໂອນ</span>}
           </div>
           {combined.map(({ d, role }) => <TrackCard key={`${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />)}
         </div>
@@ -235,8 +235,8 @@ function roleAction(role: "out" | "in", d: Row, t: ReturnType<typeof track>) {
 /** ບັນທັດສິນຄ້າທີ່ກົງກັບການຄົ້ນຫາ — ບອກວ່າສິນຄ້ານັ້ນຄ້າງຢູ່ຂັ້ນຕອນໃດ ໃນໃບໂອນນີ້. */
 function ItemHits({ hits }: { hits: ItemHit[] }) {
   return (
-    <div className="mt-3 rounded-xl bg-violet-50/70 p-2.5 ring-1 ring-violet-100">
-      <div className="mb-1.5 text-[10px] font-bold text-violet-700">🔎 ສິນຄ້າທີ່ຄົ້ນຫາ ໃນໃບນີ້</div>
+    <div className="mt-3 rounded-xl bg-aqua-50/70 p-2.5 ring-1 ring-aqua-100">
+      <div className="mb-1.5 text-[10px] font-bold text-aqua-700">🔎 ສິນຄ້າທີ່ຄົ້ນຫາ ໃນໃບນີ້</div>
       <div className="space-y-1">
         {hits.map((it) => {
           const req = n(it.req), toT = n(it.to_transit), inT = n(it.in_transit), rcv = n(it.received);
@@ -267,7 +267,7 @@ function TrackCard({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; 
     <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${role === "out" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{role === "out" ? "📤 ຈ່າຍ" : "📥 ຮັບ"}</span>
-        <span className="font-mono text-sm font-bold text-violet-700">{d.doc_no}</span>
+        <span className="font-mono text-sm font-bold text-aqua-700">{d.doc_no}</span>
         <span className="text-xs text-slate-500">{d.wh_from_name ?? d.wh_from} → {d.wh_to_name ?? d.wh_to}</span>
         {t.rejected ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">ຖືກປฏิเสธ</span>
           : t.done ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">ສຳເລັດ ✓</span>
@@ -343,7 +343,7 @@ function TrackCard({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; 
         if (outWaiting) return (
           <div className="mt-3 flex items-center justify-end gap-3">
             <span className="text-xs font-semibold text-amber-600">⏳ ລໍ ປາຍທາງ ຮັບເຂົ້າ…</span>
-            <Link href={`/movements/transfer-return?doc=${encodeURIComponent(d.doc_no)}`} className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-600 ring-1 ring-sky-200 hover:bg-sky-100">↩ ຮັບຄືນ</Link>
+            <Link href={`/movements/transfer-return?doc=${encodeURIComponent(d.doc_no)}`} className="rounded-lg bg-aqua-50 px-3 py-1.5 text-xs font-bold text-aqua-600 ring-1 ring-aqua-200 hover:bg-aqua-100">↩ ຮັບຄືນ</Link>
           </div>
         );
         return null;

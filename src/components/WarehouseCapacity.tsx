@@ -125,13 +125,13 @@ export default async function WarehouseCapacity({ session }: { session: Session 
     <section className="shadow-card rounded-2xl bg-white p-6 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <span className="flex items-center gap-2.5 text-base font-semibold text-zinc-900 dark:text-zinc-50">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/40 dark:text-brand-400">
             <BuildingIcon className="h-5 w-5" />
           </span>
           ຄວາມຈຸ &amp; ພື້ນທີ່ຈັດເກັບ
         </span>
         {grandPallets > 0 && (
-          <span className="rounded-full bg-indigo-50 px-3.5 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200/50 dark:bg-indigo-950/30 dark:text-indigo-300 dark:ring-indigo-900/50">
+          <span className="rounded-full bg-brand-50 px-3.5 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-200/50 dark:bg-brand-950/30 dark:text-brand-300 dark:ring-brand-900/50">
             ສິນຄ້າຄົງເຫຼືອຕ້ອງໃຊ້ ~{nf(grandPallets)} ພາເລດ
           </span>
         )}
@@ -208,14 +208,14 @@ export default async function WarehouseCapacity({ session }: { session: Session 
 
               {r.palletsNeeded > 0 && (
                 <div
-                  className="mt-3 flex items-center gap-1.5 rounded-xl bg-indigo-50/50 px-3 py-2 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 ring-1 ring-indigo-100/30 dark:ring-indigo-900/10"
+                  className="mt-3 flex items-center gap-1.5 rounded-xl bg-brand-50/50 px-3 py-2 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/20 dark:text-brand-400 ring-1 ring-brand-100/30 dark:ring-brand-900/10"
                   title={
                     r.noPh > 0
                       ? `${r.noPh}/${r.items} SKU ຈັບຄູ່ PH ບໍ່ໄດ້`
                       : undefined
                   }
                 >
-                  <PackageIcon className="h-3.5 w-3.5 text-indigo-500" />
+                  <PackageIcon className="h-3.5 w-3.5 text-brand-500" />
                   <span>
                     ຕ້ອງການໃຊ້ ~<span className="font-bold">{nf(r.palletsNeeded)}</span> ພາເລດ
                   </span>

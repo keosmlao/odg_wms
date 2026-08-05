@@ -33,7 +33,7 @@ export default function SnapshotPanel({
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
               smlEmpty
                 ? "bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"
-                : "bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300"
+                : "bg-brand-100 text-brand-600 dark:bg-brand-950/40 dark:text-brand-300"
             }`}
           >
             {smlEmpty ? (
@@ -67,7 +67,7 @@ export default function SnapshotPanel({
           <Stat
             label="SML"
             value={snapshotItems}
-            tone="indigo"
+            tone="brand"
             hint="ສິນຄ້າ"
           />
           <Stat
@@ -97,7 +97,7 @@ export default function SnapshotPanel({
             onClick={() => setRefreshOpen(true)}
             className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
               smlEmpty
-                ? "bg-indigo-600 text-white shadow-sm hover:bg-indigo-500"
+                ? "bg-brand-600 text-white shadow-sm hover:bg-brand-500"
                 : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
             }`}
           >
@@ -132,12 +132,12 @@ function Stat({
 }: {
   label: string;
   value: number;
-  tone: "indigo" | "amber";
+  tone: "brand" | "amber";
   hint?: string;
 }) {
   const toneMap = {
-    indigo:
-      "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300",
+    brand:
+      "bg-brand-50 text-brand-700 dark:bg-brand-950/30 dark:text-brand-300",
     amber:
       "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300",
   };

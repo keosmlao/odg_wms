@@ -116,14 +116,14 @@ export default async function OtherPendingList({ session, params }: { session: S
           <details key={`${r.type}-${r.doc_no}`} className="group shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
             <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-5 py-3.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
               <span className="shrink-0 text-zinc-400 transition-transform group-open:rotate-90">›</span>
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 font-mono text-[10px] font-bold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-aqua-50 font-mono text-[10px] font-bold text-aqua-700 dark:bg-aqua-950/40 dark:text-aqua-300">
                 {(r.wh_code ?? "?").slice(-2)}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{r.doc_no}</span>
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">ຄ້າງຮັບ</span>
-                  <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">{TYPE_LABEL[r.type]}</span>
+                  <span className="rounded-full bg-aqua-100 px-2 py-0.5 text-[10px] font-semibold text-aqua-700 dark:bg-aqua-950/50 dark:text-aqua-300">{TYPE_LABEL[r.type]}</span>
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
                   {r.doc_date ? (
@@ -139,12 +139,12 @@ export default async function OtherPendingList({ session, params }: { session: S
               </div>
               <div className="shrink-0 text-right">
                 <div className="text-[10px] uppercase text-zinc-400">ຄ້າງຮັບ</div>
-                <div className="font-mono text-sm font-bold tabular-nums text-sky-600 dark:text-sky-400">{fmt(r.remaining)}</div>
+                <div className="font-mono text-sm font-bold tabular-nums text-aqua-600 dark:text-aqua-400">{fmt(r.remaining)}</div>
                 <div className="text-[10px] text-zinc-400">{r.lines} ລາຍການ</div>
               </div>
               <Link
                 href={`/movements/receive?tab=receive&type=${r.type}${r.wh_code ? `&wh=${encodeURIComponent(r.wh_code)}` : ""}&q=${encodeURIComponent(r.doc_no)}`}
-                className="rounded-lg bg-gradient-to-r from-sky-500 to-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                className="rounded-lg bg-gradient-to-r from-aqua-500 to-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
               >
                 ໄປຮັບ
               </Link>
@@ -156,8 +156,8 @@ export default async function OtherPendingList({ session, params }: { session: S
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                     {its.map((it, i) => (
                       <tr key={`${it.item_code}-${i}`}>
-                        <td className="px-4 py-2"><div className="font-mono text-[11px] font-bold text-sky-700 dark:text-sky-400">{it.item_code}</div><div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={it.item_name ?? ""}>{it.item_name ?? "—"}</div></td>
-                        <td className="px-4 py-2 text-right font-mono text-xs font-semibold tabular-nums text-sky-600 dark:text-sky-400">{fmt(it.qty)}</td>
+                        <td className="px-4 py-2"><div className="font-mono text-[11px] font-bold text-aqua-700 dark:text-aqua-400">{it.item_code}</div><div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={it.item_name ?? ""}>{it.item_name ?? "—"}</div></td>
+                        <td className="px-4 py-2 text-right font-mono text-xs font-semibold tabular-nums text-aqua-600 dark:text-aqua-400">{fmt(it.qty)}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -33,7 +33,7 @@ function fmt(v: string | number | null) {
 const STATUS_LABEL: Record<number, { text: string; cls: string }> = {
   [PACKING_STATUS.draft]: { text: "ນຳເຂົ້າແລ້ວ", cls: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" },
   [PACKING_STATUS.verified]: { text: "ກວດສອບຜ່ານ", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" },
-  [PACKING_STATUS.used]: { text: "ສ້າງໃບກວດນັບແລ້ວ", cls: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300" },
+  [PACKING_STATUS.used]: { text: "ສ້າງໃບກວດນັບແລ້ວ", cls: "bg-brand-100 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300" },
   [PACKING_STATUS.cancelled]: { text: "ຍົກເລີກ", cls: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300" },
 };
 
@@ -114,7 +114,7 @@ export default async function PackingListTab({ session, params }: { session: Ses
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">ເຕືອນ {d.warn_count}</span>
                   )}
                   {d.count_doc_no && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">
                       <CheckIcon className="h-3 w-3" />{d.count_doc_no}
                     </span>
                   )}

@@ -187,11 +187,11 @@ export default async function SamsungSerialsPage({
         title="ລາຍການ SN Samsung"
         description="ຄົ້ນຫາ Serial Number, ສິນຄ້າ, ເລກບິນ ແລະຂໍ້ມູນເຄມ"
         icon={<PackageIcon className="h-6 w-6" />}
-        tone="blue"
+        tone="navy"
         right={
           <Link
             href="/samsung-serials/summary"
-            className="inline-flex rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            className="inline-flex rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
           >
             ສະຫຼຸບ ຂາຍ / ເຄມ
           </Link>
@@ -199,8 +199,8 @@ export default async function SamsungSerialsPage({
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <KpiCard icon={<ListIcon />} label="ລາຍການທັງໝົດ" value={summary.total} tone="blue" highlight />
-        <KpiCard icon={<PackageIcon />} label="SN ບໍ່ຊ້ຳ" value={summary.unique_serials} tone="indigo" />
+        <KpiCard icon={<ListIcon />} label="ລາຍການທັງໝົດ" value={summary.total} tone="navy" highlight />
+        <KpiCard icon={<PackageIcon />} label="SN ບໍ່ຊ້ຳ" value={summary.unique_serials} tone="brand" />
         <KpiCard icon={<CalendarIcon />} label="ມີຂໍ້ມູນເຄມ" value={summary.claimed} tone="amber" />
       </div>
 
@@ -212,18 +212,18 @@ export default async function SamsungSerialsPage({
               name="q"
               defaultValue={q}
               placeholder="ຄົ້ນຫາ SN, ລະຫັດສິນຄ້າ ຫຼື ເລກບິນ..."
-              className="w-full rounded-xl bg-white py-2.5 pl-9 pr-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-700"
+              className="w-full rounded-xl bg-white py-2.5 pl-9 pr-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-700"
             />
           </div>
-          <select name="year" defaultValue={year} className="rounded-xl bg-white px-3 py-2.5 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:ring-zinc-700">
+          <select name="year" defaultValue={year} className="rounded-xl bg-white px-3 py-2.5 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:ring-zinc-700">
             <option value="">ທຸກປີ</option>
             {years.map((item) => <option key={item.record_year} value={item.record_year}>{item.record_year}</option>)}
           </select>
-          <select name="quarter" defaultValue={quarter} className="rounded-xl bg-white px-3 py-2.5 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:ring-zinc-700">
+          <select name="quarter" defaultValue={quarter} className="rounded-xl bg-white px-3 py-2.5 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:ring-zinc-700">
             <option value="">ທຸກ Q</option>
             {["Q1", "Q2", "Q3", "Q4"].map((item) => <option key={item}>{item}</option>)}
           </select>
-          <select name="claim" defaultValue={claim} className="rounded-xl bg-white px-3 py-2.5 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:ring-zinc-700">
+          <select name="claim" defaultValue={claim} className="rounded-xl bg-white px-3 py-2.5 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:ring-zinc-700">
             <option value="">ທຸກສະຖານະ</option>
             <option value="with">ມີຂໍ້ມູນເຄມ</option>
             <option value="without">ບໍ່ມີຂໍ້ມູນເຄມ</option>
@@ -233,14 +233,14 @@ export default async function SamsungSerialsPage({
             <option value="only">ເຄມຊ້ຳ</option>
             <option value="unique">ບໍ່ຊ້ຳ</option>
           </select>
-          <button type="submit" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+          <button type="submit" className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700">
             ຄົ້ນຫາ
           </button>
         </form>
 
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-zinc-500">
           <span>ພົບ {filteredCount.toLocaleString("en-US")} ລາຍການ</span>
-          {(q || year || quarter || claim || duplicate) && <Link href="/samsung-serials" className="font-semibold text-blue-600 hover:text-blue-700">ລ້າງຕົວກອງ</Link>}
+          {(q || year || quarter || claim || duplicate) && <Link href="/samsung-serials" className="font-semibold text-brand-600 hover:text-brand-700">ລ້າງຕົວກອງ</Link>}
         </div>
 
         <div className="overflow-x-auto">
@@ -264,14 +264,14 @@ export default async function SamsungSerialsPage({
                   row.record_date ??
                   `${row.record_year}-${String(row.record_month).padStart(2, "0")}-${String(row.record_day).padStart(2, "0")} *`;
                 return (
-                  <tr key={row.samsung_serial_id} className="align-top transition hover:bg-blue-50/40 dark:hover:bg-blue-950/10">
+                  <tr key={row.samsung_serial_id} className="align-top transition hover:bg-brand-50/40 dark:hover:bg-brand-950/10">
                     <td className={`whitespace-nowrap px-4 py-3 ${row.record_date ? "text-zinc-600 dark:text-zinc-400" : "font-medium text-red-600 dark:text-red-400"}`}>{displayDate}</td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <span
                         className={`font-mono font-semibold ${
                           row.duplicate_count > 1
                             ? "text-red-600 dark:text-red-400"
-                            : "text-blue-700 dark:text-blue-300"
+                            : "text-brand-700 dark:text-brand-300"
                         }`}
                       >
                         {row.serial_no}

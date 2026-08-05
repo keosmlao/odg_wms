@@ -87,16 +87,16 @@ export default function BulkFixButton({
   if (fixable.length === 0) return null;
 
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-violet-50 px-4 py-3 dark:border-indigo-900/60 dark:from-indigo-950/30 dark:to-violet-950/30">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-200 bg-gradient-to-r from-brand-50 to-aqua-50 px-4 py-3 dark:border-brand-900/60 dark:from-brand-950/30 dark:to-aqua-950/30">
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-bold text-indigo-900 dark:text-indigo-100">
+        <div className="text-sm font-bold text-brand-900 dark:text-brand-100">
           ປັບຫົວໜ່ວຍຕາມ SML ໝົດທຸກລາຍການ
         </div>
-        <div className="mt-0.5 text-[11px] text-indigo-700 dark:text-indigo-300">
+        <div className="mt-0.5 text-[11px] text-brand-700 dark:text-brand-300">
           {fixable.length} ສິນຄ້າ · {totalLines} ໃບກວດນັບ
           {result && (
             <>
-              <span className="mx-1 text-indigo-300 dark:text-indigo-700">·</span>
+              <span className="mx-1 text-brand-300 dark:text-brand-700">·</span>
               <span className="text-emerald-700 dark:text-emerald-400">
                 ✓ ສຳເລັດ {result.updated.toLocaleString("en-US")}
               </span>
@@ -110,7 +110,7 @@ export default function BulkFixButton({
           )}
           {progress && (
             <>
-              <span className="mx-1 text-indigo-300 dark:text-indigo-700">·</span>
+              <span className="mx-1 text-brand-300 dark:text-brand-700">·</span>
               <span className="font-mono">
                 {progress.done}/{progress.total}
               </span>
@@ -123,7 +123,7 @@ export default function BulkFixButton({
         {result && result.updated > 0 && (
           <Link
             href={compareUrl}
-            className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200 transition hover:bg-indigo-50 dark:bg-zinc-900 dark:text-indigo-300 dark:ring-indigo-800/60 dark:hover:bg-indigo-950/40"
+            className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-brand-700 ring-1 ring-brand-200 transition hover:bg-brand-50 dark:bg-zinc-900 dark:text-brand-300 dark:ring-brand-800/60 dark:hover:bg-brand-950/40"
           >
             ສົມທຽບໃໝ່ →
           </Link>
@@ -132,7 +132,7 @@ export default function BulkFixButton({
           type="button"
           onClick={run}
           disabled={pending}
-          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2 text-sm font-bold text-white shadow-md shadow-indigo-500/30 transition hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-600 to-aqua-600 px-4 py-2 text-sm font-bold text-white shadow-md shadow-brand-500/30 transition hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pending ? (
             <>

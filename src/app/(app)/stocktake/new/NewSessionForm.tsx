@@ -67,7 +67,7 @@ export default function NewSessionForm({
           value={whCode}
           onChange={(e) => setWhCode(e.target.value)}
           required
-          className="w-full rounded-2xl bg-white px-3 py-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+          className="w-full rounded-2xl bg-white px-3 py-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
         >
           <option value="">ເລືອກສາງ...</option>
           {warehouses.map((w) => (
@@ -85,7 +85,7 @@ export default function NewSessionForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           maxLength={200}
-          className="w-full rounded-2xl bg-white px-3 py-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+          className="w-full rounded-2xl bg-white px-3 py-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
         />
       </Field>
 
@@ -95,7 +95,7 @@ export default function NewSessionForm({
           value={countDate}
           onChange={(e) => setCountDate(e.target.value)}
           required
-          className="w-full rounded-2xl bg-white px-3 py-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+          className="w-full rounded-2xl bg-white px-3 py-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
         />
       </Field>
 
@@ -104,7 +104,7 @@ export default function NewSessionForm({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={3}
-          className="w-full rounded-2xl bg-white px-3 py-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+          className="w-full rounded-2xl bg-white px-3 py-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
         />
       </Field>
 
@@ -119,7 +119,7 @@ export default function NewSessionForm({
             checked={blind}
             onChange={(e) => canToggleBlind && setBlind(e.target.checked)}
             disabled={!canToggleBlind}
-            className="mt-1 h-4 w-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-60"
+            className="mt-1 h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500 disabled:opacity-60"
           />
           <div className="min-w-0">
             <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
@@ -152,7 +152,7 @@ export default function NewSessionForm({
       <button
         type="submit"
         disabled={submitting}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:shadow-lg hover:shadow-indigo-500/30 disabled:opacity-60"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-aqua-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg hover:shadow-brand-500/30 disabled:opacity-60"
       >
         {submitting ? "ກຳລັງສ້າງ..." : "ສ້າງຮອບກວດນັບ"}
       </button>

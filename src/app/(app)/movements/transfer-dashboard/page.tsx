@@ -20,7 +20,7 @@ export default async function TransferDashboardPage() {
         title="ພາบรวม ການໂອນ (Dashboard)"
         description="ສະຫຼຸບ ໃບຂໍໂອນ ທີ່ active — ລໍຖ້າອະນຸມັດ · ລໍຖ້າຈ່າຍ · ຄ້າງລະຫວ່າງທາງ · ເກີນກຳນົດ"
         icon={<ArrowLeftRightIcon className="h-6 w-6" />}
-        tone="violet"
+        tone="aqua"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
       <DashboardClient />

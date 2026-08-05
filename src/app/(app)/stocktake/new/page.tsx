@@ -70,7 +70,7 @@ export default async function NewStocktakePage() {
 
       <div className="w-full">
         <header className="mb-5 flex items-start gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-white shadow-sm shadow-indigo-500/30">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-900 via-brand-500 to-aqua-400 text-white shadow-sm shadow-brand-500/30">
             <PlusIcon className="h-5 w-5" />
           </div>
           <div>

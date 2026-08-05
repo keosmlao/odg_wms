@@ -84,7 +84,7 @@ export default function PutawayClient({ warehouses }: { warehouses: WarehouseOpt
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Kard label="location ທັງໝົດ" value={kpi.total} tone="zinc" />
           <Kard label="ວ່າງ (ໃສ່ໄດ້)" value={kpi.empty} tone="emerald" />
-          <Kard label="ມີສິນຄ້າ" value={kpi.occupied} tone="blue" />
+          <Kard label="ມີສິນຄ້າ" value={kpi.occupied} tone="navy" />
           <Kard label="ໃຊ້ໄປ %" value={`${kpi.utilization}%`} tone="amber" />
         </div>
       )}
@@ -122,11 +122,11 @@ export default function PutawayClient({ warehouses }: { warehouses: WarehouseOpt
   );
 }
 
-function Kard({ label, value, tone }: { label: string; value: string | number; tone: "zinc" | "emerald" | "blue" | "amber" }) {
+function Kard({ label, value, tone }: { label: string; value: string | number; tone: "zinc" | "emerald" | "navy" | "amber" }) {
   const t = {
     zinc: "text-zinc-700 dark:text-zinc-200",
     emerald: "text-emerald-600 dark:text-emerald-400",
-    blue: "text-blue-600 dark:text-blue-400",
+    navy: "text-brand-600 dark:text-brand-400",
     amber: "text-amber-600 dark:text-amber-400",
   }[tone];
   return (

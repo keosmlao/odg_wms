@@ -120,7 +120,7 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
     }
   }
 
-  const inputCls = "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+  const inputCls = "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
   const labelCls = "mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300";
 
   return (
@@ -153,16 +153,16 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
           <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"><LayersIcon className="h-5 w-5" /></span>
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/40 dark:text-brand-400"><LayersIcon className="h-5 w-5" /></span>
                 <div>
                   <div className="font-mono text-sm font-bold text-zinc-900 dark:text-zinc-50">📦 {detail.pallet.code}</div>
-                  <div className="text-xs text-zinc-500">ຢູ່ປັດຈຸບัน: <span className="font-mono text-blue-600 dark:text-blue-400">{loc(detail.pallet.rack, detail.pallet.location)}</span>{!detail.found && <span className="ml-1 text-rose-500">· ບໍ່ມີໃນ pallet master</span>}</div>
+                  <div className="text-xs text-zinc-500">ຢູ່ປັດຈຸບัน: <span className="font-mono text-brand-600 dark:text-brand-400">{loc(detail.pallet.rack, detail.pallet.location)}</span>{!detail.found && <span className="ml-1 text-rose-500">· ບໍ່ມີໃນ pallet master</span>}</div>
                 </div>
               </div>
               <div className="flex items-center gap-4 text-right">
                 <div><div className="text-[10px] uppercase text-zinc-400">ສິນຄ້າ</div><div className="font-mono text-xl font-bold tabular-nums text-zinc-900 dark:text-zinc-50">{detail.items.length}</div></div>
                 <div><div className="text-[10px] uppercase text-zinc-400">ຈຳນວນ</div><div className="font-mono text-xl font-bold tabular-nums text-zinc-900 dark:text-zinc-50">{fmt(totalQty)}</div></div>
-                <div><div className="text-[10px] uppercase text-zinc-400">SN</div><div className="font-mono text-xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{detail.serial_count}</div></div>
+                <div><div className="text-[10px] uppercase text-zinc-400">SN</div><div className="font-mono text-xl font-bold tabular-nums text-aqua-600 dark:text-aqua-400">{detail.serial_count}</div></div>
               </div>
             </div>
 
@@ -175,7 +175,7 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                     {detail.items.map((i, idx) => (
                       <tr key={`${i.item_code}-${idx}`}>
-                        <td className="px-4 py-2"><div className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{i.item_code}</div><div className="max-w-md truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div></td>
+                        <td className="px-4 py-2"><div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{i.item_code}</div><div className="max-w-md truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div></td>
                         <td className="px-4 py-2 font-mono text-[11px] text-zinc-500">{loc(i.rack, i.location)}</td>
                         <td className="px-4 py-2 text-right font-mono text-sm tabular-nums text-zinc-700 dark:text-zinc-200">{fmt(i.qty)}<span className="ml-1 text-[10px] uppercase text-zinc-400">{i.unit_code}</span></td>
                       </tr>
@@ -214,8 +214,8 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <span className="text-xs text-zinc-500">{whCode} · {loc(detail.pallet.rack, detail.pallet.location)} → <b className="font-mono text-blue-600 dark:text-blue-400">{toWh}{toRack || toLoc ? ` · ${loc(toRack, toLoc)}` : " (ສາງ)"}</b>{toWh !== whCode && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">ຂ້າມສາງ</span>}</span>
-                <button type="button" onClick={submit} disabled={submitting || (toWh === whCode && !toRack && !toLoc)} className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:shadow-lg disabled:opacity-50">
+                <span className="text-xs text-zinc-500">{whCode} · {loc(detail.pallet.rack, detail.pallet.location)} → <b className="font-mono text-brand-600 dark:text-brand-400">{toWh}{toRack || toLoc ? ` · ${loc(toRack, toLoc)}` : " (ສາງ)"}</b>{toWh !== whCode && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">ຂ້າມສາງ</span>}</span>
+                <button type="button" onClick={submit} disabled={submitting || (toWh === whCode && !toRack && !toLoc)} className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg disabled:opacity-50">
                   <LayersIcon className="h-4 w-4" />
                   {submitting ? "ກຳລັງຍ້າຍ..." : "ຍ້າຍ Pallet"}
                 </button>

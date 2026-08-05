@@ -399,7 +399,7 @@ export default async function IssueHistory({
                     <div className="text-[10px] text-zinc-400">{d.line_count} ລາຍການ</div>
                   </div>
                   <a href={`/print/wms/${encodeURIComponent(d.doc_no)}`} target="_blank" rel="noopener"
-                    title="ເບິ່ງລາຍລະອຽດ SN / ISN + ບ່ອນຈ່າຍອອກ" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-blue-50 hover:text-blue-600 dark:ring-zinc-800">👁</a>
+                    title="ເບິ່ງລາຍລະອຽດ SN / ISN + ບ່ອນຈ່າຍອອກ" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-brand-50 hover:text-brand-600 dark:ring-zinc-800">👁</a>
                   <a href={`/print/wms/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener"
                     title="ພິມໃບຈ່າຍ / ໃບໂອນ (ມີ SN + ບ່ອນເກັບ)" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-slate-50 hover:text-slate-700 dark:ring-zinc-800">🖨</a>
                   <a href={`/print/wms/${encodeURIComponent(d.doc_no)}/bill?auto=1`} target="_blank" rel="noopener"
@@ -450,11 +450,11 @@ export default async function IssueHistory({
                     <span className="font-bold text-zinc-500 dark:text-zinc-400">ເອກະສານກ່ຽວຂ້ອງ:</span>
                     <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-red-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-red-400 dark:ring-zinc-800" title="WMS ໃບຈ່າຍ">DP · {d.doc_no}</span>
                     {d.doc_ref && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-blue-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-blue-400 dark:ring-zinc-800" title="ໃບຂໍ (ຕົ້ນທາງ)">ໃບຂໍ · {d.doc_ref}</span>
+                      <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-brand-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-brand-400 dark:ring-zinc-800" title="ໃບຂໍ (ຕົ້ນທາງ)">ໃບຂໍ · {d.doc_ref}</span>
                     )}
                     {(erpByDoc.get(d.doc_no) ?? []).map((e) => (
                       <span key={e.doc_no + e.label}
-                        className={`inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800 ${e.label === "ໃບໂອນເຂົ້າ" ? "text-violet-700 dark:text-violet-400" : "text-emerald-700 dark:text-emerald-400"}`}
+                        className={`inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800 ${e.label === "ໃບໂອນເຂົ້າ" ? "text-aqua-700 dark:text-aqua-400" : "text-emerald-700 dark:text-emerald-400"}`}
                         title={e.label === "ໃບໂອນເຂົ້າ" ? "ຮັບໂອນເຂົ້າສາງປາຍທາງ (ERP)" : "ERP"}>
                         {e.label} · {e.doc_no}
                       </span>

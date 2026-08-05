@@ -129,7 +129,7 @@ export default function DailyClient({ warehouses }: { warehouses: WarehouseOptio
   }
 
   const inputCls =
-    "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+    "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
   const printParams = useMemo(() => {
     const p = new URLSearchParams(params);
     p.set("view", tab);
@@ -171,7 +171,7 @@ export default function DailyClient({ warehouses }: { warehouses: WarehouseOptio
                 const on = types.includes(t.key);
                 return (
                   <button key={t.key} type="button" onClick={() => toggleType(t.key)}
-                    className={`rounded-lg px-3 py-2.5 text-xs font-semibold ring-1 transition ${on ? "bg-blue-50 text-blue-700 ring-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-800" : "bg-white text-zinc-500 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:ring-zinc-800"}`}>
+                    className={`rounded-lg px-3 py-2.5 text-xs font-semibold ring-1 transition ${on ? "bg-brand-50 text-brand-700 ring-brand-300 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-800" : "bg-white text-zinc-500 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:ring-zinc-800"}`}>
                     {t.label}
                   </button>
                 );
@@ -179,7 +179,7 @@ export default function DailyClient({ warehouses }: { warehouses: WarehouseOptio
             </div>
           </div>
           <button type="button" onClick={load} disabled={loading || !whCode}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:shadow-lg disabled:opacity-50">
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg disabled:opacity-50">
             <SearchIcon className="h-4 w-4" />
             {loading ? "ກຳລັງກວດ..." : "ກວດລາຍງານ"}
           </button>
@@ -188,7 +188,7 @@ export default function DailyClient({ warehouses }: { warehouses: WarehouseOptio
             Excel
           </a>
           <a href={whCode ? `/print/daily?${printParams}` : undefined} target="_blank" rel="noopener noreferrer"
-            className={`inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-500 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:shadow-lg ${whCode ? "" : "pointer-events-none opacity-50"}`}>
+            className={`inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg ${whCode ? "" : "pointer-events-none opacity-50"}`}>
             ເອກະສານ / ພິມ
           </a>
         </div>
@@ -203,7 +203,7 @@ export default function DailyClient({ warehouses }: { warehouses: WarehouseOptio
             <Kpi label="ເປີດບິນ" value={fmt(data.totals.bill_qty)} sub={`${fmt(data.totals.bill_docs)} ໃບ`} tone="amber" />
             <Kpi label="ຮັບເຂົ້າ" value={fmt(data.totals.qty_in)} sub="ລວມທັງຊ່ວງ" tone="emerald" />
             <Kpi label="ຈ່າຍອອກ" value={fmt(data.totals.qty_out)} sub="ລວມທັງຊ່ວງ" tone="rose" />
-            <Kpi label="ຍົກໄປ" value={fmt(data.totals.closing)} sub={fmtDate(data.to)} tone="blue" />
+            <Kpi label="ຍົກໄປ" value={fmt(data.totals.closing)} sub={fmtDate(data.to)} tone="navy" />
           </section>
 
           <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
@@ -235,9 +235,9 @@ export default function DailyClient({ warehouses }: { warehouses: WarehouseOptio
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                     {data.stock.map((d) => [
-                      <tr key={d.date} className={openDay === d.date ? "bg-blue-50/50 dark:bg-blue-950/10" : undefined}>
+                      <tr key={d.date} className={openDay === d.date ? "bg-brand-50/50 dark:bg-brand-950/10" : undefined}>
                         <td className="px-3 py-2.5">
-                          <button type="button" onClick={() => toggleDay(d.date)} className="font-mono text-xs font-bold text-blue-700 hover:underline dark:text-blue-400">
+                          <button type="button" onClick={() => toggleDay(d.date)} className="font-mono text-xs font-bold text-brand-700 hover:underline dark:text-brand-400">
                             {fmtDate(d.date)} <span className="text-[10px] font-normal text-zinc-400">{dow(d.date)}</span>
                           </button>
                         </td>
@@ -279,9 +279,9 @@ export default function DailyClient({ warehouses }: { warehouses: WarehouseOptio
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                     {data.bills.map((d) => [
-                      <tr key={d.date} className={openDay === d.date ? "bg-blue-50/50 dark:bg-blue-950/10" : undefined}>
+                      <tr key={d.date} className={openDay === d.date ? "bg-brand-50/50 dark:bg-brand-950/10" : undefined}>
                         <td className="px-3 py-2.5">
-                          <button type="button" onClick={() => toggleDay(d.date)} className="font-mono text-xs font-bold text-blue-700 hover:underline dark:text-blue-400">
+                          <button type="button" onClick={() => toggleDay(d.date)} className="font-mono text-xs font-bold text-brand-700 hover:underline dark:text-brand-400">
                             {fmtDate(d.date)} <span className="text-[10px] font-normal text-zinc-400">{dow(d.date)}</span>
                           </button>
                         </td>
@@ -326,7 +326,7 @@ function Kpi({ label, value, sub, tone = "zinc" }: { label: string; value: strin
     tone === "emerald" ? "text-emerald-600 dark:text-emerald-400"
     : tone === "rose" ? "text-rose-600 dark:text-rose-400"
     : tone === "amber" ? "text-amber-600 dark:text-amber-400"
-    : tone === "blue" ? "text-blue-600 dark:text-blue-400"
+    : tone === "navy" ? "text-brand-600 dark:text-brand-400"
     : "text-zinc-900 dark:text-zinc-50";
   return (
     <div className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
@@ -392,7 +392,7 @@ function DetailRow({ colSpan, loading, detail }: { colSpan: number; loading: boo
                   {detail.bills.slice(0, 200).map((b) => (
                     <tr key={`${b.doc_no}-${b.trans_flag}`} className="bg-white dark:bg-zinc-900">
                       <td className="px-3 py-1.5">
-                        <div className="font-mono text-[10px] font-bold text-blue-700 dark:text-blue-400">{b.doc_no}</div>
+                        <div className="font-mono text-[10px] font-bold text-brand-700 dark:text-brand-400">{b.doc_no}</div>
                         <div className="text-[10px] text-zinc-400">{LABEL_BY_FLAG[b.trans_flag] ?? b.trans_flag} · {b.lines} ລາຍການ</div>
                       </td>
                       <td className="px-3 py-1.5">

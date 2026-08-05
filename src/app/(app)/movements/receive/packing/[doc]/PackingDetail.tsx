@@ -44,7 +44,7 @@ type PreviewLine = {
 const STATUS: Record<number, { text: string; cls: string }> = {
   0: { text: "ນຳເຂົ້າແລ້ວ", cls: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" },
   1: { text: "ກວດສອບຜ່ານ", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" },
-  5: { text: "ສ້າງໃບກວດນັບແລ້ວ", cls: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300" },
+  5: { text: "ສ້າງໃບກວດນັບແລ້ວ", cls: "bg-brand-100 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300" },
   9: { text: "ຍົກເລີກ", cls: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300" },
 };
 
@@ -330,7 +330,7 @@ export default function PackingDetail({ doc }: { doc: string }) {
           <span className="font-mono text-lg font-black text-emerald-700 dark:text-emerald-400">{h.doc_no}</span>
           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${st.cls}`}>{st.text}</span>
           {h.count_doc_no && (
-            <Link href={`/movements/receive/count/${encodeURIComponent(h.count_doc_no)}`} className="rounded-full bg-indigo-600 px-2.5 py-0.5 text-[11px] font-bold text-white">
+            <Link href={`/movements/receive/count/${encodeURIComponent(h.count_doc_no)}`} className="rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-bold text-white">
               ໃບກວດນັບ {h.count_doc_no} →
             </Link>
           )}
@@ -393,10 +393,10 @@ export default function PackingDetail({ doc }: { doc: string }) {
 
       {/* ຄຳແນະນຳ: ຊື່ໃນໄຟລ໌ → ສິນຄ້າ SML → PO ໃດ ຈຳນວນເທົ່າໃດ (ເກີນ → PO ຕໍ່ໄປ) */}
       {match && (
-        <section className="shadow-card rounded-2xl bg-white p-5 ring-2 ring-indigo-300 dark:bg-zinc-900 dark:ring-indigo-800">
+        <section className="shadow-card rounded-2xl bg-white p-5 ring-2 ring-brand-300 dark:bg-zinc-900 dark:ring-brand-800">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-extrabold text-zinc-900 dark:text-zinc-100">ຜົນການກວດ: ສິນຄ້າ SML ແລະ PO ທີ່ແນະນຳ</h3>
-            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+            <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">
               ທຽບກັບ {match.pool_size} ແຖວຄ້າງຮັບ
             </span>
             {match.unresolved > 0 && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">ຍັງບໍ່ຮູ້ສິນຄ້າ {match.unresolved}</span>}
@@ -408,7 +408,7 @@ export default function PackingDetail({ doc }: { doc: string }) {
             <div className="mb-3 flex flex-wrap gap-1.5">
               <span className="text-[11px] font-semibold text-zinc-500">ຈະເຂົ້າ PO:</span>
               {match.po_summary.map((p) => (
-                <span key={p.po_no} className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300 dark:ring-indigo-900/50">
+                <span key={p.po_no} className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-bold text-brand-700 ring-1 ring-brand-200 dark:bg-brand-950/30 dark:text-brand-300 dark:ring-brand-900/50">
                   {p.po_no} · {p.lines} ລາຍການ · {fmt(p.qty)}
                 </span>
               ))}
@@ -523,7 +523,7 @@ export default function PackingDetail({ doc }: { doc: string }) {
                   <td className="px-3 py-2">
                     <div className="font-mono text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
                       {l.item_code ?? l.raw_item_code}
-                      {l.is_isn && <span className="ml-1 rounded bg-violet-100 px-1 text-[9px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">SN</span>}
+                      {l.is_isn && <span className="ml-1 rounded bg-aqua-100 px-1 text-[9px] text-aqua-700 dark:bg-aqua-950/40 dark:text-aqua-300">SN</span>}
                     </div>
                     {/* ຊື່ຈາກ SML ເປັນຫຼັກ; ຂໍ້ຄວາມຈາກໄຟລ໌ຜູ້ສະໜອງສະແດງເປັນອ້າງອີງ */}
                     <div className="max-w-sm truncate text-[11px] text-zinc-600 dark:text-zinc-400" title={l.item_name}>{l.item_name || "—"}</div>
@@ -637,7 +637,7 @@ export default function PackingDetail({ doc }: { doc: string }) {
                       </td>
                       <td className="px-3 py-2 font-mono text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
                         {p.item_code}
-                        {p.is_isn && <span className="ml-1 rounded bg-violet-100 px-1 text-[9px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">SN</span>}
+                        {p.is_isn && <span className="ml-1 rounded bg-aqua-100 px-1 text-[9px] text-aqua-700 dark:bg-aqua-950/40 dark:text-aqua-300">SN</span>}
                       </td>
                       <td className="px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300"><span className="block max-w-sm truncate" title={p.item_name}>{p.item_name || "—"}</span></td>
                       <td className="px-3 py-2 font-mono text-[10px] text-zinc-500">{p.pos.join(", ")}</td>

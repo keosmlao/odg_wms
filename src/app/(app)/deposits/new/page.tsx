@@ -50,7 +50,7 @@ export default async function NewDepositPage() {
       <nav className="mb-3 flex items-center gap-2 text-sm">
         <Link
           href="/deposits"
-          className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+          className="font-medium text-brand-600 hover:underline dark:text-brand-400"
         >
           ຮັບຝາກເຄື່ອງ
         </Link>
@@ -61,7 +61,7 @@ export default async function NewDepositPage() {
       </nav>
 
       <header className="mb-5 flex items-start gap-3 sm:gap-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-white shadow-lg shadow-indigo-500/20 sm:h-11 sm:w-11">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-900 via-brand-500 to-aqua-400 text-white shadow-lg shadow-brand-500/20 sm:h-11 sm:w-11">
           <PlusIcon className="h-5 w-5" />
         </div>
         <div>

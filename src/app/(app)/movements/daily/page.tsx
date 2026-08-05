@@ -28,7 +28,7 @@ export default async function DailyPage() {
         title="ການເຄື່ອນໄຫວປະຈຳວັນ"
         description="ຍອດຍົກມາ · ເປີດບິນ · ຮັບເຂົ້າ · ຈ່າຍອອກ · ຍົກໄປ — ກົດວັນທີ່ເພື່ອເບິ່ງລາຍລະອຽດ"
         icon={<CalendarIcon className="h-6 w-6" />}
-        tone="blue"
+        tone="navy"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
       <DailyClient warehouses={warehouses} />

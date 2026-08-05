@@ -144,7 +144,7 @@ export default function BalanceLocationItems({
             <div className="text-xs text-zinc-600 dark:text-zinc-400">
               {item.ic_unit_code ?? "-"}
             </div>
-            <div className="text-right font-mono text-xs tabular-nums text-indigo-600 dark:text-indigo-400">
+            <div className="text-right font-mono text-xs tabular-nums text-brand-600 dark:text-brand-400">
               {item.pallet_positions
                 ? `~${formatQty(item.pallet_positions)}`
                 : "—"}
@@ -158,7 +158,7 @@ export default function BalanceLocationItems({
                     setSnItem({ code: item.ic_code!, name: item.ic_name });
                   }}
                   title="ເບິ່ງ serial number ຂອງສິນຄ້ານີ້"
-                  className="inline-flex items-center rounded-md bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300"
+                  className="inline-flex items-center rounded-md bg-aqua-50 px-2 py-1 text-[10px] font-bold text-aqua-700 transition hover:bg-aqua-100 dark:bg-aqua-950/40 dark:text-aqua-300"
                 >
                   SN
                 </button>

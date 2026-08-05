@@ -94,14 +94,14 @@ export default function StockLocationsDrawer({
                   const rowCls = locMatch
                     ? "bg-emerald-50 ring-1 ring-inset ring-emerald-300 dark:bg-emerald-950/30 dark:ring-emerald-800"
                     : whMatch
-                      ? "bg-blue-50 dark:bg-blue-950/20"
+                      ? "bg-brand-50 dark:bg-brand-950/20"
                       : "";
                   return (
                     <tr key={`${r.wh_code}-${r.location}-${i}`} className={`border-t border-zinc-100 text-zinc-800 dark:border-zinc-800 dark:text-zinc-200 ${rowCls}`}>
                       <td className="px-4 py-2 align-top">
                         <div className="flex items-center gap-1.5">
-                          <div className={`font-mono text-xs font-semibold ${whMatch ? "text-blue-700 dark:text-blue-300" : ""}`}>{r.wh_code}</div>
-                          {whMatch && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">ສາງທີ່ເລືອກ</span>}
+                          <div className={`font-mono text-xs font-semibold ${whMatch ? "text-brand-700 dark:text-brand-300" : ""}`}>{r.wh_code}</div>
+                          {whMatch && <span className="rounded-full bg-brand-100 px-1.5 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900/50 dark:text-brand-300">ສາງທີ່ເລືອກ</span>}
                         </div>
                         {r.wh_name && <div className="text-[10px] text-zinc-500">{r.wh_name}</div>}
                       </td>

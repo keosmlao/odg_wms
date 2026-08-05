@@ -29,15 +29,15 @@ export default function SerialKpi({ wh }: { wh: string }) {
   return (
     <div className="mt-4 grid grid-cols-3 gap-2.5">
       <Cell label="ຄົງເຫຼືອ" value={kpi?.instock} tone="emerald" />
-      <Cell label="ສິນຄ້າ (ມີ SN)" value={kpi?.items} tone="violet" />
+      <Cell label="ສິນຄ້າ (ມີ SN)" value={kpi?.items} tone="aqua" />
       <Cell label="ຈ່າຍອອກແລ້ວ" value={kpi?.issued} tone="zinc" />
     </div>
   );
 }
 
-function Cell({ label, value, tone }: { label: string; value: number | undefined; tone: "emerald" | "violet" | "zinc" }) {
+function Cell({ label, value, tone }: { label: string; value: number | undefined; tone: "emerald" | "aqua" | "zinc" }) {
   const color =
-    tone === "emerald" ? "text-emerald-600 dark:text-emerald-400" : tone === "violet" ? "text-violet-600 dark:text-violet-400" : "text-zinc-700 dark:text-zinc-300";
+    tone === "emerald" ? "text-emerald-600 dark:text-emerald-400" : tone === "aqua" ? "text-aqua-600 dark:text-aqua-400" : "text-zinc-700 dark:text-zinc-300";
   return (
     <div className="rounded-xl bg-zinc-50 px-3 py-2.5 ring-1 ring-zinc-100 dark:bg-zinc-800/40 dark:ring-zinc-800">
       <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{label}</div>

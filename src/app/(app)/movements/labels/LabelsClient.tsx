@@ -59,7 +59,7 @@ export default function LabelsClient({ warehouses }: { warehouses: WarehouseOpti
   }
 
   const toPrint = useMemo(() => labels.filter((l) => selected.has(l.code)), [labels, selected]);
-  const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-violet-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+  const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-aqua-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
   return (
     <div className="space-y-4">
@@ -76,7 +76,7 @@ export default function LabelsClient({ warehouses }: { warehouses: WarehouseOpti
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ປະເພດ label</label>
             <div className="flex gap-1 rounded-lg bg-zinc-100 p-0.5 dark:bg-zinc-800">
               {([["pallet", "Pallet"], ["bin", "Location"]] as [Kind, string][]).map(([k, l]) => (
-                <button key={k} type="button" onClick={() => setKind(k)} className={`rounded-md px-4 py-1.5 text-sm font-semibold transition ${kind === k ? "bg-white text-violet-600 shadow-sm dark:bg-zinc-950 dark:text-violet-400" : "text-zinc-500"}`}>{l}</button>
+                <button key={k} type="button" onClick={() => setKind(k)} className={`rounded-md px-4 py-1.5 text-sm font-semibold transition ${kind === k ? "bg-white text-aqua-600 shadow-sm dark:bg-zinc-950 dark:text-aqua-400" : "text-zinc-500"}`}>{l}</button>
               ))}
             </div>
           </div>
@@ -90,7 +90,7 @@ export default function LabelsClient({ warehouses }: { warehouses: WarehouseOpti
           <button type="button" onClick={toggleAll} className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800">
             {allSelected ? "ຍົກເລີກໝົດ" : "ເລືອກໝົດ"}
           </button>
-          <button type="button" onClick={() => window.print()} disabled={toPrint.length === 0} className="rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">
+          <button type="button" onClick={() => window.print()} disabled={toPrint.length === 0} className="rounded-lg bg-gradient-to-r from-aqua-600 to-brand-700 px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">
             🖨 ພິມ {toPrint.length > 0 ? `(${toPrint.length})` : ""}
           </button>
         </div>
@@ -104,10 +104,10 @@ export default function LabelsClient({ warehouses }: { warehouses: WarehouseOpti
           const on = selected.has(l.code);
           return (
             <button key={l.code} type="button" onClick={() => toggle(l.code)}
-              className={`rounded-xl border-2 bg-white p-3 text-left transition dark:bg-zinc-900 ${on ? "border-violet-500 ring-2 ring-violet-200 dark:ring-violet-900/50" : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800"}`}>
+              className={`rounded-xl border-2 bg-white p-3 text-left transition dark:bg-zinc-900 ${on ? "border-aqua-500 ring-2 ring-aqua-200 dark:ring-aqua-900/50" : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800"}`}>
               <div className="flex items-center justify-between">
                 <span className="font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{l.code}</span>
-                <span className={`flex h-4 w-4 items-center justify-center rounded text-[10px] ${on ? "bg-violet-500 text-white" : "bg-zinc-100 text-transparent dark:bg-zinc-800"}`}>✓</span>
+                <span className={`flex h-4 w-4 items-center justify-center rounded text-[10px] ${on ? "bg-aqua-500 text-white" : "bg-zinc-100 text-transparent dark:bg-zinc-800"}`}>✓</span>
               </div>
               <div className="mt-1 truncate text-[11px] text-zinc-500" title={l.line1}>{l.line1}</div>
               <div className="mt-2"><Barcode value={l.code} height={36} /></div>

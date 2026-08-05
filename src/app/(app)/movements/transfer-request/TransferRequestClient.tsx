@@ -22,9 +22,9 @@ function statusOf(d: ReqDoc): StatusInfo {
   if ((d.status ?? 0) === 2) return { key: "rejected", label: "ຖືກປฏิเสธ", cls: "bg-rose-50 text-rose-600 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300" };
   if (req > 0 && rcv + 1e-6 >= req) return { key: "done", label: "ຮັບຄົບ ✓", cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300" };
   if (inT > 0.0001) return { key: "transit", label: "ຄ້າງລະຫວ່າງທາງ", cls: amber };
-  if (rcv > 0.0001) return { key: "partial", label: "ຮັບບາງສ່ວນ", cls: "bg-sky-50 text-sky-700 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300" };
-  if (toT > 0.0001) return { key: "issuing", label: "ກຳລັງຈ່າຍ", cls: "bg-blue-50 text-blue-700 ring-1 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-300" };
-  if (d.pulled > 0) return { key: "pulled", label: "ດຶງໄປແລ້ວ", cls: "bg-violet-50 text-violet-700 ring-1 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300" };
+  if (rcv > 0.0001) return { key: "partial", label: "ຮັບບາງສ່ວນ", cls: "bg-aqua-50 text-aqua-700 ring-1 ring-aqua-200 dark:bg-aqua-950/40 dark:text-aqua-300" };
+  if (toT > 0.0001) return { key: "issuing", label: "ກຳລັງຈ່າຍ", cls: "bg-brand-50 text-brand-700 ring-1 ring-brand-200 dark:bg-brand-950/40 dark:text-brand-300" };
+  if (d.pulled > 0) return { key: "pulled", label: "ດຶງໄປແລ້ວ", cls: "bg-aqua-50 text-aqua-700 ring-1 ring-aqua-200 dark:bg-aqua-950/40 dark:text-aqua-300" };
   return { key: "wait", label: "ລໍຖ້າຈ່າຍ", cls: "bg-zinc-100 text-zinc-500 ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-400" };
 }
 type DetailLine = { item_code: string; item_name: string | null; unit_code: string | null; req_qty: string; issued: string; in_transit?: string; received?: string; remaining: string; shelf_from?: string | null; shelf_to?: string | null };
@@ -203,7 +203,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
     finally { setSubmitting(false); }
   }
 
-  const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+  const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
   const labelCls = "mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400";
 
   // "ຈ່າຍແລ້ວ" = ຖูกดึงไปออกใบสั่งจ่าย (pending draft) ຫຼື finalize (DP) ແລ້ວ.
@@ -217,12 +217,12 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex gap-1 rounded-lg bg-zinc-100 p-0.5 dark:bg-zinc-800">
             {([["all", "ທັງໝົດ"], ["pending", "ລໍຖ້າຈ່າຍ"], ["done", "ຈ່າຍແລ້ວ"]] as const).map(([k, label]) => (
-              <button key={k} type="button" onClick={() => setStatusTab(k)} className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition ${statusTab === k ? "bg-white text-blue-600 shadow-sm dark:bg-zinc-950 dark:text-blue-400" : "text-zinc-500"}`}>
+              <button key={k} type="button" onClick={() => setStatusTab(k)} className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition ${statusTab === k ? "bg-white text-brand-600 shadow-sm dark:bg-zinc-950 dark:text-brand-400" : "text-zinc-500"}`}>
                 {label} <span className="ml-0.5 text-[10px] opacity-70">{counts[k]}</span>
               </button>
             ))}
           </div>
-          <button type="button" onClick={newRequest} className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:shadow-lg">
+          <button type="button" onClick={newRequest} className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:shadow-lg">
             <PlusIcon className="h-4 w-4" /> ສ້າງໃບຂໍໂອນ
           </button>
         </div>
@@ -261,7 +261,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
                     <ChevronRightIcon className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${open ? "rotate-90" : ""}`} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-sm font-bold text-blue-600 dark:text-blue-400">{d.doc_no}</span>
+                        <span className="font-mono text-sm font-bold text-brand-600 dark:text-brand-400">{d.doc_no}</span>
                         <span className="text-[11px] text-zinc-400">{ddmm(d.doc_date)} {d.doc_time}</span>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${st.cls}`}>{st.label}</span>
                         {overdue && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300">ເກີນກຳນົດ {ddmm(d.want_date)}</span>}
@@ -287,11 +287,11 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
                               const rcv = Number.parseFloat(ln.received ?? "0") || 0;
                               return (
                                 <tr key={ln.item_code}>
-                                  <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{ln.item_code}</span><div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{ln.item_name}</div>{(ln.shelf_from || ln.shelf_to) && <div className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-400">ສະພາບ: <span className="font-mono">{ln.shelf_from ?? "—"}</span> → <span className="font-mono">{ln.shelf_to ?? "—"}</span></div>}{notesByDoc[d.doc_no]?.[ln.item_code] && <div className="mt-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">⚠ {notesByDoc[d.doc_no][ln.item_code]}</div>}</td>
+                                  <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{ln.item_code}</span><div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{ln.item_name}</div>{(ln.shelf_from || ln.shelf_to) && <div className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-400">ສະພາບ: <span className="font-mono">{ln.shelf_from ?? "—"}</span> → <span className="font-mono">{ln.shelf_to ?? "—"}</span></div>}{notesByDoc[d.doc_no]?.[ln.item_code] && <div className="mt-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">⚠ {notesByDoc[d.doc_no][ln.item_code]}</div>}</td>
                                   <td className="px-4 py-2 text-right font-mono tabular-nums">{ln.req_qty}<span className="ml-1 text-[10px] text-zinc-400">{ln.unit_code}</span></td>
                                   <td className="px-4 py-2 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400">{ln.issued}</td>
                                   <td className={`px-4 py-2 text-right font-mono tabular-nums ${inT > 0.0001 ? "font-bold text-amber-600 dark:text-amber-400" : "text-zinc-400"}`}>{inT > 0.0001 ? inT : "—"}</td>
-                                  <td className="px-4 py-2 text-right font-mono tabular-nums text-sky-600 dark:text-sky-400">{rcv > 0.0001 ? rcv : "—"}</td>
+                                  <td className="px-4 py-2 text-right font-mono tabular-nums text-aqua-600 dark:text-aqua-400">{rcv > 0.0001 ? rcv : "—"}</td>
                                   <td className={`px-4 py-2 text-right font-mono font-bold tabular-nums ${rem > 0.0001 ? "text-zinc-500" : "text-zinc-400"}`}>{ln.remaining}</td>
                                 </tr>
                               );
@@ -302,7 +302,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
                       {(st.key === "wait" || st.key === "await" || st.key === "rejected") && (
                         <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-2.5 dark:border-zinc-800">
                           <button type="button" onClick={() => startEdit(d)}
-                            className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600 ring-1 ring-blue-200 transition hover:bg-blue-100 cursor-pointer dark:bg-blue-950/30 dark:text-blue-300 dark:ring-blue-900/40">
+                            className="rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-bold text-brand-600 ring-1 ring-brand-200 transition hover:bg-brand-100 cursor-pointer dark:bg-brand-950/30 dark:text-brand-300 dark:ring-brand-900/40">
                             ແກ້ໄຂ
                           </button>
                           <button type="button" disabled={cancelling === d.doc_no}
@@ -341,7 +341,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
       <section className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         {/* Read-only header: doc_no / date / requester */}
         <div className="mb-3 grid gap-3 rounded-xl bg-zinc-50/60 p-3 sm:grid-cols-3 dark:bg-zinc-950/30">
-          <div><div className={labelCls}>ເລກທີ ໃບຂໍໂອນ {editDoc && <span className="rounded bg-amber-100 px-1.5 text-[9px] font-bold text-amber-700">ແກ້ໄຂ</span>}</div><div className="font-mono text-sm font-bold text-blue-600 dark:text-blue-400">{editDoc || nextDoc || "—"}</div></div>
+          <div><div className={labelCls}>ເລກທີ ໃບຂໍໂອນ {editDoc && <span className="rounded bg-amber-100 px-1.5 text-[9px] font-bold text-amber-700">ແກ້ໄຂ</span>}</div><div className="font-mono text-sm font-bold text-brand-600 dark:text-brand-400">{editDoc || nextDoc || "—"}</div></div>
           <div><div className={labelCls}>ວັນທີ</div><div className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">{today.split("-").reverse().join("-")}</div></div>
           <div><div className={labelCls}>ຜູ້ຂໍໂອນ</div><div className="truncate text-sm font-semibold text-zinc-700 dark:text-zinc-200">{requester || "—"}</div></div>
         </div>
@@ -381,10 +381,10 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
                 {hits.map((h) => (
                   <div key={h.item_code} className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-800/70">
                     <button type="button" onClick={() => addHit(h)} className="flex min-w-0 flex-1 items-center gap-3">
-                      <PlusIcon className="h-4 w-4 shrink-0 text-blue-500" />
-                      <div className="min-w-0 flex-1"><div className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{h.item_code}</div><div className="truncate text-xs">{h.item_name}</div></div>
+                      <PlusIcon className="h-4 w-4 shrink-0 text-brand-500" />
+                      <div className="min-w-0 flex-1"><div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{h.item_code}</div><div className="truncate text-xs">{h.item_name}</div></div>
                     </button>
-                    <button type="button" onClick={() => setStockDrawer({ code: h.item_code, name: h.item_name })} title="ເບິ່ງສະຕັອກທຸກສາງ" className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-zinc-400 underline decoration-dotted underline-offset-2 hover:text-blue-600 dark:hover:text-blue-400">ມີ {h.wh_balance ?? "0"} · {h.unit_code}</button>
+                    <button type="button" onClick={() => setStockDrawer({ code: h.item_code, name: h.item_name })} title="ເບິ່ງສະຕັອກທຸກສາງ" className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-zinc-400 underline decoration-dotted underline-offset-2 hover:text-brand-600 dark:hover:text-brand-400">ມີ {h.wh_balance ?? "0"} · {h.unit_code}</button>
                   </div>
                 ))}
               </div>
@@ -399,18 +399,18 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
                 <thead><tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase text-zinc-500 dark:bg-zinc-800/50"><th className="px-4 py-2.5">ສິນຄ້າ</th><th className="px-4 py-2.5 text-center">ຈຳນວນຂໍ</th><th className="px-3 py-2.5">
                   ສະພາບ (ຈາກ)
                   {lines.length > 1 && (lines[0].shelfFrom || lines[0].shelfTo) && (
-                    <button type="button" onClick={applyRow1ShelfToAll} title="ໃຊ້ສະພາບຂອງແຖວ 1 ກັບທຸກລາຍການ" className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold normal-case text-blue-600 hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300">ໃຊ້ຄືແຖວ 1 ທຸກລາຍການ</button>
+                    <button type="button" onClick={applyRow1ShelfToAll} title="ໃຊ້ສະພາບຂອງແຖວ 1 ກັບທຸກລາຍການ" className="ml-2 rounded bg-brand-50 px-1.5 py-0.5 text-[9px] font-bold normal-case text-brand-600 hover:bg-brand-100 dark:bg-brand-950/30 dark:text-brand-300">ໃຊ້ຄືແຖວ 1 ທຸກລາຍການ</button>
                   )}
                 </th><th className="px-3 py-2.5">ສະພາບ (ເຂົ້າ)</th><th className="w-8" /></tr></thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {lines.map((l, i) => (
                     <tr key={l.item_code}>
-                      <td className="px-4 py-2.5"><button type="button" onClick={() => setStockDrawer({ code: l.item_code, name: l.item_name, shelf: l.shelfFrom })} title="ເບິ່ງສະຕັອກທຸກສາງ" className="font-mono text-[11px] font-bold text-blue-600 underline decoration-dotted underline-offset-2 hover:text-blue-700 dark:text-blue-400">{l.item_code}</button><div className="max-w-md truncate text-[13px]">{l.item_name}</div></td>
-                      <td className="px-4 py-2.5 text-center"><input type="number" inputMode="decimal" value={l.qty} onChange={(e) => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, qty: e.target.value } : x))} className="w-24 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:ring-zinc-800" /><span className="ml-1 text-[10px] text-zinc-400">{l.unit_code}</span></td>
+                      <td className="px-4 py-2.5"><button type="button" onClick={() => setStockDrawer({ code: l.item_code, name: l.item_name, shelf: l.shelfFrom })} title="ເບິ່ງສະຕັອກທຸກສາງ" className="font-mono text-[11px] font-bold text-brand-600 underline decoration-dotted underline-offset-2 hover:text-brand-700 dark:text-brand-400">{l.item_code}</button><div className="max-w-md truncate text-[13px]">{l.item_name}</div></td>
+                      <td className="px-4 py-2.5 text-center"><input type="number" inputMode="decimal" value={l.qty} onChange={(e) => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, qty: e.target.value } : x))} className="w-24 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:ring-zinc-800" /><span className="ml-1 text-[10px] text-zinc-400">{l.unit_code}</span></td>
                       <td className="px-3 py-2.5">
                         <div className="min-w-[160px]"><RSelect size="sm" value={l.shelfFrom} options={shelfFromOptions} onChange={(v) => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, shelfFrom: v } : x))} placeholder="— ສະພາບ —" /></div>
                         {i > 0 && (lines[0].shelfFrom || lines[0].shelfTo) && (l.shelfFrom !== lines[0].shelfFrom || l.shelfTo !== lines[0].shelfTo) && (
-                          <button type="button" onClick={() => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, shelfFrom: lines[0].shelfFrom, shelfTo: lines[0].shelfTo } : x))} className="mt-1 text-[10px] font-semibold text-blue-500 underline decoration-dotted underline-offset-2 hover:text-blue-700 dark:text-blue-400">
+                          <button type="button" onClick={() => setLines((p) => p.map((x) => x.item_code === l.item_code ? { ...x, shelfFrom: lines[0].shelfFrom, shelfTo: lines[0].shelfTo } : x))} className="mt-1 text-[10px] font-semibold text-brand-500 underline decoration-dotted underline-offset-2 hover:text-brand-700 dark:text-brand-400">
                             ໃຊ້ຄືແຖວ 1
                           </button>
                         )}
@@ -425,8 +425,8 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
           )}
 
           <div className="mt-4 flex items-center justify-end gap-3">
-            {lines.length > 0 && <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">{lines.length} ລາຍການ</span>}
-            <button type="button" onClick={submit} disabled={submitting || lines.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50"><CheckIcon className="h-4 w-4" />{submitting ? "ກຳລັງສ້າງ..." : "ສ້າງໃບຂໍໂອນ"}</button>
+            {lines.length > 0 && <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">{lines.length} ລາຍການ</span>}
+            <button type="button" onClick={submit} disabled={submitting || lines.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50"><CheckIcon className="h-4 w-4" />{submitting ? "ກຳລັງສ້າງ..." : "ສ້າງໃບຂໍໂອນ"}</button>
           </div>
         </section>
       )}

@@ -387,7 +387,7 @@ export default function TransitMoveClient({
               <div key={l.item_code} className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition ${got > 0 ? "border-emerald-300" : "border-slate-200"}`}>
                 <div className="flex items-start justify-between gap-3 p-4">
                   <div className="min-w-0">
-                    <div className="font-mono text-[11px] text-slate-400">{l.item_code}{l.serialized && <span className="ml-1.5 rounded bg-violet-100 px-1 text-[9px] font-bold text-violet-700">SN</span>}</div>
+                    <div className="font-mono text-[11px] text-slate-400">{l.item_code}{l.serialized && <span className="ml-1.5 rounded bg-aqua-100 px-1 text-[9px] font-bold text-aqua-700">SN</span>}</div>
                     <div className="truncate font-medium text-slate-800" title={l.item_name ?? ""}>{l.item_name ?? l.item_code}</div>
                   </div>
                   <div className="shrink-0 text-right">

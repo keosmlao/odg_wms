@@ -96,7 +96,7 @@ export default async function SerialDetailPage({ params }: { params: Promise<{ s
 
   return (
     <div className="w-full space-y-4">
-      <Link href="/serials" className="inline-flex items-center gap-1.5 text-sm font-medium text-violet-600 hover:underline dark:text-violet-400">
+      <Link href="/serials" className="inline-flex items-center gap-1.5 text-sm font-medium text-aqua-600 hover:underline dark:text-aqua-400">
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6" /></svg>
         Serial Number
       </Link>
@@ -108,7 +108,7 @@ export default async function SerialDetailPage({ params }: { params: Promise<{ s
             <div className="break-all font-mono text-xl font-bold text-zinc-900 dark:text-zinc-50">{sn}</div>
             {itemCode && (
               <div className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
-                <span className="font-mono text-xs font-semibold text-violet-700 dark:text-violet-300">{itemCode}</span>
+                <span className="font-mono text-xs font-semibold text-aqua-700 dark:text-aqua-300">{itemCode}</span>
                 {itemName ? ` · ${itemName}` : ""}
               </div>
             )}
@@ -144,7 +144,7 @@ export default async function SerialDetailPage({ params }: { params: Promise<{ s
         {registry && (registry.rack || registry.location || registry.pallet) && (
           <div className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-              <MapPinIcon className="h-4 w-4 text-violet-500" /> ບ່ອນຈັດເກັບ
+              <MapPinIcon className="h-4 w-4 text-aqua-500" /> ບ່ອນຈັດເກັບ
             </div>
             <div className="mt-1.5 font-mono text-sm text-zinc-700 dark:text-zinc-300">
               {[registry.rack, registry.location, registry.pallet ? `plt:${registry.pallet}` : null].filter(Boolean).join(" / ") || "—"}
@@ -154,7 +154,7 @@ export default async function SerialDetailPage({ params }: { params: Promise<{ s
         {balance.map((b) => (
           <div key={b.wh_code} className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-              <BuildingIcon className="h-4 w-4 text-violet-500" /> {b.wh_code}{b.wh_name ? ` · ${b.wh_name}` : ""}
+              <BuildingIcon className="h-4 w-4 text-aqua-500" /> {b.wh_code}{b.wh_name ? ` · ${b.wh_name}` : ""}
             </div>
             <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
               <span>{b.item_brand ?? "—"}</span>
@@ -208,7 +208,7 @@ function InfoCard({ label, value, sub, icon }: { label: string; value: string; s
   return (
     <div className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
       <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-        <span className="text-violet-500">{icon}</span>{label}
+        <span className="text-aqua-500">{icon}</span>{label}
       </div>
       <div className="mt-1 font-mono text-sm font-bold text-zinc-900 dark:text-zinc-50">{value}</div>
       {sub && <div className="mt-0.5 truncate text-[11px] text-zinc-500" title={sub}>{sub}</div>}

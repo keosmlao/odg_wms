@@ -343,7 +343,7 @@ export default function PendingOutClient({ warehouses }: { warehouses: Warehouse
             href={whCode ? `/print/pending-out?${printParams}` : undefined}
             target="_blank"
             rel="noopener noreferrer"
-            className={`inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-500 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:shadow-lg ${whCode ? "" : "pointer-events-none opacity-50"}`}
+            className={`inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg ${whCode ? "" : "pointer-events-none opacity-50"}`}
           >
             ເອກະສານ / ພິມ
           </a>
@@ -543,7 +543,7 @@ export default function PendingOutClient({ warehouses }: { warehouses: Warehouse
                                         <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-500">{fmt(l.ordered)}</td>
                                         <td className="px-3 py-2 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400">{fmt(l.issued)}</td>
                                         <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-500">{fmt(l.picking)}</td>
-                                        <td className="px-3 py-2 text-right font-mono tabular-nums text-violet-600 dark:text-violet-400">{l.returned ? fmt(l.returned) : "—"}</td>
+                                        <td className="px-3 py-2 text-right font-mono tabular-nums text-aqua-600 dark:text-aqua-400">{l.returned ? fmt(l.returned) : "—"}</td>
                                         <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-amber-600 dark:text-amber-400">
                                           {fmt(l.remaining)}<span className="ml-1 text-[10px] uppercase text-zinc-400">{l.unit_code}</span>
                                         </td>
