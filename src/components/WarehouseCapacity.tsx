@@ -121,107 +121,156 @@ export default async function WarehouseCapacity({ session }: { session: Session 
   const grandPallets = rows.reduce((s, r) => s + r.palletsNeeded, 0);
   const nf = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
+  // Aggregate across warehouses that have configured capacity.
+  const sumTotal = rows.reduce((s, r) => s + r.total, 0);
+  const sumUsed = rows.reduce((s, r) => s + r.used, 0);
+  const overallPct =
+    sumTotal > 0 ? Math.min(100, Math.round((sumUsed / sumTotal) * 100)) : 0;
+
+  const barFor = (pct: number) =>
+    pct >= 85
+      ? "bg-gradient-to-r from-rose-500 to-red-600"
+      : pct >= 60
+        ? "bg-gradient-to-r from-amber-500 to-orange-500"
+        : "bg-gradient-to-r from-emerald-500 to-teal-500";
+
   return (
-    <section className="shadow-card rounded-2xl bg-white p-6 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <span className="flex items-center gap-2.5 text-base font-semibold text-zinc-900 dark:text-zinc-50">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/40 dark:text-brand-400">
-            <BuildingIcon className="h-5 w-5" />
-          </span>
-          ຄວາມຈຸ &amp; ພື້ນທີ່ຈັດເກັບ
+    <section className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-5 pt-5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/40 dark:text-brand-400">
+          <BuildingIcon className="h-5 w-5" />
         </span>
-        {grandPallets > 0 && (
-          <span className="rounded-full bg-brand-50 px-3.5 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-200/50 dark:bg-brand-950/30 dark:text-brand-300 dark:ring-brand-900/50">
-            ສິນຄ້າຄົງເຫຼືອຕ້ອງໃຊ້ ~{nf(grandPallets)} ພາເລດ
-          </span>
-        )}
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            ຄວາມຈຸ &amp; ພື້ນທີ່ຈັດເກັບ
+          </h2>
+          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+            ຕຳແໜ່ງພາເລດໃນແຕ່ລະສາງ
+          </p>
+        </div>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+
+      {/* Overall summary */}
+      {sumTotal > 0 && (
+        <div className="mx-5 mt-4 rounded-xl bg-gradient-to-br from-brand-50/80 to-aqua-50/50 p-3.5 ring-1 ring-brand-100/50 dark:from-brand-950/30 dark:to-aqua-950/20 dark:ring-brand-900/40">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-brand-700 dark:text-brand-400">
+              ລວມທຸກສາງ
+            </span>
+            <span className="font-mono text-lg font-bold tabular-nums text-brand-900 dark:text-brand-200">
+              {overallPct}%
+            </span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/70 dark:bg-zinc-800/70">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${barFor(overallPct)}`}
+              style={{ width: `${overallPct}%` }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[10px] tabular-nums text-zinc-600 dark:text-zinc-400">
+            <span>
+              ໃຊ້ <span className="font-bold text-zinc-800 dark:text-zinc-200">{nf(sumUsed)}</span>
+            </span>
+            <span>
+              ວ່າງ <span className="font-bold text-emerald-600 dark:text-emerald-400">{nf(Math.max(0, sumTotal - sumUsed))}</span>
+            </span>
+            <span>
+              ທັງໝົດ <span className="font-bold text-zinc-800 dark:text-zinc-200">{nf(sumTotal)}</span>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Warehouse rows */}
+      <div className="space-y-2.5 p-5">
         {rows.map((r) => {
           const hasCap = r.total > 0;
           const free = Math.max(0, r.total - r.used);
           const pct = hasCap ? Math.min(100, Math.round((r.used / r.total) * 100)) : 0;
-          const bar =
-            pct >= 85
-              ? "bg-gradient-to-r from-rose-500 to-red-600 shadow-[0_0_8px_rgba(244,63,94,0.4)]"
-              : pct >= 60
-                ? "bg-gradient-to-r from-amber-500 to-orange-500"
-                : "bg-gradient-to-r from-emerald-500 to-teal-500";
+
+          if (!hasCap) {
+            return (
+              <div
+                key={r.wh}
+                className="flex items-center gap-2 rounded-xl border border-dashed border-zinc-200/80 px-3 py-2.5 text-zinc-400 dark:border-zinc-800/80"
+              >
+                <span className="rounded bg-zinc-200/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                  {r.wh}
+                </span>
+                <span className="truncate text-[11px]" title={r.nm ?? ""}>
+                  {r.nm ?? ""}
+                </span>
+                <span className="ml-auto shrink-0 text-[10px]">
+                  ບໍ່ໄດ້ຕັ້ງຄ່າ
+                </span>
+              </div>
+            );
+          }
 
           return (
             <div
               key={r.wh}
-              className={`group flex flex-col justify-between rounded-2xl border p-4.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
-                hasCap
-                  ? "border-zinc-200/60 bg-gradient-to-br from-zinc-50 to-zinc-100/30 hover:from-white hover:to-white hover:ring-1 hover:ring-zinc-200/80 dark:border-zinc-800/60 dark:from-zinc-900/40 dark:to-zinc-900/10 dark:hover:from-zinc-900 dark:hover:to-zinc-900"
-                  : "border-dashed border-zinc-200/80 bg-zinc-50/20 text-zinc-400 dark:border-zinc-800/80 dark:bg-zinc-900/5"
-              }`}
+              className="group rounded-xl border border-zinc-200/60 bg-zinc-50/50 p-3 transition-all duration-200 hover:bg-white hover:shadow-sm hover:ring-1 hover:ring-zinc-200/80 dark:border-zinc-800/60 dark:bg-zinc-800/20 dark:hover:bg-zinc-900 dark:hover:ring-zinc-800"
             >
-              <div>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span
-                    className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200"
-                    title={r.nm ?? ""}
-                  >
-                    <span className="mr-1.5 rounded bg-zinc-200/60 px-1.5 py-0.5 font-mono text-[10px] text-zinc-700 dark:bg-zinc-850 dark:text-zinc-300">
-                      {r.wh}
-                    </span>
-                    {r.nm ? ` · ${r.nm}` : ""}
-                  </span>
-                  {hasCap && (
-                    <span className="shrink-0 text-xs font-bold tabular-nums text-zinc-700 dark:text-zinc-300">
-                      {pct}%
-                    </span>
-                  )}
-                </div>
+              <div className="flex items-center gap-2">
+                <span className="shrink-0 rounded bg-zinc-200/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                  {r.wh}
+                </span>
+                <span
+                  className="min-w-0 truncate text-[11px] font-medium text-zinc-600 dark:text-zinc-400"
+                  title={r.nm ?? ""}
+                >
+                  {r.nm ?? ""}
+                </span>
+                <span
+                  className={`ml-auto shrink-0 font-mono text-xs font-bold tabular-nums ${
+                    pct >= 85
+                      ? "text-red-600 dark:text-red-400"
+                      : pct >= 60
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-emerald-600 dark:text-emerald-400"
+                  }`}
+                >
+                  {pct}%
+                </span>
+              </div>
 
-                {hasCap ? (
-                  <div className="mt-3">
-                    <div className="h-2 overflow-hidden rounded-full bg-zinc-200/60 dark:bg-zinc-800">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${bar} ${pct >= 85 ? "animate-pulse" : ""}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                    
-                    <div className="mt-3 grid grid-cols-3 gap-2 border-t border-zinc-200/40 pt-2.5 text-center text-[10px] tabular-nums text-zinc-500 dark:border-zinc-800/40 dark:text-zinc-400">
-                      <div className="text-left">
-                        <span className="block text-[9px] uppercase tracking-wider text-zinc-400">ໃຊ້</span>
-                        <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">{nf(r.used)}</span>
-                      </div>
-                      <div>
-                        <span className="block text-[9px] uppercase tracking-wider text-zinc-400">ເຫຼືອ</span>
-                        <span className="text-xs font-bold text-emerald-650 dark:text-emerald-400">{nf(free)}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="block text-[9px] uppercase tracking-wider text-zinc-400">ທັງໝົດ</span>
-                        <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">{nf(r.total)}</span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-4 flex items-center justify-center rounded-xl border border-dashed border-zinc-250 py-5 text-center text-xs text-zinc-400 dark:border-zinc-800">
-                    ບໍ່ໄດ້ຕັ້ງຄ່າຕຳແໜ່ງພາເລທ
-                  </div>
-                )}
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-200/60 dark:bg-zinc-800">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${barFor(pct)} ${pct >= 85 ? "animate-pulse" : ""}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+
+              <div className="mt-1.5 flex items-center justify-between text-[10px] tabular-nums text-zinc-500 dark:text-zinc-400">
+                <span>
+                  ໃຊ້ <span className="font-semibold text-zinc-700 dark:text-zinc-300">{nf(r.used)}</span>
+                </span>
+                <span>
+                  ວ່າງ <span className="font-semibold text-emerald-600 dark:text-emerald-400">{nf(free)}</span>
+                </span>
+                <span>
+                  ທັງໝົດ <span className="font-semibold text-zinc-700 dark:text-zinc-300">{nf(r.total)}</span>
+                </span>
               </div>
 
               {r.palletsNeeded > 0 && (
                 <div
-                  className="mt-3 flex items-center gap-1.5 rounded-xl bg-brand-50/50 px-3 py-2 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/20 dark:text-brand-400 ring-1 ring-brand-100/30 dark:ring-brand-900/10"
+                  className="mt-2 flex items-center gap-1.5 rounded-lg bg-brand-50/60 px-2.5 py-1.5 text-[10px] font-semibold text-brand-700 ring-1 ring-brand-100/40 dark:bg-brand-950/20 dark:text-brand-400 dark:ring-brand-900/20"
                   title={
                     r.noPh > 0
                       ? `${r.noPh}/${r.items} SKU ຈັບຄູ່ PH ບໍ່ໄດ້`
                       : undefined
                   }
                 >
-                  <PackageIcon className="h-3.5 w-3.5 text-brand-500" />
+                  <PackageIcon className="h-3 w-3 text-brand-500" />
                   <span>
-                    ຕ້ອງການໃຊ້ ~<span className="font-bold">{nf(r.palletsNeeded)}</span> ພາເລດ
+                    ຕ້ອງການ ~<span className="font-bold">{nf(r.palletsNeeded)}</span> ພາເລດ
                   </span>
                   {r.noPh > 0 && (
-                    <span className="ml-auto text-[9px] text-zinc-400 font-normal">
-                      * ມີ {r.noPh} SKU ບໍ່ມີ PH
+                    <span className="ml-auto text-[9px] font-normal text-zinc-400">
+                      *{r.noPh} SKU ບໍ່ມີ PH
                     </span>
                   )}
                 </div>
@@ -230,6 +279,13 @@ export default async function WarehouseCapacity({ session }: { session: Session 
           );
         })}
       </div>
+
+      {/* Footer: total pallets needed */}
+      {grandPallets > 0 && (
+        <div className="border-t border-zinc-100 bg-zinc-50/50 px-5 py-3 text-center text-[10px] font-semibold text-brand-700 dark:border-zinc-800/60 dark:bg-zinc-800/20 dark:text-brand-400">
+          ສິນຄ້າຄົງເຫຼືອຕ້ອງໃຊ້ ~{nf(grandPallets)} ພາເລດ
+        </div>
+      )}
     </section>
   );
 }
