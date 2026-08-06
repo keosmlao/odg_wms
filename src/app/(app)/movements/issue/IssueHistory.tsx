@@ -30,6 +30,10 @@ type DocRow = {
   creator_name: string | null;
   line_count: number;
   out_qty: string;
+  /** ໃບຈັດຖ້ຽວທີ່ DP ນີ້ອອກມາຈາກ (ຖ້າຈ່າຍຜ່ານແທັບ "ໃບຈັດຖ້ຽວ"). */
+  trip_doc_no: string | null;
+  trip_car: string | null;
+  trip_car_name: string | null;
 };
 
 type LineRow = {
@@ -131,6 +135,11 @@ export default async function IssueHistory({
     where.push(
       `(h.doc_no ILIKE $${i} OR h.doc_ref ILIKE $${i} OR h.user_created ILIKE $${i}
         OR EXISTS (
+          SELECT 1 FROM public.wms_pick_trip_issue ti
+          LEFT JOIN public.odg_tms_car tc ON tc.code = (SELECT car FROM public.wms_pick_trip pt WHERE pt.trip_doc_no = ti.trip_doc_no LIMIT 1)
+          WHERE ti.issue_doc = h.doc_no AND (ti.trip_doc_no ILIKE $${i} OR tc.name_1 ILIKE $${i})
+        )
+        OR EXISTS (
           SELECT 1 FROM public.odg_wms_trans_detail x
           WHERE x.doc_no = h.doc_no AND (x.item_code ILIKE $${i} OR x.item_name ILIKE $${i})
         ))`,
@@ -154,10 +163,16 @@ export default async function IssueHistory({
          h.user_created AS creator_code,
          e.fullname_lo AS creator_name,
          COALESCE(agg.line_count, 0) AS line_count,
-         COALESCE(agg.out_qty, 0)::text AS out_qty
+         COALESCE(agg.out_qty, 0)::text AS out_qty,
+         ti.trip_doc_no,
+         pt.car AS trip_car,
+         tc.name_1 AS trip_car_name
        FROM public.odg_wms_trans h
        LEFT JOIN public.ic_warehouse w ON w.code = h.wh_code
        LEFT JOIN public.odg_employee e ON e.employee_code = h.user_created
+       LEFT JOIN public.wms_pick_trip_issue ti ON ti.issue_doc = h.doc_no
+       LEFT JOIN public.wms_pick_trip pt ON pt.doc_no = ti.pick_doc
+       LEFT JOIN public.odg_tms_car tc ON tc.code = pt.car
        LEFT JOIN (
          SELECT doc_no, count(*)::int AS line_count, SUM(qty) AS out_qty
          FROM public.odg_wms_trans_detail
@@ -373,6 +388,9 @@ export default async function IssueHistory({
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{d.doc_no}</span>
                       {d.doc_ref && <Chip tone="red">ref: {d.doc_ref}</Chip>}
+                      {d.trip_doc_no && (
+                        <Chip tone="brand">🚚 ຖ້ຽວ {d.trip_doc_no}{d.trip_car_name || d.trip_car ? ` · ${d.trip_car_name ?? d.trip_car}` : ""}</Chip>
+                      )}
                       {d.wh_code && (
                         <span className="inline-flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                           <BuildingIcon className="h-3 w-3" />

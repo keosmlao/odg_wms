@@ -438,16 +438,29 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
     // ໜຶ່ງບິນ = ໜຶ່ງໃບຈ່າຍ ERP. ໃບປົກກະຕິມີກຸ່ມດຽວ (ref ຂອງ header) ຈຶ່ງເປັນ
     // ພຶດຕິກຳເກົ່າທຸກປະການ; ໃບຖ້ຽວຈະ post ຫຼາຍໃບພາຍໃນ transaction ດຽວ.
     const sourceType = SRC_TYPE[hdr.doc_type ?? 0] ?? "";
+    // ໃບນີ້ມາຈາກໃບຈັດຖ້ຽວບໍ່? (ໃຊ້ຜູກ DP ທີ່ post ອອກ ກັບຖ້ຽວ ສຳລັບປະຫວັດ)
+    const tripNo = (
+      await client.query<{ trip_doc_no: string }>(
+        `SELECT trip_doc_no FROM public.wms_pick_trip WHERE doc_no = $1 LIMIT 1`,
+        [docNo],
+      )
+    ).rows[0]?.trip_doc_no ?? null;
     const results: { issueCode: string; erpDoc: string | null; serials: number }[] = [];
     for (const [bill, billLines] of [...lineByBill.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
       const posted = billLines.filter((l) => l.qty > 0);
       if (posted.length === 0) continue;
-      results.push(
-        await executeIssue(client, {
-          wh, docRef: bill || hdr.ref_doc_no, sourceType,
-          location: posted[0]?.location ?? null, user: session.employee_code, lines: posted,
-        }),
-      );
+      const res = await executeIssue(client, {
+        wh, docRef: bill || hdr.ref_doc_no, sourceType,
+        location: posted[0]?.location ?? null, user: session.employee_code, lines: posted,
+      });
+      results.push(res);
+      if (tripNo) {
+        await client.query(
+          `INSERT INTO public.wms_pick_trip_issue (issue_doc, trip_doc_no, pick_doc, bill_no, wh_code)
+           VALUES ($1, $2, $3, $4, $5) ON CONFLICT (issue_doc) DO NOTHING`,
+          [res.issueCode, tripNo, docNo, bill || null, wh],
+        );
+      }
     }
     if (results.length === 0) {
       await client.query("ROLLBACK");

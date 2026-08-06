@@ -85,8 +85,12 @@ type TripRow = TripHeader & {
 };
 type ExistingPick = { doc_no: string; bill_no: string | null; status: number | null; doc_date: string | null; qty: string; line_count: number };
 
-/** ແຖວແຜນເກັບ 1 ແຖວ = ສິນຄ້າ 1 ຢ່າງ ຢູ່ບ່ອນຈັດເກັບ 1 ບ່ອນ. */
-type PlanRow = { key: string; item_code: string; locIdx: number; qty: string };
+/** ISN ທີ່ເລືອກໄດ້ຢູ່ບ່ອນຈັດເກັບໜຶ່ງ (ຈາກ /api/movements/item-serials). */
+type SerialOption = { sn: string; isn: string | null; received?: string | null; days?: number | null };
+
+/** ແຖວແຜນເກັບ 1 ແຖວ = ສິນຄ້າ 1 ຢ່າງ ຢູ່ບ່ອນຈັດເກັບ 1 ບ່ອນ.
+ *  `serials` ຫວ່າງ = ໃຫ້ລະບົບຈອງ ISN ແບບ FIFO ໃຫ້ຕອນສ້າງ. */
+type PlanRow = { key: string; item_code: string; locIdx: number; qty: string; serials: string[] };
 
 const JOB_STATUS: Record<number, { label: string; cls: string }> = {
   0: { label: "ລໍຖ້າອະນຸມັດ", cls: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300" },
@@ -153,6 +157,11 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
   const [picked, setPicked] = useState<Set<string>>(new Set()); // ບິນທີ່ເລືອກຈ່າຍ
   const [plan, setPlan] = useState<PlanRow[]>([]);
   const [assignee, setAssignee] = useState("");
+  // ຕົວເລືອກ ISN ຕໍ່ແຖວແຜນເກັບ (ໂຫຼດເມື່ອເປີດ picker)
+  const [serialPickerFor, setSerialPickerFor] = useState<string | null>(null);
+  const [serialOpts, setSerialOpts] = useState<Record<string, SerialOption[]>>({});
+  const [serialSearch, setSerialSearch] = useState("");
+  const [loadingSerials, setLoadingSerials] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // ຜົນລັບ = ໃບ pick ໃບດຽວ ຕໍ່ 1 ຖ້ຽວ (ພາຍໃນແຍກຕາມບິນ)
   const [created, setCreated] = useState<
@@ -197,10 +206,10 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
       if (need <= 0) continue;
       const alloc = fifo(need, it.locations, needsSn && it.serialized);
       if (alloc.length === 0) {
-        rows.push({ key: `${it.item_code}#0`, item_code: it.item_code, locIdx: it.locations.length > 0 ? 0 : -1, qty: String(need) });
+        rows.push({ key: `${it.item_code}#0`, item_code: it.item_code, locIdx: it.locations.length > 0 ? 0 : -1, qty: String(need), serials: [] });
         continue;
       }
-      for (const a of alloc) rows.push({ key: `${it.item_code}#${a.locIdx}`, item_code: it.item_code, locIdx: a.locIdx, qty: String(a.qty) });
+      for (const a of alloc) rows.push({ key: `${it.item_code}#${a.locIdx}`, item_code: it.item_code, locIdx: a.locIdx, qty: String(a.qty), serials: [] });
     }
     return rows;
   }, []);
@@ -305,7 +314,53 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
   }, [needByItem, planByItem]);
 
   function updateRow(key: string, patch: Partial<PlanRow>) {
-    setPlan((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    setPlan((prev) =>
+      prev.map((r) => {
+        if (r.key !== key) return r;
+        const next = { ...r, ...patch };
+        // ປ່ຽນບ່ອນຈັດເກັບ → ISN ທີ່ເລືອກໄວ້ໃຊ້ບໍ່ໄດ້ອີກ; ຫຼຸດຈຳນວນ → ຕັດ ISN ສ່ວນເກີນ
+        if (patch.locIdx !== undefined && patch.locIdx !== r.locIdx) next.serials = [];
+        else if (patch.qty !== undefined) next.serials = next.serials.slice(0, Math.round(parsed(next.qty)));
+        return next;
+      }),
+    );
+    if (patch.locIdx !== undefined) setSerialOpts((o) => { const n = { ...o }; delete n[key]; return n; });
+  }
+
+  /** ISN ຄົງເຫຼືອຢູ່ບ່ອນຈັດເກັບຂອງແຖວນີ້ (FIFO ຕາມ ISN ນ້ອຍກ່ອນ). */
+  async function openSerialPicker(row: PlanRow) {
+    const it = itemByCode.get(row.item_code);
+    const loc = it?.locations[row.locIdx];
+    if (!it || !loc) { showToast("err", "ເລືອກບ່ອນຈັດເກັບກ່ອນ"); return; }
+    setSerialSearch("");
+    setSerialPickerFor(row.key);
+    if (serialOpts[row.key]) return;
+    setLoadingSerials(true);
+    try {
+      const params = new URLSearchParams({ warehouse: whCode, item: row.item_code, rack: loc.rack, location: loc.location, pallet: loc.pallet });
+      const res = await fetch(`/api/movements/item-serials?${params}`);
+      const data = (await res.json()) as { serials?: SerialOption[] };
+      setSerialOpts((o) => ({ ...o, [row.key]: data.serials ?? [] }));
+      if ((data.serials ?? []).length === 0) showToast("err", "ບໍ່ພົບ ISN ຄົງເຫຼືອຢູ່ບ່ອນນີ້");
+    } catch {
+      showToast("err", "ໂຫຼດ ISN ບໍ່ສຳເລັດ");
+    } finally {
+      setLoadingSerials(false);
+    }
+  }
+  function toggleSerial(key: string, sn: string) {
+    setPlan((prev) =>
+      prev.map((r) => {
+        if (r.key !== key) return r;
+        if (r.serials.includes(sn)) return { ...r, serials: r.serials.filter((x) => x !== sn) };
+        if (r.serials.length >= Math.round(parsed(r.qty))) { showToast("err", "ເລືອກຄົບຕາມຈຳນວນແລ້ວ"); return r; }
+        return { ...r, serials: [...r.serials, sn] };
+      }),
+    );
+  }
+  function pickFifoSerials(key: string) {
+    const opts = serialOpts[key] ?? [];
+    setPlan((prev) => prev.map((r) => (r.key === key ? { ...r, serials: opts.slice(0, Math.round(parsed(r.qty))).map((o) => o.sn) } : r)));
   }
   function addRow(item: string) {
     setPlan((prev) => {
@@ -319,7 +374,7 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
       const stock = idx >= 0 ? Number.parseFloat(it.locations[idx].qty) || 0 : 0;
       const next = [...prev];
       const at = prev.map((r) => r.item_code).lastIndexOf(item);
-      next.splice(at + 1, 0, { key: `${item}#${idx}-${prev.length}`, item_code: item, locIdx: idx, qty: String(Math.min(rest, stock) || "") });
+      next.splice(at + 1, 0, { key: `${item}#${idx}-${prev.length}`, item_code: item, locIdx: idx, qty: String(Math.min(rest, stock) || ""), serials: [] });
       return next;
     });
   }
@@ -356,6 +411,8 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
           rack: loc?.rack ?? "",
           location: loc?.location ?? "",
           pallet: loc?.pallet ?? "",
+          // ຫວ່າງ = server ຈອງ ISN ແບບ FIFO ໃຫ້
+          serials: it.serialized ? r.serials : [],
         };
       });
     if (lines.length === 0) { showToast("err", "ບໍ່ມີລາຍການໃຫ້ຈ່າຍ"); return; }
@@ -524,7 +581,7 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
             <div>
               <div className="text-sm font-extrabold text-zinc-900 dark:text-zinc-100">ແຜນເກັບສິນຄ້າ (ລວມທັງຖ້ຽວ)</div>
               <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                ບ່ອນຈັດເກັບເລືອກໃຫ້ແບບ FIFO (ຂອງເກົ່າກ່ອນ) — ປ່ຽນໄດ້{snPick ? " · ສາງນີ້ບັງຄັບ SN ຕັ້ງແຕ່ໃບ pick, ລະບົບເລືອກ ISN ນ້ອຍສຸດໃຫ້" : ""}
+                ບ່ອນຈັດເກັບເລືອກໃຫ້ແບບ FIFO (ຂອງເກົ່າກ່ອນ) — ປ່ຽນໄດ້{snPick ? " · ສາງນີ້ບັງຄັບ SN ຕັ້ງແຕ່ໃບ pick: ກົດ ISN ເພື່ອເລືອກເອງ, ບໍ່ເລືອກ = ລະບົບຈອງ ISN ນ້ອຍສຸດ (FIFO) ໃຫ້" : ""}
               </div>
             </div>
             <div className="text-right text-xs">
@@ -589,6 +646,20 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
                             {rows.length > 1 && (
                               <button type="button" onClick={() => removeRow(r.key)} className="rounded-lg bg-red-50 px-2.5 py-2 text-xs font-bold text-red-600 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300">ລຶບ</button>
                             )}
+                            {it.serialized && loc && (
+                              <button
+                                type="button"
+                                onClick={() => void openSerialPicker(r)}
+                                title="ເລືອກ ISN ເອງ (ບໍ່ເລືອກ = ລະບົບຈອງ FIFO ໃຫ້)"
+                                className={`rounded-lg px-2.5 py-2 text-xs font-bold transition ${
+                                  r.serials.length > 0
+                                    ? "bg-brand-600 text-white hover:bg-brand-700"
+                                    : "bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-950/40 dark:text-brand-300"
+                                }`}
+                              >
+                                ISN {r.serials.length > 0 ? `${r.serials.length}/${Math.round(parsed(r.qty))}` : "auto"}
+                              </button>
+                            )}
                             {loc && <span className="text-[10px] text-zinc-400">ຄົງເຫຼືອ {fmtQty(stock)}</span>}
                           </div>
                         );
@@ -612,6 +683,73 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
             <span className="ml-1 font-mono">{shortItems.slice(0, 6).map((s) => `${s.item_code} (${fmtQty(s.planned)}/${fmtQty(s.need)})`).join(", ")}{shortItems.length > 6 ? " …" : ""}</span>
           </div>
         )}
+
+        {/* ເລືອກ ISN ເອງ */}
+        {serialPickerFor && (() => {
+          const row = plan.find((r) => r.key === serialPickerFor);
+          if (!row) return null;
+          const it = itemByCode.get(row.item_code);
+          const opts = serialOpts[row.key] ?? [];
+          const term = serialSearch.trim().toUpperCase();
+          const shown = term ? opts.filter((o) => o.sn.toUpperCase().includes(term) || (o.isn ?? "").toUpperCase().includes(term)) : opts;
+          const want = Math.round(parsed(row.qty));
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSerialPickerFor(null)}>
+              <div className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-extrabold text-zinc-900 dark:text-zinc-100">{row.item_code} · {it?.item_name ?? ""}</div>
+                    <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      ເລືອກ {row.serials.length}/{want} ໜ່ວຍ · ບ່ອນ {nodeLabel(it?.locations[row.locIdx])}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => pickFifoSerials(row.key)} className="rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-bold text-brand-700 hover:bg-brand-100 dark:bg-brand-950/40 dark:text-brand-300">FIFO</button>
+                    <button type="button" onClick={() => updateRow(row.key, { serials: [] })} className="rounded-lg bg-zinc-100 px-2.5 py-1.5 text-xs font-bold text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300">ລ້າງ</button>
+                    <button type="button" onClick={() => setSerialPickerFor(null)} className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-bold text-white dark:bg-zinc-100 dark:text-zinc-900">ແລ້ວ</button>
+                  </div>
+                </div>
+                <div className="px-5 py-3">
+                  <input
+                    autoFocus
+                    value={serialSearch}
+                    onChange={(e) => setSerialSearch(e.target.value)}
+                    placeholder="ສະແກນ / ພິມ ISN ເພື່ອຄົ້ນຫາ..."
+                    className={inputCls}
+                  />
+                </div>
+                <div className="max-h-[50vh] overflow-y-auto px-3 pb-4">
+                  {loadingSerials ? (
+                    <div className="py-8 text-center text-sm text-zinc-400">ກຳລັງໂຫຼດ ISN...</div>
+                  ) : shown.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-zinc-400">ບໍ່ພົບ ISN</div>
+                  ) : (
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      {shown.map((o) => {
+                        const on = row.serials.includes(o.sn);
+                        return (
+                          <button
+                            key={o.sn}
+                            type="button"
+                            onClick={() => toggleSerial(row.key, o.sn)}
+                            className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-xs transition ${
+                              on ? "bg-brand-600 text-white" : "bg-zinc-50 text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-950/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                            }`}
+                          >
+                            <span className="min-w-0 truncate font-mono font-bold">{o.isn ?? o.sn}</span>
+                            <span className={`shrink-0 text-[10px] ${on ? "text-white/80" : "text-zinc-400"}`}>
+                              {o.days != null ? `${o.days} ມື້` : ""}{on ? " ✓" : ""}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ສ້າງ */}
         <div className="sticky bottom-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white/95 p-4 shadow-card ring-1 ring-zinc-200 backdrop-blur dark:bg-zinc-900/95 dark:ring-zinc-800">

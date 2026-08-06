@@ -26,7 +26,7 @@ import {
  *   ຕາມລຳດັບ, ຕອນຢືນຢັນຈຶ່ງ post ເຂົ້າ ERP ແຍກຕໍ່ບິນ.
  */
 
-type LineInput = { item_code?: unknown; rack?: unknown; location?: unknown; pallet?: unknown; qty?: unknown; item_name?: unknown; unit_code?: unknown };
+type LineInput = { item_code?: unknown; rack?: unknown; location?: unknown; pallet?: unknown; qty?: unknown; item_name?: unknown; unit_code?: unknown; serials?: unknown };
 type Body = { wh_code?: unknown; bills?: unknown; lines?: unknown; remark?: unknown };
 
 function str(v: unknown): string {
@@ -175,7 +175,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
   if (!Array.isArray(body.lines) || body.lines.length === 0) {
     return NextResponse.json({ error: "ບໍ່ມີລາຍການໃຫ້ຈ່າຍ" }, { status: 400 });
   }
-  const planned: { item_code: string; rack: string; location: string; pallet: string; qty: number }[] = [];
+  const planned: { item_code: string; rack: string; location: string; pallet: string; qty: number; serials: string[] }[] = [];
   const seen = new Set<string>();
   for (const raw of body.lines as LineInput[]) {
     const item_code = str(raw.item_code);
@@ -190,7 +190,14 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       return NextResponse.json({ error: `ສິນຄ້າ ${item_code} ຊ້ຳກັນຢູ່ບ່ອນຈັດເກັບດຽວກັນ` }, { status: 400 });
     }
     seen.add(key);
-    planned.push({ item_code, rack, location, pallet, qty });
+    // ISN ທີ່ຜູ້ໃຊ້ເລືອກເອງ (ບໍ່ໃສ່ = ໃຫ້ລະບົບເລືອກ FIFO ໃຫ້)
+    const serials = Array.isArray(raw.serials)
+      ? Array.from(new Set((raw.serials as unknown[]).map((v) => str(v)).filter(Boolean)))
+      : [];
+    if (serials.length > 0 && serials.length !== Math.round(qty)) {
+      return NextResponse.json({ error: `ສິນຄ້າ ${item_code}: ເລືອກ ISN ${serials.length} ໜ່ວຍ ແຕ່ຈຳນວນຈ່າຍ ${qty}` }, { status: 400 });
+    }
+    planned.push({ item_code, rack, location, pallet, qty, serials });
   }
   if (planned.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການໃຫ້ຈ່າຍ" }, { status: 400 });
 
@@ -270,7 +277,20 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
         await client.query("ROLLBACK");
         return NextResponse.json({ error: `ສິນຄ້າ ${p.item_code}: ຈ່າຍ ${p.qty} ເກີນຄົງເຫຼືອ ${before} ທີ່ບ່ອນນີ້` }, { status: 400 });
       }
-      if (pickNeedsSn && snItems.has(p.item_code)) {
+      // ຜູ້ໃຊ້ເລືອກ ISN ເອງ → ໃຊ້ຕາມນັ້ນ ຫຼັງກວດວ່າຍັງຢູ່ໃນສາງນີ້ຈິງ
+      if (p.serials.length > 0) {
+        const ok = await client.query<{ n: string }>(
+          `SELECT count(*)::text AS n FROM public.sn_inventory
+           WHERE wh_code = $1 AND item_code = $2 AND COALESCE(status, 0) = 0
+             AND (COALESCE(NULLIF(TRIM(sn), ''), isn) = ANY($3) OR NULLIF(TRIM(isn), '') = ANY($3))`,
+          [wh, p.item_code, p.serials],
+        );
+        if ((Number.parseInt(ok.rows[0]?.n ?? "0", 10) || 0) < p.serials.length) {
+          await client.query("ROLLBACK");
+          return NextResponse.json({ error: `ສິນຄ້າ ${p.item_code}: ບາງ ISN ບໍ່ມີໃນສາງ ຫຼື ຖືກຈ່າຍໄປແລ້ວ` }, { status: 400 });
+        }
+        serialsByNode.set(nodeKey(p.item_code, p.rack, p.location, p.pallet), p.serials);
+      } else if (pickNeedsSn && snItems.has(p.item_code)) {
         const want = Math.round(p.qty);
         // ຄືກັບ /api/movements/item-serials: sn ທີ່ໃຊ້ຈິງ = COALESCE(sn, isn)
         // (ມີ ~32k ໜ່ວຍ ທີ່ມີແຕ່ ISN), ແລະ ກອງ node ສະເພາະຄ່າທີ່ບໍ່ຫວ່າງ ເພາະ

@@ -76,6 +76,8 @@ function loadScan(doc: string): { scanned: string[]; reasons: Record<string, str
 export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOption[] }) {
   const [wh, setWh] = useState(warehouses.length === 1 ? warehouses[0].code : "");
   const [docs, setDocs] = useState<DraftDoc[]>([]);
+  /** ກອງຕາມລົດ/ຖ້ຽວ — "" = ທັງໝົດ, "-" = ໃບທີ່ບໍ່ໄດ້ມາຈາກຖ້ຽວ, ອື່ນໆ = trip_doc_no */
+  const [tripFilter, setTripFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState<{ header: DraftDoc; lines: DraftLine[] } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -410,22 +412,53 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
 
   const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-red-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
+  // ລົດ/ຖ້ຽວ ທີ່ມີໃບຄ້າງຢືນຢັນຢູ່ໃນສາງນີ້ (ໜຶ່ງຖ້ຽວ = ໜຶ່ງໃບ ແຕ່ອາດມີໃບເກົ່າຫຼາຍໃບ)
+  const tripOptions = useMemo(() => {
+    const m = new Map<string, { trip: string; label: string; count: number }>();
+    for (const d of docs) {
+      if (!d.trip_doc_no) continue;
+      const cur = m.get(d.trip_doc_no);
+      if (cur) cur.count += 1;
+      else m.set(d.trip_doc_no, { trip: d.trip_doc_no, label: `${d.trip_car_name ?? d.trip_car ?? "—"} · ${d.trip_doc_no}`, count: 1 });
+    }
+    return [...m.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [docs]);
+  const shownDocs = useMemo(() => {
+    if (!tripFilter) return docs;
+    if (tripFilter === "-") return docs.filter((d) => !d.trip_doc_no);
+    return docs.filter((d) => d.trip_doc_no === tripFilter);
+  }, [docs, tripFilter]);
+
   return (
     <div className="space-y-4">
       {!active && (
         <>
-          <section className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-            <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ</label>
-            <select value={wh} onChange={(e) => setWh(e.target.value)} className={inputCls}>
-              {warehouses.length !== 1 && <option value="">— ເລືອກສາງ —</option>}
-              {warehouses.map((w) => <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>)}
-            </select>
+          <section className="shadow-card flex flex-wrap items-end gap-4 rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+            <div className="min-w-0 flex-1">
+              <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ</label>
+              <select value={wh} onChange={(e) => setWh(e.target.value)} className={`${inputCls} w-full`}>
+                {warehouses.length !== 1 && <option value="">— ເລືອກສາງ —</option>}
+                {warehouses.map((w) => <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>)}
+              </select>
+            </div>
+            {tripOptions.length > 0 && (
+              <div className="min-w-0 flex-1">
+                <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">🚚 ລົດ / ໃບຈັດຖ້ຽວ</label>
+                <select value={tripFilter} onChange={(e) => setTripFilter(e.target.value)} className={`${inputCls} w-full`}>
+                  <option value="">— ທັງໝົດ ({docs.length}) —</option>
+                  {tripOptions.map((t) => (
+                    <option key={t.trip} value={t.trip}>{t.label} ({t.count})</option>
+                  ))}
+                  {docs.some((d) => !d.trip_doc_no) && <option value="-">ບໍ່ໄດ້ມາຈາກຖ້ຽວ ({docs.filter((d) => !d.trip_doc_no).length})</option>}
+                </select>
+              </div>
+            )}
           </section>
           <section className="space-y-2">
             {loading ? <div className="py-10 text-center text-sm text-zinc-400">ກຳລັງໂຫຼດ...</div>
             : !wh ? <div className="py-10 text-center text-sm text-zinc-400">ເລືອກສາງເພື່ອเริ่ม</div>
-            : docs.length === 0 ? <div className="py-10 text-center text-sm text-zinc-400">ບໍ່ມີໃບ pick ລໍຖ້າຢືນຢັນ</div>
-            : docs.map((d) => (
+            : shownDocs.length === 0 ? <div className="py-10 text-center text-sm text-zinc-400">{docs.length === 0 ? "ບໍ່ມີໃບ pick ລໍຖ້າຢືນຢັນ" : "ບໍ່ມີໃບ pick ຂອງລົດ/ຖ້ຽວທີ່ເລືອກ"}</div>
+            : shownDocs.map((d) => (
               <div key={d.doc_no} className="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-200 transition hover:ring-red-300 dark:bg-zinc-900 dark:ring-zinc-800">
                 <div className="flex w-full items-center gap-3 p-3.5">
                   <button type="button" onClick={() => toggleExpand(d.doc_no)} className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer">
