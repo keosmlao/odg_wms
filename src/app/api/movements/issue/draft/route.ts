@@ -31,13 +31,18 @@ export async function GET(request: Request) {
     doc_no: string; doc_date: string | null; doc_time: string | null; warehouse_code: string | null;
     ref_doc_no: string | null; doc_type: number | null; customer_code: string | null;
     creator_code: string | null; remark: string | null; line_count: number; serial_count: number; total_qty: string;
+    trip_doc_no: string | null; trip_car: string | null; trip_car_name: string | null;
   }>(
     `SELECT o.doc_no, to_char(o.doc_date, 'YYYY-MM-DD') AS doc_date, o.doc_time,
             o.warehouse_code, o.ref_doc_no, o.doc_type, o.customer_code, o.creator_code, o.remark,
+            -- ໃບທີ່ດຶງມາຈາກໃບຈັດຖ້ຽວຂອງຂົນສົ່ງ → ສະແດງເປັນຖ້ຽວດຽວກັນຢູ່ໜ້າຢືນຢັນ
+            pt.trip_doc_no, pt.car AS trip_car, ca.name_1 AS trip_car_name,
             (SELECT count(*)::int FROM public.wms_product_out_detail d WHERE d.doc_no = o.doc_no) AS line_count,
             (SELECT COALESCE(SUM(d.qty),0) FROM public.wms_product_out_detail d WHERE d.doc_no = o.doc_no)::numeric::text AS total_qty,
             (SELECT count(*)::int FROM public.wms_product_out_serial_detail s WHERE s.ref_out_doc = o.doc_no) AS serial_count
      FROM public.wms_product_out o
+     LEFT JOIN public.wms_pick_trip pt ON pt.doc_no = o.doc_no
+     LEFT JOIN public.odg_tms_car ca ON ca.code = pt.car
      WHERE ${where.join(" AND ")}
      ORDER BY o.doc_no DESC
      LIMIT 200`,

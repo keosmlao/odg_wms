@@ -9,12 +9,14 @@ import type { WarehouseOption } from "./SourceIssue";
 type DraftDoc = {
   doc_no: string; doc_date: string | null; doc_time: string | null; warehouse_code: string | null;
   ref_doc_no: string | null; customer_code: string | null; remark: string | null; line_count: number; serial_count: number; total_qty: string;
+  /** ໃບທີ່ດຶງມາຈາກໃບຈັດຖ້ຽວຂອງຂົນສົ່ງ (wms_pick_trip) — ຫຼາຍໃບຂອງຖ້ຽວດຽວກັນ. */
+  trip_doc_no?: string | null; trip_car?: string | null; trip_car_name?: string | null;
 };
 /** A scannable unit, tagged with the node it currently sits at. */
 type Unit = { sn: string | null; isn: string | null; rack: string; location: string; pallet: string };
 /** A bin in this warehouse that still holds the item — a re-point target. */
 type LocOption = { rack: string; location: string; pallet: string; qty: string; sn_qty: number };
-type DraftLine = { roworder: number; item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; serials: string[]; units?: Unit[]; loc_options?: LocOption[]; serial_required?: boolean; dual_required?: boolean };
+type DraftLine = { roworder: number; item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; /** ບິນຕົ້ນທາງຂອງແຖວ (ໃບຖ້ຽວ: 1 ໃບ ຫຼາຍບິນ). */ ref_doc_no?: string | null; serials: string[]; units?: Unit[]; loc_options?: LocOption[]; serial_required?: boolean; dual_required?: boolean };
 /** Where a line's goods were actually taken from, when it differs from the plan. */
 type NodeRef = { rack: string; location: string; pallet: string };
 /** One entry in the confirm-step audit trail (odg_wms_pick_scan_log). */
@@ -429,12 +431,21 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                   <button type="button" onClick={() => toggleExpand(d.doc_no)} className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer">
                     <span className={`shrink-0 text-zinc-400 transition-transform ${expanded === d.doc_no ? "rotate-90" : ""}`}>›</span>
                     <span className="min-w-0">
-                      <span className="flex items-center gap-2"><span className="font-mono text-sm font-bold text-red-600 dark:text-red-400">{d.doc_no}</span>{d.ref_doc_no && <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">ref {d.ref_doc_no}</span>}<span className="text-[11px] text-zinc-400">{ddmm(d.doc_date)} {d.doc_time}</span></span>
+                      <span className="flex items-center gap-2"><span className="font-mono text-sm font-bold text-red-600 dark:text-red-400">{d.doc_no}</span>{d.ref_doc_no && <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">ref {d.ref_doc_no}</span>}{d.trip_doc_no && <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-950/40 dark:text-brand-300" title={`ໃບຈັດຖ້ຽວ ${d.trip_doc_no}`}>🚚 {d.trip_car_name ?? d.trip_car ?? d.trip_doc_no}</span>}<span className="text-[11px] text-zinc-400">{ddmm(d.doc_date)} {d.doc_time}</span></span>
                       <span className="block truncate text-xs text-zinc-500">{d.customer_code ?? "—"}{d.remark ? ` · 🚜 ${d.remark}` : ""}</span>
                     </span>
                   </button>
                   <div className="text-right text-[11px] text-zinc-500"><div className="font-mono text-sm font-bold text-red-600 dark:text-red-400">ຄ້າງ {Number.parseFloat(d.total_qty) || 0}</div><div>{d.line_count} ລາຍການ{d.serial_count > 0 ? ` · ${d.serial_count} ISN` : ""}</div></div>
                   <a href={`/print/pick/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener" title="ພິມໃບ pick" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 hover:bg-slate-50 hover:text-slate-700 dark:ring-zinc-800">🖨</a>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => { if (window.confirm(`ລົບໃບ pick ${d.doc_no}?\nສິນຄ້າຈະກັບໄປເປັນ "ຄ້າງຈ່າຍ" ຂອງບິນຕົ້ນທາງຄືເກົ່າ (ຍັງບໍ່ໄດ້ຕັດ stock).`)) void cancelDraft(d.doc_no); }}
+                    title="ລົບໃບ pick ນີ້ (ຍັງບໍ່ໄດ້ຕັດ stock)"
+                    className="shrink-0 rounded-lg p-2 text-rose-500 ring-1 ring-rose-200 transition hover:bg-rose-50 disabled:opacity-40 dark:text-rose-400 dark:ring-rose-900/50 dark:hover:bg-rose-950/30"
+                  >
+                    🗑
+                  </button>
                   <button type="button" onClick={() => openDoc(d.doc_no)} className="shrink-0 rounded-lg bg-gradient-to-r from-red-500 to-orange-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:shadow active:scale-95 cursor-pointer">ຢືນຢັນຈ່າຍ →</button>
                 </div>
                 {expanded === d.doc_no && (
@@ -447,7 +458,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                           {linesByDoc[d.doc_no].map((l, i) => (
                             <tr key={`${l.item_code}-${i}`}>
-                              <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-red-600 dark:text-red-400">{l.item_code}</span><div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{l.item_name}</div></td>
+                              <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-red-600 dark:text-red-400">{l.item_code}</span>{l.ref_doc_no && <span className="ml-1.5 rounded bg-zinc-100 px-1 text-[9px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" title="ບິນຂາຍຂອງແຖວນີ້">{l.ref_doc_no}</span>}<div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{l.item_name}</div></td>
                               <td className="px-4 py-2 font-mono text-[11px] text-zinc-500">{[l.rack, l.location, l.pallet].filter(Boolean).join(" / ") || "—"}</td>
                               <td className="px-4 py-2 text-right font-mono font-bold tabular-nums text-red-600 dark:text-red-400">{l.qty} <span className="text-[10px] text-zinc-400">{l.unit_code}</span></td>
                             </tr>
@@ -538,7 +549,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                   <div key={i} className={`overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-zinc-900 ${got >= need && need > 0 ? "border-emerald-300 dark:border-emerald-900/50" : "border-zinc-200 dark:border-zinc-800"}`}>
                     <div className="flex items-start justify-between gap-2 p-4">
                       <div className="min-w-0">
-                        <div className="font-mono text-[11px] text-zinc-400">{l.item_code}{isSer && <span className="ml-1.5 rounded bg-aqua-100 px-1 text-[9px] font-bold text-aqua-700 dark:bg-aqua-950/60 dark:text-aqua-300">SN</span>}</div>
+                        <div className="font-mono text-[11px] text-zinc-400">{l.item_code}{isSer && <span className="ml-1.5 rounded bg-aqua-100 px-1 text-[9px] font-bold text-aqua-700 dark:bg-aqua-950/60 dark:text-aqua-300">SN</span>}{l.ref_doc_no && <span className="ml-1.5 rounded bg-red-50 px-1 text-[9px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300" title="ບິນຂາຍຂອງແຖວນີ້">{l.ref_doc_no}</span>}</div>
                         <div className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">{l.item_name}</div>
                         {/* ບ່ອນຈັດເກັບ — ແກ້ໄດ້ ຖ້າໄປເອົາຂອງຕົວຈິງບ່ອນອື່ນ (ທາງຕັນ / ຈັບບໍ່ອອກ) */}
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

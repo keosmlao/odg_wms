@@ -15,6 +15,7 @@ import {
   ChevronRightIcon,
   MapPinIcon,
 } from "@/components/ui/Icons";
+import TripIssue from "./TripIssue";
 
 const PhoneIcon = ({ className = "h-4 w-4" }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -25,11 +26,14 @@ const PhoneIcon = ({ className = "h-4 w-4" }) => (
 export type WarehouseOption = { code: string; name: string | null };
 
 type SourceType = "req" | "transfer" | "sale";
+/** ແທັບ "ໃບຈັດຖ້ຽວ" ດຶງຖ້ຽວຂອງຂົນສົ່ງ (TMS) ມາເປັນຕົ້ນທາງ ແທນເອກະສານ ERP ໃບດຽວ. */
+type SourceTab = SourceType | "trip";
 
-const SOURCE_TYPES: { key: SourceType; label: string; hint: string }[] = [
+const SOURCE_TYPES: { key: SourceTab; label: string; hint: string }[] = [
   { key: "sale", label: "ບິນຂາຍ", hint: "ບິນຂາຍ (44)" },
   { key: "req", label: "ໃບຂໍເປີກ", hint: "ຂໍເປີກສິນຄ້າ (122)" },
   { key: "transfer", label: "ໃບຂໍໂອນ", hint: "ຂໍໂອນສິນຄ້າ (124)" },
+  { key: "trip", label: "ໃບຈັດຖ້ຽວ", hint: "ດຶງໃບຈັດຖ້ຽວຂອງຂົນສົ່ງ (1 ຖ້ຽວ = ຫຼາຍບິນ) ມາເຮັດໃບສັ່ງຈ່າຍ" },
 ];
 
 type PendingLine = {
@@ -220,7 +224,9 @@ function parseAndCleanRemark(remark: string | null) {
 
 export default function SourceIssue({ warehouses }: { warehouses: WarehouseOption[] }) {
   const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
-  const [type, setType] = useState<SourceType>("sale");
+  const [tab, setTab] = useState<SourceTab>("sale");
+  // ແທັບຖ້ຽວໃຊ້ຕົວອ່ານຂອງມັນເອງ; ສ່ວນ type ຍັງເປັນປະເພດເອກະສານ ERP ຄືເກົ່າ.
+  const type: SourceType = tab === "trip" ? "sale" : tab;
 
   const [search, setSearch] = useState("");
   const [docs, setDocs] = useState<PendingDoc[]>([]);
@@ -282,7 +288,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
     const pType = searchParams.get("type");
     const pWh = searchParams.get("wh");
     const pDoc = searchParams.get("doc");
-    if (pType === "req" || pType === "transfer" || pType === "sale") setType(pType);
+    if (pType === "req" || pType === "transfer" || pType === "sale" || pType === "trip") setTab(pType);
     if (pWh) setWhCode(pWh);
     if (pDoc) autoOpenRef.current = pDoc;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -290,7 +296,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
 
   // Load pending source documents (debounced on search / wh / type).
   useEffect(() => {
-    if (!whCode) {
+    if (!whCode || tab === "trip") {
       setDocs([]);
       return;
     }
@@ -315,7 +321,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
       cancelled = true;
       clearTimeout(t);
     };
-  }, [whCode, type, search, reloadKey, showToast]);
+  }, [whCode, tab, type, search, reloadKey, showToast]);
 
   /** Build allocation rows for one source line. If the needed qty exceeds the
    *  recommended (FIFO) location's stock, AUTO-SPLIT across the next locations
@@ -756,12 +762,12 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
             {/* Document Type Tabs */}
             <div className="inline-flex h-11 items-center rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800/60">
               {SOURCE_TYPES.map((t) => {
-                const active = type === t.key;
+                const active = tab === t.key;
                 return (
                   <button
                     key={t.key}
                     type="button"
-                    onClick={() => setType(t.key)}
+                    onClick={() => setTab(t.key)}
                     title={t.hint}
                     className={`flex-1 lg:flex-none lg:w-28 h-full rounded-lg text-xs font-extrabold transition-all duration-305 flex items-center justify-center ${
                       active
@@ -776,6 +782,11 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
             </div>
           </div>
 
+          {tab === "trip" ? (
+            /* ໃບຈັດຖ້ຽວຂອງຂົນສົ່ງ → ໃບສັ່ງຈ່າຍ (1 ຖ້ຽວ = ຫຼາຍບິນ) */
+            <TripIssue whCode={whCode} whName={whName} />
+          ) : (
+            <>
           {/* Search Bar */}
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
@@ -896,6 +907,8 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
               </div>
             )}
           </div>
+            </>
+          )}
         </div>
       )}
 

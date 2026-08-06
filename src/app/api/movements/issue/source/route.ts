@@ -94,11 +94,13 @@ export async function GET(request: Request) {
        GROUP BY w.item_code
      ),
      -- ໃບສັ່ງຈ່າຍ (pick) ທີ່ສ້າງແລ້ວ ລໍຖ້າຢືນຢັນ (status 0) — ຫักออกจากค้าง
+     -- ໃບຖ້ຽວ (1 ໃບ ຫຼາຍບິນ) ເກັບບິນຕົ້ນທາງໄວ້ລະດັບແຖວ → ໃຊ້ d.ref_doc_no ກ່ອນ.
      pending AS (
        SELECT d.item_code, SUM(d.qty) AS pend_qty
        FROM public.wms_product_out o
        JOIN public.wms_product_out_detail d ON d.doc_no = o.doc_no
-       WHERE COALESCE(o.status, 0) = 0 AND o.ref_doc_no = $1
+       WHERE COALESCE(o.status, 0) = 0
+         AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) = $1
        GROUP BY d.item_code
      )
      SELECT s.item_code, s.item_name, s.unit_code,
@@ -212,7 +214,8 @@ export async function GET(request: Request) {
             MAX(o.remark) AS remark
      FROM public.wms_product_out o
      JOIN public.wms_product_out_detail d ON d.doc_no = o.doc_no
-     WHERE COALESCE(o.status, 0) = 0 AND o.ref_doc_no = $1
+     WHERE COALESCE(o.status, 0) = 0
+       AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) = $1
      GROUP BY o.doc_no
      ORDER BY o.doc_no`,
     [doc],

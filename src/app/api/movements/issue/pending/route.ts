@@ -93,12 +93,14 @@ export async function GET(request: Request) {
        GROUP BY w.doc_ref
      ),
      -- ໃບສັ່ງຈ່າຍ (pick) ທີ່ສ້າງແລ້ວ ລໍຖ້າຢືນຢັນ (status 0) — ຫักออกจากค้างทันที
+     -- ໃບຖ້ຽວ (1 ໃບ ຫຼາຍບິນ) ເກັບບິນຕົ້ນທາງໄວ້ລະດັບແຖວ → ໃຊ້ d.ref_doc_no ກ່ອນ.
      pending AS (
-       SELECT o.ref_doc_no AS doc_no, SUM(d.qty) AS pend_qty
+       SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) AS doc_no, SUM(d.qty) AS pend_qty
        FROM public.wms_product_out o
        JOIN public.wms_product_out_detail d ON d.doc_no = o.doc_no
-       WHERE COALESCE(o.status, 0) = 0 AND o.ref_doc_no IN (SELECT doc_no FROM src)
-       GROUP BY o.ref_doc_no
+       WHERE COALESCE(o.status, 0) = 0
+         AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) IN (SELECT doc_no FROM src)
+       GROUP BY 1
      )
      SELECT s.doc_no,
             to_char(h.doc_date, 'YYYY-MM-DD') AS doc_date,
@@ -155,11 +157,12 @@ export async function GET(request: Request) {
            GROUP BY w.doc_ref, w.item_code
          ),
          pending AS (
-           SELECT o.ref_doc_no AS doc_no, d.item_code, SUM(d.qty) AS pend_qty
+           SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) AS doc_no, d.item_code, SUM(d.qty) AS pend_qty
            FROM public.wms_product_out o
            JOIN public.wms_product_out_detail d ON d.doc_no = o.doc_no
-           WHERE COALESCE(o.status, 0) = 0 AND o.ref_doc_no = ANY($1)
-           GROUP BY o.ref_doc_no, d.item_code
+           WHERE COALESCE(o.status, 0) = 0
+             AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) = ANY($1)
+           GROUP BY 1, d.item_code
          )
          SELECT s.doc_no, s.item_code, s.item_name, s.unit_code,
                 (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0))::numeric::text AS remaining

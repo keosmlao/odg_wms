@@ -11,7 +11,13 @@ import { getSnDualBrands } from "@/lib/snDualBrand";
 const SRC_TYPE: Record<number, string> = { 122: "req", 124: "transfer", 44: "sale" };
 
 type DraftHeader = { doc_no: string; warehouse_code: string | null; ref_doc_no: string | null; doc_type: number | null; status: number | null };
-type DetailRow = { roworder: number; item_code: string; item_name: string | null; unit_code: string | null; qty: string; shelf_code: string | null; box_code: string | null };
+type DetailRow = {
+  roworder: number; item_code: string; item_name: string | null; unit_code: string | null;
+  qty: string; shelf_code: string | null; box_code: string | null;
+  /** ບິນຕົ້ນທາງຂອງແຖວ — ມີສະເພາະໃບທີ່ດຶງມາຈາກໃບຈັດຖ້ຽວ (1 ໃບ ຫຼາຍບິນ).
+   *  NULL = ໃບແບບເກົ່າ (1 ໃບ 1 ບິນ) → ໃຊ້ header.ref_doc_no. */
+  ref_doc_no: string | null;
+};
 
 function parseNode(shelf: string | null): { rack: string; location: string; pallet: string } {
   const [rack = "", location = "", pallet = ""] = (shelf ?? "").split("|");
@@ -29,7 +35,7 @@ async function loadDraft(docNo: string) {
   );
   if (hdr.length === 0) return null;
   const lines = await query<DetailRow>(
-    `SELECT roworder, item_code, item_name, unit_code, qty::text AS qty, shelf_code, box_code
+    `SELECT roworder, item_code, item_name, unit_code, qty::text AS qty, shelf_code, box_code, ref_doc_no
      FROM public.wms_product_out_detail WHERE doc_no = $1 ORDER BY roworder`,
     [docNo],
   );
@@ -149,7 +155,8 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
           sn_qty: snCountByNode.get(`${o.item_code}|${o.rack}|${o.location}|${o.pallet}`) ?? 0,
         }));
       const serial_required = snIssueOn && trackedItems.has(l.item_code);
-      return { roworder: l.roworder, item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: l.qty, ...node, serials: serialsByItem[l.item_code] ?? [], units, loc_options, serial_required, dual_required: dualItems.has(l.item_code) };
+      // ref_doc_no = ບິນຕົ້ນທາງຂອງແຖວ (ໃບຖ້ຽວ: 1 ໃບ ຫຼາຍບິນ) — ໃຫ້ໜ້າຢືນຢັນສະແດງໄດ້
+      return { roworder: l.roworder, item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: l.qty, ...node, ref_doc_no: l.ref_doc_no, serials: serialsByItem[l.item_code] ?? [], units, loc_options, serial_required, dual_required: dualItems.has(l.item_code) };
     }),
   });
 }
@@ -178,6 +185,9 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ doc: st
     await client.query(`DELETE FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1`, [docNo]);
     await client.query(`DELETE FROM public.wms_product_out_detail WHERE doc_no = $1`, [docNo]);
     await client.query(`DELETE FROM public.wms_product_out WHERE doc_no = $1`, [docNo]);
+    // ໃບທີ່ດຶງມາຈາກໃບຈັດຖ້ຽວ — ຕັດການຜູກກັບຖ້ຽວອອກນຳ ບໍ່ດັ່ງນັ້ນຖ້ຽວຈະຄ້າງ
+    // ນັບວ່າ "ມີໃບ pick ແລ້ວ" ທັງທີ່ໃບຖືກລົບໄປແລ້ວ.
+    await client.query(`DELETE FROM public.wms_pick_trip WHERE doc_no = $1`, [docNo]);
     await client.query("COMMIT");
     return NextResponse.json({ ok: true, doc_no: docNo });
   } catch (err) {
@@ -217,7 +227,10 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ doc: stri
     await client.query(`DELETE FROM public.wms_product_out_detail WHERE doc_no = $1 AND item_code = $2`, [docNo, removeItem]);
     const left = (await client.query<{ n: string }>(`SELECT count(*)::text AS n FROM public.wms_product_out_detail WHERE doc_no = $1`, [docNo])).rows[0];
     const emptied = (Number.parseInt(left?.n ?? "0", 10) || 0) === 0;
-    if (emptied) await client.query(`DELETE FROM public.wms_product_out WHERE doc_no = $1`, [docNo]);
+    if (emptied) {
+      await client.query(`DELETE FROM public.wms_product_out WHERE doc_no = $1`, [docNo]);
+      await client.query(`DELETE FROM public.wms_pick_trip WHERE doc_no = $1`, [docNo]);
+    }
     await client.query("COMMIT");
     return NextResponse.json({ ok: true, doc_no: docNo, emptied });
   } catch (err) {
@@ -303,16 +316,19 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
 
     const detail = (
       await client.query<DetailRow>(
-        `SELECT roworder, item_code, item_name, unit_code, qty::text AS qty, shelf_code, box_code FROM public.wms_product_out_detail WHERE doc_no = $1 ORDER BY roworder`,
+        `SELECT roworder, item_code, item_name, unit_code, qty::text AS qty, shelf_code, box_code, ref_doc_no FROM public.wms_product_out_detail WHERE doc_no = $1 ORDER BY roworder`,
         [docNo],
       )
     ).rows;
+    /** ບິນຕົ້ນທາງຂອງແຖວ: ໃບຖ້ຽວເກັບໄວ້ລະດັບແຖວ, ໃບເກົ່າໃຊ້ ref ຂອງ header. */
+    const billOf = (d: DetailRow) => (d.ref_doc_no?.trim() || hdr.ref_doc_no || "");
     // A move can collapse two split rows of one item onto the same bin. The
     // deduction would still be right, but the remainder-collapse below keys on
-    // item_code and would lose a node — reject it with a clear message instead.
+    // (ບິນ, item) and would lose a node — reject it with a clear message instead.
+    // ໃບຖ້ຽວ: ສິນຄ້າດຽວກັນ ບ່ອນດຽວກັນ ແຕ່ຄົນລະບິນ = ຄົນລະແຖວ ຈຶ່ງບໍ່ຖືວ່າຊ້ຳ.
     const nodeSeen = new Set<string>();
     for (const d of detail) {
-      const k = `${d.item_code}@${d.shelf_code ?? ""}`;
+      const k = `${billOf(d)}@${d.item_code}@${d.shelf_code ?? ""}`;
       if (nodeSeen.has(k)) {
         await client.query("ROLLBACK");
         return NextResponse.json({ error: `ສິນຄ້າ ${d.item_code}: ມີ 2 ແຖວຢູ່ບ່ອນຈັດເກັບດຽວກັນ — ກະລຸນາເລືອກ location ຕ່າງກັນ` }, { status: 400 });
@@ -401,25 +417,51 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
     }
 
     // Build issue lines from the ACTUAL scanned serials (substitute = the physical truth).
+    // ແຕ່ລະແຖວຖືກຜູກກັບ "ບິນຕົ້ນທາງ" ຂອງມັນ (ໃບຖ້ຽວ = ຫຼາຍບິນໃນໃບດຽວ).
+    const lineByBill = new Map<string, IssueLine[]>();
     const lines: IssueLine[] = detail.map((d) => {
       const node = parseNode(d.shelf_code);
       const qty = Number.parseFloat(d.qty) || 0;
-      if (serialItems.has(d.item_code)) {
-        const take = (scannedByItem[d.item_code] ??= []).splice(0, Math.round(qty));
-        return { item_code: d.item_code, item_name: d.item_name, unit_code: d.unit_code ?? "", qty: take.length, serials: take, rack: node.rack, location: node.location, pallet: node.pallet };
-      }
-      return { item_code: d.item_code, item_name: d.item_name, unit_code: d.unit_code ?? "", qty, serials: [], rack: node.rack, location: node.location, pallet: node.pallet };
+      const line: IssueLine = serialItems.has(d.item_code)
+        ? (() => {
+            const take = (scannedByItem[d.item_code] ??= []).splice(0, Math.round(qty));
+            return { item_code: d.item_code, item_name: d.item_name, unit_code: d.unit_code ?? "", qty: take.length, serials: take, rack: node.rack, location: node.location, pallet: node.pallet };
+          })()
+        : { item_code: d.item_code, item_name: d.item_name, unit_code: d.unit_code ?? "", qty, serials: [], rack: node.rack, location: node.location, pallet: node.pallet };
+      const bill = billOf(d);
+      const arr = lineByBill.get(bill);
+      if (arr) arr.push(line);
+      else lineByBill.set(bill, [line]);
+      return line;
     });
 
+    // ໜຶ່ງບິນ = ໜຶ່ງໃບຈ່າຍ ERP. ໃບປົກກະຕິມີກຸ່ມດຽວ (ref ຂອງ header) ຈຶ່ງເປັນ
+    // ພຶດຕິກຳເກົ່າທຸກປະການ; ໃບຖ້ຽວຈະ post ຫຼາຍໃບພາຍໃນ transaction ດຽວ.
     const sourceType = SRC_TYPE[hdr.doc_type ?? 0] ?? "";
-    const result = await executeIssue(client, {
-      wh, docRef: hdr.ref_doc_no, sourceType,
-      location: lines[0]?.location ?? null, user: session.employee_code, lines,
-    });
+    const results: { issueCode: string; erpDoc: string | null; serials: number }[] = [];
+    for (const [bill, billLines] of [...lineByBill.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      const posted = billLines.filter((l) => l.qty > 0);
+      if (posted.length === 0) continue;
+      results.push(
+        await executeIssue(client, {
+          wh, docRef: bill || hdr.ref_doc_no, sourceType,
+          location: posted[0]?.location ?? null, user: session.employee_code, lines: posted,
+        }),
+      );
+    }
+    if (results.length === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "ບໍ່ມີຈຳນວນໃຫ້ຈ່າຍ (ຍິງ SN ບໍ່ໄດ້ເລີຍ)" }, { status: 400 });
+    }
+    const result = {
+      issueCode: results.map((r) => r.issueCode).join(", "),
+      erpDoc: results.map((r) => r.erpDoc).filter(Boolean).join(", ") || null,
+      serials: results.reduce((s, r) => s + r.serials, 0),
+    };
 
     // Record short-pick reasons (best-effort).
     if (shortNotes.length > 0) {
-      await saveMoveNotes(client, { docNo: result.issueCode, refDoc: hdr.ref_doc_no, stage: "issue", user: session.employee_code ?? null, notes: shortNotes });
+      await saveMoveNotes(client, { docNo: results[0].issueCode, refDoc: hdr.ref_doc_no, stage: "issue", user: session.employee_code ?? null, notes: shortNotes });
     }
 
     // Close the audit trail: record what was actually issued per line and tie the
@@ -448,38 +490,66 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       },
       client,
     );
-    await stampIssueDoc(client, docNo, result.issueCode);
+    // issue_doc ເປັນ varchar(40) — ໃບຖ້ຽວ post ຫຼາຍ DP, ຈຶ່ງໝາຍໃບທຳອິດໄວ້
+    // (ໃບອື່ນຕິດຕາມຜ່ານ doc_ref ຂອງແຕ່ລະບິນຢູ່ ledger ຢູ່ແລ້ວ).
+    await stampIssueDoc(client, docNo, results[0].issueCode);
 
     // Reduce the pending to the UN-issued remainder. Items fully issued are removed;
     // partially-issued (serial short) keep their remaining qty/serials so the rest
     // can still be issued from pending. Only when nothing is left → status 1 (done).
+    // ນັບເປັນ (ບິນ, ສິນຄ້າ) — ໃບຖ້ຽວມີສິນຄ້າດຽວກັນຂອງຫຼາຍບິນຢູ່ໃບດຽວ, ຖ້າ
+    // ຮວບເປັນ item ຢ່າງດຽວ ສ່ວນທີ່ຍັງເຫຼືອຈະຫຼົງບິນ.
+    const bikey = (bill: string, item: string) => `${bill} ${item}`;
+    const plannedByBillItem = new Map<string, number>();
+    for (const d of detail) {
+      const k = bikey(billOf(d), d.item_code);
+      plannedByBillItem.set(k, (plannedByBillItem.get(k) ?? 0) + (Number.parseFloat(d.qty) || 0));
+    }
+    const issuedByBillItem = new Map<string, number>();
+    for (const [bill, arr] of lineByBill) {
+      for (const l of arr) {
+        const k = bikey(bill, l.item_code);
+        issuedByBillItem.set(k, (issuedByBillItem.get(k) ?? 0) + l.qty);
+      }
+    }
+
     let anyRemaining = false;
-    for (const item of new Set(detail.map((d) => d.item_code))) {
-      const planned = Math.round(plannedByItem[item] ?? 0);
-      const remaining = planned - (issuedByItem[item] ?? 0);
-      if (remaining <= 0) {
-        await client.query(`DELETE FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1 AND item_code = $2`, [docNo, item]);
-        await client.query(`DELETE FROM public.wms_product_out_detail WHERE doc_no = $1 AND item_code = $2`, [docNo, item]);
-      } else {
+    const keepRows: { bill: string; item: string; qty: number }[] = [];
+    const remainByItem = new Map<string, number>();
+    for (const [k, planned] of plannedByBillItem) {
+      const [bill, item] = k.split(" ");
+      const remaining = Math.round(planned) - (issuedByBillItem.get(k) ?? 0);
+      if (remaining > 1e-6) {
         anyRemaining = true;
-        if (serialItems.has(item)) {
-          // keep only `remaining` planned serials (lowest serial_number)
-          await client.query(
-            `DELETE FROM public.wms_product_out_serial_detail
-             WHERE ref_out_doc = $1 AND item_code = $2
-               AND serial_number NOT IN (
-                 SELECT serial_number FROM public.wms_product_out_serial_detail
-                 WHERE ref_out_doc = $1 AND item_code = $2 ORDER BY serial_number LIMIT $3)`,
-            [docNo, item, remaining],
-          );
-        }
-        // collapse the item's detail rows into one remaining row (keep first node).
-        const first = detail.find((d) => d.item_code === item)!;
-        await client.query(`DELETE FROM public.wms_product_out_detail WHERE doc_no = $1 AND item_code = $2`, [docNo, item]);
+        keepRows.push({ bill, item, qty: remaining });
+        remainByItem.set(item, (remainByItem.get(item) ?? 0) + remaining);
+      }
+    }
+
+    // ສ້າງແຖວທີ່ຍັງເຫຼືອຄືນໃໝ່ (1 ແຖວ / 1 ບິນ / 1 ສິນຄ້າ, ຖື node ທຳອິດໄວ້).
+    await client.query(`DELETE FROM public.wms_product_out_detail WHERE doc_no = $1`, [docNo]);
+    for (const r of keepRows) {
+      const first = detail.find((d) => billOf(d) === r.bill && d.item_code === r.item)!;
+      await client.query(
+        `INSERT INTO public.wms_product_out_detail (doc_no, doc_date, item_code, item_name, unit_code, qty, shelf_code, box_code, ref_doc_no, create_date_time_now)
+         VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, now())`,
+        [docNo, r.item, first.item_name, first.unit_code ?? null, r.qty, first.shelf_code, first.box_code, first.ref_doc_no],
+      );
+    }
+
+    // Serial ທີ່ຈອງໄວ້: ເກັບໄວ້ເທົ່າຈຳນວນທີ່ຍັງເຫຼືອຂອງສິນຄ້ານັ້ນ (ລວມທຸກບິນ).
+    for (const item of new Set(detail.map((d) => d.item_code))) {
+      const keep = Math.round(remainByItem.get(item) ?? 0);
+      if (keep <= 0) {
+        await client.query(`DELETE FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1 AND item_code = $2`, [docNo, item]);
+      } else if (serialItems.has(item)) {
         await client.query(
-          `INSERT INTO public.wms_product_out_detail (doc_no, doc_date, item_code, item_name, unit_code, qty, shelf_code, box_code, create_date_time_now)
-           VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, now())`,
-          [docNo, item, first.item_name, first.unit_code ?? null, remaining, first.shelf_code, first.box_code],
+          `DELETE FROM public.wms_product_out_serial_detail
+           WHERE ref_out_doc = $1 AND item_code = $2
+             AND serial_number NOT IN (
+               SELECT serial_number FROM public.wms_product_out_serial_detail
+               WHERE ref_out_doc = $1 AND item_code = $2 ORDER BY serial_number LIMIT $3)`,
+          [docNo, item, keep],
         );
       }
     }
