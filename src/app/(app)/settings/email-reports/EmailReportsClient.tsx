@@ -17,6 +17,7 @@ const SECTIONS: { key: keyof ReportInput["sections"]; label: string }[] = [
   { key: "pending", label: "ໃບຄ້າງຮັບ (PO)" },
   { key: "issue_pending", label: "ສິນຄ້າຄ້າງຈ່າຍ" },
   { key: "movers", label: "ເຄື່ອນໄຫວຫຼາຍສຸດ (7ວັນ)" },
+  { key: "min_stock", label: "ຕ່ຳກວ່າ stock ຂັ້ນຕ່ຳ" },
   { key: "health", label: "ສະຖານະສາງ (dead/SN)" },
 ];
 
@@ -25,7 +26,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 function blankInput(): ReportInput {
   return {
     name: "", enabled: true,
-    sections: { receive: true, issue: true, pending: true, health: true, movers: false, issue_pending: false },
+    sections: { receive: true, issue: true, pending: true, health: true, movers: false, issue_pending: false, min_stock: false },
     send_hour: 8, send_minute: 0, send_days: [1, 2, 3, 4, 5, 6], wh_scope: [], recipients: [],
   };
 }

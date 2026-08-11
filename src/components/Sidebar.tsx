@@ -5,22 +5,28 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import type { Session, WmsRole } from "@/lib/session-shared";
 import {
+  AlertIcon,
   ArrowDownIcon,
   ArrowLeftRightIcon,
   ArrowUpIcon,
+  BookIcon,
   BuildingIcon,
   CalendarIcon,
   CheckIcon,
   ChevronRightIcon,
+  ClipboardIcon,
+  FileTextIcon,
   HomeIcon,
   LayersIcon,
   ListIcon,
   MailIcon,
   PackageIcon,
   PlusIcon,
+  RouteIcon,
   SearchIcon,
   SettingsIcon,
   ShieldIcon,
+  UsersIcon,
 } from "@/components/ui/Icons";
 
 type NavLink = { label: string; href: string; icon?: ReactNode };
@@ -165,6 +171,11 @@ const groups: Group[] = [
         icon: <ListIcon className="h-3.5 w-3.5" />,
       },
       {
+        label: "stock ຂັ້ນຕ່ຳ / ຂັ້ນສູງ",
+        href: "/movements/min-stock",
+        icon: <AlertIcon className="h-3.5 w-3.5" />,
+      },
+      {
         label: "ສິນຄ້າເຄື່ອນໄຫວ (Movers)",
         href: "/movements/movers",
         icon: <ListIcon className="h-3.5 w-3.5" />,
@@ -199,6 +210,43 @@ const groups: Group[] = [
     ],
   },
   {
+    label: "ຄູ່ມືການເຮັດວຽກ",
+    basePath: "/manual",
+    icon: <BookIcon className="h-4.5 w-4.5" />,
+    items: [
+      {
+        label: "ພາບລວມ / ຄົ້ນຫາ",
+        href: "/manual",
+        icon: <SearchIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ຂະບວນການ (Workflow)",
+        href: "/manual/workflow",
+        icon: <RouteIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "SOP",
+        href: "/manual/sop",
+        icon: <ClipboardIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ວິທີເຮັດ (WI)",
+        href: "/manual/wi",
+        icon: <BookIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ແບບຟອມ & ເອກະສານ",
+        href: "/manual/forms",
+        icon: <FileTextIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ໜ້າທີ່ແຕ່ລະຄົນ",
+        href: "/manual/roles",
+        icon: <UsersIcon className="h-3.5 w-3.5" />,
+      },
+    ],
+  },
+  {
     label: "ການຕັ້ງຄ່າ",
     basePath: "/settings",
     icon: <SettingsIcon className="h-4.5 w-4.5" />,
@@ -227,6 +275,11 @@ const groups: Group[] = [
         label: "ຍີ່ຫໍ້ບັງຄັບ SN+ISN",
         href: "/settings/sn-dual-brands",
         icon: <PackageIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "stock ຂັ້ນຕ່ຳ / ຂັ້ນສູງ",
+        href: "/settings/min-stock",
+        icon: <AlertIcon className="h-3.5 w-3.5" />,
       },
       {
         label: "ຄ່າຝາກເຄື່ອງ",

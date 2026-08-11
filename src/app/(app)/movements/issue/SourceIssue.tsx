@@ -68,6 +68,9 @@ type LocOpt = {
   sn_qty?: number | null;
 };
 
+/** stock ຂັ້ນຕ່ຳ/ຂັ້ນສູງ ຂອງສິນຄ້ານີ້ໃນສາງນີ້. wh_qty = ຄົງເຫຼືອ**ລວມທັງສາງ**. */
+type MinStock = { min_qty: number; max_qty: number | null; wh_qty: number };
+
 type SourceLine = {
   item_code: string;
   item_name: string | null;
@@ -78,6 +81,7 @@ type SourceLine = {
   pending_qty: string;
   remaining: string;
   locations: LocOpt[];
+  min_stock?: MinStock | null;
 };
 
 /** An open (unconfirmed) pick slip already raised against the same source doc.
@@ -103,6 +107,8 @@ type WorkingLine = {
   serialsLoaded: boolean;
   availableSerials: SerialOption[];
   selectedSerials: string[];
+  /** null = ສາງບໍ່ໄດ້ເປີດຄຸມ ຫຼື ສິນຄ້ານີ້ບໍ່ໄດ້ຕັ້ງ min/max */
+  minStock: MinStock | null;
 };
 
 /** Live elapsed counter since the doc creation datetime — same look as the receive
@@ -166,6 +172,31 @@ function targetQty(line: WorkingLine): number {
   const t = parsedQty(line.qty);
   const target = t != null && t > 0 ? t : line.remaining;
   return Math.min(Math.round(target), Math.round(line.remaining));
+}
+
+/** ເຕືອນ stock ຂັ້ນຕ່ຳ: ຄົງເຫຼືອທັງສາງ − ຈຳນວນທີ່ກຳລັງຈະຈ່າຍ ທຽບກັບຂັ້ນຕ່ຳ.
+ *  ເປັນການ**ເຕືອນ** ບໍ່ແມ່ນການກີດ — ບາງເທື່ອກໍຕ້ອງຈ່າຍລົງຕ່ຳກວ່າຂັ້ນຕ່ຳຢູ່ດີ. */
+function MinStockWarning({ ms, issuing, unit }: { ms: MinStock; issuing: number; unit: string | null }) {
+  const after = Math.round((ms.wh_qty - issuing) * 10000) / 10000;
+  const already = ms.wh_qty < ms.min_qty - 1e-9;
+  const willBreach = after < ms.min_qty - 1e-9;
+  const u = unit ? ` ${unit}` : "";
+  const detail = `ຄົງເຫຼືອທັງສາງ ${formatQty(ms.wh_qty)}${u} · ຫຼັງຈ່າຍ ${formatQty(after)}${u} · ຂັ້ນຕ່ຳ ${formatQty(ms.min_qty)}${u}`;
+  if (!willBreach) {
+    return (
+      <div className="mt-1 text-[10px] font-bold text-zinc-400" title={detail}>
+        ຂັ້ນຕ່ຳ {formatQty(ms.min_qty)}{ms.max_qty !== null ? ` · ຂັ້ນສູງ ${formatQty(ms.max_qty)}` : ""} · ຫຼັງຈ່າຍເຫຼືອ {formatQty(after)}
+      </div>
+    );
+  }
+  return (
+    <div
+      title={detail}
+      className="mt-1 inline-flex items-center gap-1 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-extrabold text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50"
+    >
+      ⚠ {already ? "ຕ່ຳກວ່າຂັ້ນຕ່ຳຢູ່ແລ້ວ" : "ຈ່າຍແລ້ວຈະຕ່ຳກວ່າຂັ້ນຕ່ຳ"} — ຫຼັງຈ່າຍເຫຼືອ {formatQty(after)} / ຂັ້ນຕ່ຳ {formatQty(ms.min_qty)}
+    </div>
+  );
 }
 
 function parseAndCleanRemark(remark: string | null) {
@@ -350,6 +381,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
       serialsLoaded: false,
       availableSerials: [],
       selectedSerials: [],
+      minStock: l.min_stock ?? null,
     };
     if (l.locations.length === 0) return [{ ...base, key: `${l.item_code}#a0` }];
 
@@ -1062,6 +1094,9 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                             <span className="text-zinc-400">=</span>
                             <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-700 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/40">ຄ້າງຈ່າຍ {formatQty(need)}</span>
                           </div>
+                        )}
+                        {g.line.minStock && (
+                          <MinStockWarning ms={g.line.minStock} issuing={alloc} unit={g.line.unit_code} />
                         )}
                       </div>
                       <div className="flex shrink-0 items-center gap-3">

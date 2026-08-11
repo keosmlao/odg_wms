@@ -3,6 +3,7 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { WmsRole } from "@/lib/session-shared";
 import { type WmsPerm, permissionsForMany } from "@/lib/permissions";
+import { WMS_DEPARTMENT_CODES, WMS_DEPARTMENT_LABEL } from "@/lib/wmsDepartments";
 import AccessClient from "./AccessClient";
 import { Hero, Chip, KpiCard } from "@/components/ui/Card";
 import {
@@ -18,6 +19,9 @@ export type EmployeeRow = {
   nickname: string | null;
   position_code: string | null;
   department_code: string | null;
+  department_name: string | null;
+  /** ຢູ່ນອກພະແນກ WMS ແຕ່ຖືສິດຢູ່ — ສະແດງໄວ້ເພື່ອໃຫ້ຖອນສິດໄດ້. */
+  out_of_scope: boolean;
   role: WmsRole | null;
   warehouses: string[];
   /** Extra grants beyond the role — empty for a manager, who holds them all. */
@@ -32,10 +36,14 @@ export default async function AccessPage() {
   if (session.role !== "manager") redirect("/");
 
   const [employeeRows, warehouses] = await Promise.all([
+    // ສະເພາະພະແນກທີ່ໃຊ້ WMS (ພະແນກສາງ + ໄອທີ). ຄົນນອກພະແນກທີ່**ຖືສິດຢູ່ແລ້ວ**
+    // ຍັງສະແດງຢູ່ ບໍ່ດັ່ງນັ້ນສິດທີ່ມອບໄວ້ຜິດຈະຫາຍໄປຈາກໜ້ານີ້ ແລະ ຖອນຄືນບໍ່ໄດ້.
     query<Omit<EmployeeRow, "permissions">>(`
       SELECT
         e.employee_id, e.employee_code, e.fullname_lo, e.nickname,
         e.position_code, e.department_code,
+        d.department_name_lo AS department_name,
+        (e.department_code IS NULL OR NOT (e.department_code = ANY($1))) AS out_of_scope,
         r.role,
         COALESCE(
           (SELECT array_agg(w.warehouse_code ORDER BY w.warehouse_code)
@@ -45,9 +53,11 @@ export default async function AccessPage() {
         ) AS warehouses
       FROM public.odg_employee e
       LEFT JOIN public.wms_user_role r ON r.employee_id = e.employee_id
+      LEFT JOIN public.odg_department d ON d.department_code = e.department_code
       WHERE COALESCE(e.employment_status, 'ACTIVE') = 'ACTIVE'
+        AND (e.department_code = ANY($1) OR r.role IS NOT NULL)
       ORDER BY e.fullname_lo NULLS LAST, e.employee_code
-    `),
+    `, [WMS_DEPARTMENT_CODES]),
     query<WarehouseRow>(`
       SELECT code, name_1 AS name
       FROM public.ic_warehouse
@@ -75,7 +85,7 @@ export default async function AccessPage() {
     <div className="w-full space-y-5">
       <Hero
         title="ຈັດການສິດເຂົ້າເຖິງ"
-        description="ກຳນົດ role ແລະ ສາງທີ່ຮັບຜິດຊອບໃຫ້ແຕ່ລະພະນັກງານ"
+        description={`ກຳນົດ role ແລະ ສາງທີ່ຮັບຜິດຊອບໃຫ້ແຕ່ລະພະນັກງານ — ສະເພາະ ${WMS_DEPARTMENT_LABEL}`}
         icon={<ShieldIcon className="h-6 w-6" />}
         tone="aqua"
         chips={

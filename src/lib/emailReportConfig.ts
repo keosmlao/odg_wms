@@ -27,7 +27,7 @@ export type EmailReport = {
 type Row = {
   id: number; name: string; enabled: boolean;
   incl_receive: boolean; incl_issue: boolean; incl_pending: boolean; incl_health: boolean;
-  incl_movers: boolean; incl_issue_pending: boolean;
+  incl_movers: boolean; incl_issue_pending: boolean; incl_min_stock: boolean;
   send_hour: number; send_minute: number; send_days: number[]; wh_scope: string[]; recipients: string[];
   last_sent_on: string | null; last_status: string | null; last_error: string | null;
   updated_at: string; updated_by: string | null;
@@ -38,7 +38,7 @@ function toReport(r: Row): EmailReport {
     id: r.id, name: r.name, enabled: r.enabled,
     sections: {
       receive: r.incl_receive, issue: r.incl_issue, pending: r.incl_pending, health: r.incl_health,
-      movers: r.incl_movers, issue_pending: r.incl_issue_pending,
+      movers: r.incl_movers, issue_pending: r.incl_issue_pending, min_stock: r.incl_min_stock,
     },
     send_hour: r.send_hour, send_minute: r.send_minute, send_days: r.send_days,
     wh_scope: r.wh_scope, recipients: r.recipients,
@@ -53,7 +53,7 @@ export function scopeOf(report: EmailReport): Scope {
 }
 
 const COLS = `id, name, enabled, incl_receive, incl_issue, incl_pending, incl_health,
-  incl_movers, incl_issue_pending,
+  incl_movers, incl_issue_pending, incl_min_stock,
   send_hour, send_minute, send_days, wh_scope, recipients,
   to_char(last_sent_on,'YYYY-MM-DD') AS last_sent_on, last_status, last_error,
   to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SSOF') AS updated_at, updated_by`;
@@ -82,12 +82,13 @@ export async function createReport(input: ReportInput, by: string | null): Promi
   const rows = await query<Row>(
     `INSERT INTO public.odg_wms_email_report
        (name, enabled, incl_receive, incl_issue, incl_pending, incl_health, incl_movers, incl_issue_pending,
-        send_hour, send_minute, send_days, wh_scope, recipients, updated_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        send_hour, send_minute, send_days, wh_scope, recipients, updated_by, incl_min_stock)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING ${COLS}`,
     [input.name, input.enabled, input.sections.receive, input.sections.issue, input.sections.pending, input.sections.health,
      input.sections.movers, input.sections.issue_pending,
-     input.send_hour, input.send_minute, input.send_days, input.wh_scope, input.recipients, by],
+     input.send_hour, input.send_minute, input.send_days, input.wh_scope, input.recipients, by,
+     input.sections.min_stock],
   );
   return toReport(rows[0]);
 }
@@ -96,14 +97,14 @@ export async function updateReport(id: number, input: ReportInput, by: string | 
   const rows = await query<Row>(
     `UPDATE public.odg_wms_email_report SET
        name=$2, enabled=$3, incl_receive=$4, incl_issue=$5, incl_pending=$6, incl_health=$7,
-       incl_movers=$14, incl_issue_pending=$15,
+       incl_movers=$14, incl_issue_pending=$15, incl_min_stock=$16,
        send_hour=$8, send_minute=$9, send_days=$10, wh_scope=$11, recipients=$12,
        updated_at=now(), updated_by=$13
      WHERE id=$1
      RETURNING ${COLS}`,
     [id, input.name, input.enabled, input.sections.receive, input.sections.issue, input.sections.pending, input.sections.health,
      input.send_hour, input.send_minute, input.send_days, input.wh_scope, input.recipients, by,
-     input.sections.movers, input.sections.issue_pending],
+     input.sections.movers, input.sections.issue_pending, input.sections.min_stock],
   );
   return rows[0] ? toReport(rows[0]) : null;
 }

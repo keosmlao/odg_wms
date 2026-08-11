@@ -4,6 +4,14 @@ import { useState } from "react";
 import ItemMovementsDrawer from "./ItemMovementsDrawer";
 import SerialDrawer from "./SerialDrawer";
 
+type MinStock = {
+  min_qty: number;
+  max_qty: number | null;
+  /** ຄົງເຫຼືອລວມທັງສາງ (ບໍ່ແມ່ນຍອດຂອງ bin ນີ້) — ຄ່າທີ່ເອົາໄປທຽບ min/max. */
+  wh_qty: number;
+  status: "below" | "above" | "ok";
+};
+
 type BalanceItem = {
   ic_code: string | null;
   ic_name: string | null;
@@ -12,6 +20,8 @@ type BalanceItem = {
   pallet_positions: string | null;
   units_per_pallet: string | null;
   stack: string | null;
+  /** ມີສະເພາະສາງທີ່ເປີດຄຸມ stock ຂັ້ນຕ່ຳ ແລະ ສິນຄ້າທີ່ຕັ້ງຄ່າໄວ້ */
+  min_stock?: MinStock;
 };
 
 type SelectedItem = { code: string; name: string | null };
@@ -27,6 +37,34 @@ function formatQty(value: string | number | null | undefined) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 4,
   });
+}
+
+/** ປ້າຍ min/max — ທຽບກັບຄົງເຫຼືອ**ລວມທັງສາງ** ຈຶ່ງບອກຍອດນັ້ນໄວ້ນຳ
+ *  ບໍ່ດັ່ງນັ້ນຈະສັບສົນກັບຍອດຂອງ bin ທີ່ຢູ່ຂ້າງໆ. */
+function MinStockChip({ ms }: { ms: MinStock }) {
+  const scope = `ຄົງເຫຼືອທັງສາງ ${formatQty(ms.wh_qty)} · ຂັ້ນຕ່ຳ ${formatQty(ms.min_qty)}${
+    ms.max_qty === null ? "" : ` · ຂັ້ນສູງ ${formatQty(ms.max_qty)}`
+  }`;
+  const tone =
+    ms.status === "below"
+      ? "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50"
+      : ms.status === "above"
+        ? "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/50"
+        : "bg-zinc-50 text-zinc-500 ring-zinc-200 dark:bg-zinc-800/60 dark:text-zinc-400 dark:ring-zinc-700";
+  const label =
+    ms.status === "below"
+      ? `⚠ ຕ່ຳກວ່າຂັ້ນຕ່ຳ ${formatQty(ms.min_qty)}`
+      : ms.status === "above"
+        ? `⚠ ເກີນຂັ້ນສູງ ${formatQty(ms.max_qty)}`
+        : `min ${formatQty(ms.min_qty)}${ms.max_qty === null ? "" : ` / max ${formatQty(ms.max_qty)}`}`;
+  return (
+    <span
+      title={scope}
+      className={`mt-1 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold ring-1 ${tone}`}
+    >
+      {label}
+    </span>
+  );
 }
 
 export default function BalanceLocationItems({
@@ -137,6 +175,7 @@ export default function BalanceLocationItems({
               >
                 {item.ic_name ?? "-"}
               </div>
+              {item.min_stock && <MinStockChip ms={item.min_stock} />}
             </div>
             <div className="text-right font-mono font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
               {formatQty(item.balance_qty)}

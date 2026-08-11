@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-type Health = { dead_items: number; dead_qty: number; sn_mismatch: number; cached?: boolean };
+type Health = {
+  dead_items: number;
+  dead_qty: number;
+  sn_mismatch: number;
+  min_below?: number;
+  cached?: boolean;
+};
 
 /** Async health chips for the home control-tower section — never blocks render. */
 export default function HealthBadges() {
@@ -30,7 +36,8 @@ export default function HealthBadges() {
     return <span className="text-[11px] text-zinc-400 animate-pulse">ກຳລັງກວດສຸຂະພາບ...</span>;
   }
 
-  const ok = data.dead_items === 0 && data.sn_mismatch === 0;
+  const minBelow = data.min_below ?? 0;
+  const ok = data.dead_items === 0 && data.sn_mismatch === 0 && minBelow === 0;
   if (ok) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50">
@@ -41,6 +48,14 @@ export default function HealthBadges() {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {minBelow > 0 && (
+        <Link
+          href="/movements/min-stock"
+          className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50"
+        >
+          ⚠ {minBelow.toLocaleString("en-US")} ຕ່ຳກວ່າ stock ຂັ້ນຕ່ຳ
+        </Link>
+      )}
       {data.dead_items > 0 && (
         <Link
           href="/movements/aging"

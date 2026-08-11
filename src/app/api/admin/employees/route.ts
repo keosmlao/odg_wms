@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { requireManager } from "@/lib/session";
 import type { WmsRole } from "@/lib/session-shared";
+import { WMS_DEPARTMENT_CODES } from "@/lib/wmsDepartments";
 
 type Row = {
   employee_id: number;
@@ -11,6 +12,7 @@ type Row = {
   position_code: string | null;
   department_code: string | null;
   employment_status: string | null;
+  department_name: string | null;
   role: WmsRole | null;
   warehouses: string[];
 };
@@ -18,7 +20,6 @@ type Row = {
 export async function GET() {
   const guard = await requireManager();
   if (!guard.ok) return guard.response;
-
   const rows = await query<Row>(`
     SELECT
       e.employee_id,
@@ -27,6 +28,7 @@ export async function GET() {
       e.nickname,
       e.position_code,
       e.department_code,
+      d.department_name_lo AS department_name,
       e.employment_status,
       r.role,
       COALESCE(
@@ -37,9 +39,12 @@ export async function GET() {
       ) AS warehouses
     FROM public.odg_employee e
     LEFT JOIN public.wms_user_role r ON r.employee_id = e.employee_id
+    LEFT JOIN public.odg_department d ON d.department_code = e.department_code
+    -- ຂອບເຂດດຽວກັນກັບໜ້າ /settings/access: ພະແນກທີ່ໃຊ້ WMS + ຄົນທີ່ຖືສິດຢູ່ແລ້ວ
     WHERE COALESCE(e.employment_status, 'ACTIVE') = 'ACTIVE'
+      AND (e.department_code = ANY($1) OR r.role IS NOT NULL)
     ORDER BY e.fullname_lo NULLS LAST, e.employee_code
-  `);
+  `, [WMS_DEPARTMENT_CODES]);
 
   return NextResponse.json({ employees: rows });
 }

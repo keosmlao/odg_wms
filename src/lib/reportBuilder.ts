@@ -1,12 +1,13 @@
 import "server-only";
 import { movementSummary, movementDocs, pendingReceipts, health, topMovers, pendingIssues, type Scope } from "@/lib/reportData";
+import { minStockAlerts } from "@/lib/minStock";
 
 /**
  * Assemble the HTML body of a scheduled report from the sections a config
  * enabled. Email clients strip <style> and external CSS, so everything is
  * inline-styled and table-based.
  */
-export type ReportSections = { receive: boolean; issue: boolean; pending: boolean; health: boolean; movers: boolean; issue_pending: boolean };
+export type ReportSections = { receive: boolean; issue: boolean; pending: boolean; health: boolean; movers: boolean; issue_pending: boolean; min_stock: boolean };
 
 const F = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
@@ -90,6 +91,16 @@ export async function buildReportHtml(opts: { name: string; scope: Scope; date: 
       ["ລະຫັດ", "ຊື່ສິນຄ້າ", "ຈ່າຍອອກ", "ຄັ້ງ"],
       rows.map((r) => [r.item_code, r.item_name ?? "-", F(r.qout), String(r.outmoves)]),
       "ບໍ່ມີການເຄື່ອນໄຫວ",
+    )));
+  }
+
+  if (sections.min_stock) {
+    // ສະເພາະສາງທີ່ເປີດຄຸມ — ຖ້າຍັງບໍ່ມີສາງໃດເປີດ ຕາຕະລາງຈະຫວ່າງ (ບໍ່ແມ່ນ error).
+    const rows = await minStockAlerts(scope, { only: "below", limit: 25 });
+    blocks.push(section("ສິນຄ້າຕ່ຳກວ່າ stock ຂັ້ນຕ່ຳ (ຕ້ອງເຕີມ)", table(
+      ["ລະຫັດ", "ຊື່ສິນຄ້າ", "ສາງ", "ຄົງເຫຼືອ", "ຂັ້ນຕ່ຳ", "ຕ້ອງເຕີມ"],
+      rows.map((r) => [r.item_code, r.item_name ?? "-", r.wh_code, F(r.on_hand), F(r.min_qty), F(r.shortfall)]),
+      "ບໍ່ມີສິນຄ້າຕ່ຳກວ່າຂັ້ນຕ່ຳ",
     )));
   }
 

@@ -14,12 +14,15 @@ import {
   BuildingIcon,
   CheckIcon,
   ChevronRightIcon,
+  ClipboardIcon,
   LayersIcon,
   ListIcon,
   PackageIcon,
+  RouteIcon,
   SearchIcon,
   ShieldIcon,
   TrendIcon,
+  UsersIcon,
 } from "@/components/ui/Icons";
 
 type StatRow = {
@@ -472,6 +475,13 @@ export default async function Home() {
                     tone="amber"
                   />
                   <ToolLink
+                    href="/movements/min-stock"
+                    label="stock ຂັ້ນຕ່ຳ / ຂັ້ນສູງ"
+                    desc="ຕ່ຳກວ່າຂັ້ນຕ່ຳ = ຕ້ອງເຕີມ · ເກີນຂັ້ນສູງ = ຄ້າງ"
+                    icon={<AlertIcon className="h-5 w-5" />}
+                    tone="red"
+                  />
+                  <ToolLink
                     href="/movements/sn-check"
                     label="ກວດ SN vs Stock"
                     desc="serial ທຽບ location — ປັບໃຫ້ຕົງ"
@@ -562,6 +572,38 @@ export default async function Home() {
                     desc="ປ້າຍ pallet / location ໄປ scan"
                     icon={<PackageIcon className="h-5 w-5" />}
                     tone="aqua"
+                  />
+                </div>
+              </div>
+
+              {/* ຄູ່ມືການເຮັດວຽກ */}
+              <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900">
+                <SectionHeader
+                  title="ຄູ່ມືການເຮັດວຽກ"
+                  desc="ຂະບວນການ, SOP, ວິທີເຮັດ, ແບບຟອມ ແລະ ໜ້າທີ່ຂອງແຕ່ລະຄົນ"
+                  tone="navy"
+                />
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <ToolLink
+                    href="/manual/workflow"
+                    label="ຂະບວນການ (Workflow)"
+                    desc="ຮັບ · ຈັດເກັບ · ຈ່າຍ · ໂອນ · ນັບ ຕັ້ງແຕ່ຕົ້ນຈົນຈົບ"
+                    icon={<RouteIcon className="h-5 w-5" />}
+                    tone="brand"
+                  />
+                  <ToolLink
+                    href="/manual/sop"
+                    label="SOP & ວິທີເຮັດ (WI)"
+                    desc="ລະບຽບປະຕິບັດງານ + ຂັ້ນຕອນກົດໃນລະບົບ"
+                    icon={<ClipboardIcon className="h-5 w-5" />}
+                    tone="emerald"
+                  />
+                  <ToolLink
+                    href="/manual/roles"
+                    label="ໜ້າທີ່ແຕ່ລະຄົນ"
+                    desc="ໜ້າວຽກປະຈຳ · ອຳນາດ · ຂໍ້ຫ້າມ · RACI"
+                    icon={<UsersIcon className="h-5 w-5" />}
+                    tone="red"
                   />
                 </div>
               </div>
