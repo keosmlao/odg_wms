@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import * as XLSX from "xlsx";
+import { needsIsnSql } from "@/lib/isnScope";
 
 /**
  * WMS packing list (ໃບ packing) — ຈຸດເລີ່ມຕົ້ນຂອງການຮັບສິນຄ້າເຂົ້າສາງ.
@@ -342,7 +343,9 @@ export async function checkPackingRows(
   const [itemRes, poRes, lineRes] = await Promise.all([
     itemCodes.length
       ? client.query<ItemInfo>(
-          `SELECT code, name_1, unit_standard AS unit_code, is_isn FROM public.ic_inventory WHERE code = ANY($1)`,
+          `SELECT i.code, i.name_1, i.unit_standard AS unit_code,
+                  (CASE WHEN ${needsIsnSql("i")} THEN 1 ELSE 0 END) AS is_isn
+             FROM public.ic_inventory i WHERE i.code = ANY($1)`,
           [itemCodes],
         )
       : Promise.resolve({ rows: [] as ItemInfo[] }),

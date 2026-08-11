@@ -219,6 +219,11 @@ const groups: Group[] = [
         icon: <ShieldIcon className="h-3.5 w-3.5" />,
       },
       {
+        label: "ສິນຄ້າທີ່ຕ້ອງເກັບ ISN",
+        href: "/settings/isn-scope",
+        icon: <PackageIcon className="h-3.5 w-3.5" />,
+      },
+      {
         label: "ຍີ່ຫໍ້ບັງຄັບ SN+ISN",
         href: "/settings/sn-dual-brands",
         icon: <PackageIcon className="h-3.5 w-3.5" />,

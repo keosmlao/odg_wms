@@ -271,6 +271,99 @@ function knownNodeQty(nodes: StockNode[], node: { rack: string; location: string
   return hit ? Number.parseFloat(hit.qty) || 0 : null;
 }
 
+/**
+ * ຜົນກະທົບຕໍ່ **ຍອດທັງສາງ** ຂອງສິນຄ້າໜຶ່ງ — ລວມ delta ຂອງທຸກແຖວທີ່ເປັນລະຫັດນີ້.
+ * ນັບຄົບທຸກບ່ອນຈັດເກັບແລ້ວ ຍອດໃໝ່ທັງສາງຈະເທົ່າກັບຜົນລວມທີ່ປ້ອນເຂົ້າພໍດີ;
+ * `uncounted` ບອກວ່າຍັງເຫຼືອບ່ອນທີ່ມີເຄື່ອງຢູ່ແຕ່ຍັງບໍ່ໄດ້ໃສ່ຈຳນວນຈັກບ່ອນ.
+ */
+function whProjection(rows: PWorking[], itemCode: string, snOn: boolean) {
+  const mine = rows.filter((r) => r.item_code === itemCode);
+  const base = mine[0]?.wh_balance ?? null;
+  let delta = 0;
+  let entered = 0;
+  const covered = new Set<string>();
+  for (const r of mine) {
+    const d = deltaOf(r, snOn);
+    if (d === null) continue;
+    delta += d;
+    entered += 1;
+    covered.add(pNodeKey(r));
+  }
+  const nodes = mine[0]?.locations ?? [];
+  const uncounted = nodes.filter((n) => !covered.has(pNodeKey({ item_code: itemCode, ...n }))).length;
+  // /api/movements/items/search ຄືນ location ໃຫ້ສູງສຸດ 8 ບ່ອນຕໍ່ສິນຄ້າ. ຖ້າຜົນລວມ
+  // ຂອງບ່ອນທີ່ຮູ້ບໍ່ເທົ່າຍອດທັງສາງ ແປວ່າຍັງມີບ່ອນອື່ນທີ່ບໍ່ໄດ້ສະແດງ — ຫ້າມບອກວ່າ "ນັບຄົບ".
+  const sumNodes = nodes.reduce((s, n) => s + (Number.parseFloat(n.qty) || 0), 0);
+  const partial = base !== null && Math.abs(base - sumNodes) > 1e-6;
+  return {
+    newTotal: base === null || entered === 0 ? null : Math.round((base + delta) * 1e6) / 1e6,
+    uncounted,
+    partial,
+  };
+}
+
+/** ບ່ອນຈັດເກັບທີ່ຍັງຖືເຄື່ອງຢູ່ ແຕ່ຜູ້ໃຊ້ບໍ່ໄດ້ນັບ — ຕົວທີ່ເຮັດໃຫ້ຍອດທັງສາງບໍ່ເທົ່າຜົນລວມທີ່ນັບ. */
+export type FillGap = {
+  item_code: string;
+  item_name: string | null;
+  unit_code: string | null;
+  /** ຜົນລວມຈຳນວນທີ່ຜູ້ໃຊ້ປ້ອນເຂົ້າ. */
+  countedSum: number;
+  /** ຍອດທັງສາງທີ່ຈະໄດ້ ຖ້າບັນທຶກຕາມທີ່ປ້ອນ (ບ່ອນທີ່ບໍ່ນັບຍັງຄືເກົ່າ). */
+  projected: number;
+  /** ບ່ອນທີ່ຕ້ອງປັບເປັນ 0 ຖ້າຢືນຢັນໃຫ້ຍອດເທົ່າກັບຜົນລວມທີ່ນັບ. */
+  bins: { rack: string; location: string; pallet: string; qty: number }[];
+  /** ຍັງມີບ່ອນເກັບທີ່ API ບໍ່ໄດ້ສົ່ງມາ (ເກີນ 8 ບ່ອນ) → ປັບໃຫ້ຄົບບໍ່ໄດ້. */
+  partial: boolean;
+};
+
+/**
+ * ນັບແຕ່ບາງບ່ອນ → ຍອດທັງສາງໃໝ່ຈະບໍ່ເທົ່າກັບຜົນລວມທີ່ນັບໄດ້ ເພາະບ່ອນທີ່ບໍ່ໄດ້ນັບຍັງຖືເຄື່ອງຢູ່.
+ * ຕົວຢ່າງ: ທັງສາງ 100 (lo1 60 · lo2 30 · lo3 10) ນັບ lo1=20, lo2=30 → ຜົນລວມ 50
+ * ແຕ່ຍອດທັງສາງຈະເປັນ 60 ເພາະ lo3 ຍັງມີ 10. ຄືນລາຍການເຫຼົ່ານີ້ໃຫ້ຖາມຜູ້ໃຊ້ຕອນບັນທຶກ.
+ *
+ * ຂ້າມລາຍການທີ່ນັບດ້ວຍ serial — ຈຳນວນມາຈາກການສະແກນ ບໍ່ແມ່ນການພິມ.
+ */
+function computeFillGaps(rows: PWorking[], snOn: boolean): FillGap[] {
+  const byItem = new Map<string, PWorking[]>();
+  for (const r of rows) {
+    const list = byItem.get(r.item_code);
+    if (list) list.push(r);
+    else byItem.set(r.item_code, [r]);
+  }
+  const out: FillGap[] = [];
+  for (const [code, mine] of byItem) {
+    if (mine.some((r) => bySerial(r, snOn))) continue;
+    const counted = mine.filter((r) => parsedCount(r.counted) !== null);
+    if (counted.length === 0) continue;
+    const base = mine[0].wh_balance;
+    if (base === null) continue;
+
+    const countedSum = counted.reduce((s, r) => s + (parsedCount(r.counted) ?? 0), 0);
+    const delta = counted.reduce((s, r) => s + (deltaOf(r, snOn) ?? 0), 0);
+    const projected = Math.round((base + delta) * 1e6) / 1e6;
+    if (Math.abs(projected - countedSum) < 1e-6) continue; // ຕົງກັນຢູ່ແລ້ວ
+
+    const coveredKeys = new Set(counted.map((r) => pNodeKey(r)));
+    const nodes = mine[0].locations ?? [];
+    const bins = nodes
+      .filter((n) => !coveredKeys.has(pNodeKey({ item_code: code, ...n })))
+      .map((n) => ({ rack: n.rack, location: n.location, pallet: n.pallet, qty: Number.parseFloat(n.qty) || 0 }))
+      .filter((n) => n.qty !== 0);
+    const sumNodes = nodes.reduce((s, n) => s + (Number.parseFloat(n.qty) || 0), 0);
+    out.push({
+      item_code: code,
+      item_name: mine[0].item_name,
+      unit_code: mine[0].unit_code,
+      countedSum,
+      projected,
+      bins,
+      partial: Math.abs(base - sumNodes) > 1e-6,
+    });
+  }
+  return out;
+}
+
 /** Read-only "where it sits now" summary, shown on each search result. */
 function NodeSummary({ nodes, unit }: { nodes: StockNode[]; unit: string | null }) {
   if (nodes.length === 0) {
@@ -430,34 +523,54 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     setSearch("");
     const whBal = hit.wh_balance === null ? null : Number.parseFloat(hit.wh_balance) || 0;
     const nodes = hit.locations ?? [];
-    // Preselect where the item actually is (biggest holding first) so the Rack /
-    // Location / Pallet dropdowns open on the item's real node instead of blank.
-    // Another node is one chip-click away, and step 2 restates it before posting.
-    const def = nodes[0];
-    const node = { rack: def?.rack ?? "", location: def?.location ?? "", pallet: def?.pallet ?? "" };
-    const known = knownNodeQty(nodes, node);
-    const id = newLineId();
-    setItems((prev) => [
-      {
-        id,
-        item_code: hit.item_code,
-        item_name: hit.item_name,
-        unit_code: hit.unit_code,
-        wh_balance: whBal,
-        ...node,
-        before_qty: known ?? 0,
-        balLoading: known === null,
-        locations: nodes,
-        counted: "",
-        serialized: (hit.is_isn ?? 0) === 1,
-        serialsRemove: [],
-        serialsAdd: [],
-        serialsGenerate: 0,
-      },
-      ...prev,
-    ]);
-    void loadBalance(id, node, hit.item_code, known !== null);
+
+    // ໜຶ່ງແຖວຕໍ່ໜຶ່ງບ່ອນຈັດເກັບ: ສິນຄ້າທີ່ຢູ່ຫຼາຍບ່ອນຕ້ອງປ້ອນຈຳນວນໃໝ່ໄດ້ທຸກບ່ອນ
+    // ໃນເທື່ອດຽວ — ບໍ່ຕ້ອງກົດ "+ ບ່ອນຈັດເກັບ" ແລ້ວເລືອກ location ຄືນເອງ.
+    // ບໍ່ມີໃນສາງເລີຍ → ແຖວຫວ່າງ 1 ແຖວໃຫ້ເລືອກບ່ອນເອງ.
+    const already = new Set(items.filter((i) => i.item_code === hit.item_code).map((i) => pNodeKey(i)));
+    const targets = (nodes.length > 0
+      ? nodes.map((n) => ({ rack: n.rack, location: n.location, pallet: n.pallet }))
+      : [{ rack: "", location: "", pallet: "" }]
+    ).filter((n) => !already.has(pNodeKey({ item_code: hit.item_code, ...n })));
+
+    if (targets.length === 0) {
+      showToast("err", `${hit.item_code} ເພີ່ມຄົບທຸກບ່ອນຈັດເກັບແລ້ວ`);
+      setTimeout(() => searchRef.current?.focus(), 50);
+      return;
+    }
+
+    const rows: PWorking[] = targets.map((node) => ({
+      id: newLineId(),
+      item_code: hit.item_code,
+      item_name: hit.item_name,
+      unit_code: hit.unit_code,
+      wh_balance: whBal,
+      ...node,
+      before_qty: knownNodeQty(nodes, node) ?? 0,
+      balLoading: knownNodeQty(nodes, node) === null,
+      locations: nodes,
+      counted: "",
+      serialized: (hit.is_isn ?? 0) === 1,
+      serialsRemove: [],
+      serialsAdd: [],
+      serialsGenerate: 0,
+    }));
+
+    setItems((prev) => [...rows, ...prev]);
+    for (const r of rows) {
+      const node = { rack: r.rack, location: r.location, pallet: r.pallet };
+      void loadBalance(r.id, node, hit.item_code, knownNodeQty(nodes, node) !== null);
+    }
     setTimeout(() => searchRef.current?.focus(), 50);
+  }
+
+  /** ໄປທີ່ແຖວທີ່ນັບບ່ອນຈັດເກັບນີ້ຢູ່ແລ້ວ ແລ້ວ focus ຊ່ອງຈຳນວນ. */
+  function focusNodeRow(itemCode: string, node: { rack: string; location: string; pallet: string }) {
+    const row = items.find((i) => i.item_code === itemCode && sameNode(i, node));
+    if (!row) return;
+    const el = document.getElementById(`padj-qty-${row.id}`);
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    (el as HTMLInputElement | null)?.focus();
   }
 
   function updateLine(lineId: string, patch: Partial<PWorking>) {
@@ -552,6 +665,10 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   /** Every (item, node) a row already occupies — used to grey out taken chips. */
   const takenNodes = useMemo(() => new Set(items.map((i) => pNodeKey(i))), [items]);
 
+  /** ລາຍການທີ່ນັບບໍ່ຄົບທຸກບ່ອນ → ຖາມຕອນບັນທຶກ. */
+  const fillGaps = useMemo(() => computeFillGaps(items, snOn), [items, snOn]);
+  const [askFill, setAskFill] = useState(false);
+
   const duplicateNode = useMemo(() => {
     const seen = new Set<string>();
     for (const i of changedItems) {
@@ -574,7 +691,11 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     setStep(2);
   }
 
-  async function submit() {
+  /**
+   * ບັນທຶກ. ຖ້ານັບບໍ່ຄົບທຸກບ່ອນ ຍອດທັງສາງຈະບໍ່ເທົ່າຜົນລວມທີ່ນັບ — ຖາມກ່ອນ ແທນທີ່ຈະ
+   * ຕັດສິນໃຈໃຫ້ເອງ (ບ່ອນທີ່ບໍ່ໄດ້ນັບອາດຈະຖືກຕ້ອງຢູ່ແລ້ວ).
+   */
+  function submit() {
     if (changedItems.length === 0) {
       showToast("err", "ບໍ່ມີການປ່ຽນແປງໃຫ້ບັນທຶກ");
       return;
@@ -583,6 +704,16 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
       showToast("err", `ສິນຄ້າ ${duplicateNode.item_code} ຊ້ຳຢູ່ບ່ອນຈັດເກັບດຽວກັນ`);
       return;
     }
+    if (fillGaps.length > 0) {
+      setAskFill(true);
+      return;
+    }
+    void doSubmit(false);
+  }
+
+  /** `zeroRest` = ປັບບ່ອນທີ່ບໍ່ໄດ້ນັບໃຫ້ເປັນ 0 ເພື່ອໃຫ້ຍອດທັງສາງ = ຜົນລວມທີ່ນັບໄດ້. */
+  async function doSubmit(zeroRest: boolean) {
+    setAskFill(false);
     setSubmitting(true);
     try {
       const res = await fetch(`/api/movements/adjust`, {
@@ -614,6 +745,21 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   pallet: i.pallet,
                   counted_qty: parsedCount(i.counted),
                 },
+          ).concat(
+            // ບ່ອນທີ່ບໍ່ໄດ້ນັບ → ປັບເປັນ 0 ເພື່ອໃຫ້ຍອດທັງສາງເທົ່າກັບຜົນລວມທີ່ນັບໄດ້
+            zeroRest
+              ? fillGaps.flatMap((g) =>
+                  g.bins.map((b) => ({
+                    item_code: g.item_code,
+                    item_name: g.item_name,
+                    unit_code: g.unit_code,
+                    rack: b.rack,
+                    location: b.location,
+                    pallet: b.pallet,
+                    counted_qty: 0,
+                  })),
+                )
+              : [],
           ),
         }),
       });
@@ -724,6 +870,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                 const dColor =
                   d === null || d === 0 ? "text-zinc-400" : d > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
                 const dup = duplicateNode?.id === i.id;
+                const proj = whProjection(items, i.item_code, snOn);
                 return (
                   <div
                     key={i.id}
@@ -740,9 +887,27 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                         <div className="text-right">
                           <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-400">ຍອດທັງສາງ</div>
                           <div className="font-mono text-sm font-bold tabular-nums text-zinc-700 dark:text-zinc-200">
-                            {formatQty(i.wh_balance)}
+                            {proj.newTotal !== null && (
+                              <span className="mr-1 font-normal text-zinc-400 line-through">{formatQty(i.wh_balance)}</span>
+                            )}
+                            {proj.newTotal !== null ? formatQty(proj.newTotal) : formatQty(i.wh_balance)}
                             <span className="ml-1 text-[10px] uppercase text-zinc-400">{i.unit_code}</span>
                           </div>
+                          {/* ນັບຄົບທຸກບ່ອນ = ຍອດທັງສາງໃໝ່ເທົ່າກັບຜົນລວມທີ່ປ້ອນ */}
+                          {proj.newTotal !== null &&
+                            (proj.uncounted > 0 ? (
+                              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                ຍັງບໍ່ນັບ {proj.uncounted} ບ່ອນ
+                              </div>
+                            ) : proj.partial ? (
+                              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                ຍັງມີບ່ອນເກັບອື່ນທີ່ບໍ່ໄດ້ສະແດງ
+                              </div>
+                            ) : (
+                              <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                ນັບຄົບທຸກບ່ອນ
+                              </div>
+                            ))}
                         </div>
                         <button
                           type="button"
@@ -775,14 +940,19 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             <button
                               key={pNodePath(n)}
                               type="button"
-                              disabled={taken}
-                              onClick={() => setLineNode(i.id, { rack: n.rack, location: n.location, pallet: n.pallet })}
-                              title={taken ? "ມີແຖວອື່ນນັບບ່ອນນີ້ຢູ່ແລ້ວ" : "ໃຊ້ບ່ອນຈັດເກັບນີ້"}
+                              // ບ່ອນທີ່ມີແຖວຂອງມັນຢູ່ແລ້ວ → ກະໂດດໄປແຖວນັ້ນ (ບໍ່ແມ່ນປິດປຸ່ມ),
+                              // ເພາະດຽວນີ້ທຸກບ່ອນຈັດເກັບຂອງສິນຄ້າມີແຖວປ້ອນຈຳນວນຂອງໃຜລາວ.
+                              onClick={() =>
+                                taken
+                                  ? focusNodeRow(i.item_code, { rack: n.rack, location: n.location, pallet: n.pallet })
+                                  : setLineNode(i.id, { rack: n.rack, location: n.location, pallet: n.pallet })
+                              }
+                              title={taken ? "ໄປທີ່ແຖວຂອງບ່ອນນີ້" : "ໃຊ້ບ່ອນຈັດເກັບນີ້"}
                               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] transition ${
                                 active
                                   ? "bg-brand-600 text-white shadow-sm"
                                   : taken
-                                    ? "cursor-not-allowed bg-zinc-100 text-zinc-400 line-through dark:bg-zinc-800 dark:text-zinc-500"
+                                    ? "bg-zinc-100 text-zinc-500 ring-1 ring-zinc-200 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"
                                     : "bg-brand-50 text-brand-700 ring-1 ring-brand-100 hover:bg-brand-100 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50 dark:hover:bg-brand-900/40"
                               }`}
                             >
@@ -838,6 +1008,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                               −
                             </button>
                             <input
+                              id={`padj-qty-${i.id}`}
                               type="number"
                               inputMode="decimal"
                               value={i.counted}
@@ -1033,6 +1204,67 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
             </button>
           </div>
         </section>
+      )}
+
+      {askFill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl dark:bg-zinc-900">
+            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-50">
+              ຕ້ອງການໃຫ້ຍອດຄົງເຫຼືອເທົ່າກັບຈຳນວນທີ່ນັບໄດ້ບໍ?
+            </h3>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              ຍັງມີບ່ອນຈັດເກັບທີ່ບໍ່ໄດ້ນັບ ແລະ ຍັງຖືເຄື່ອງຢູ່ — ຖ້າຢືນຢັນ ຈະປັບບ່ອນເຫຼົ່ານັ້ນໃຫ້ເປັນ <b>0</b>
+              ເພື່ອໃຫ້ຍອດທັງສາງເທົ່າກັບຜົນລວມທີ່ນັບໄດ້.
+            </p>
+
+            <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+              {fillGaps.map((g) => (
+                <div key={g.item_code} className="rounded-xl bg-zinc-50 p-3 text-xs dark:bg-zinc-800/50">
+                  <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{g.item_code}</div>
+                  <div className="truncate text-zinc-700 dark:text-zinc-300">{g.item_name ?? "—"}</div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono tabular-nums">
+                    <span className="text-zinc-500">ນັບໄດ້ <b className="text-zinc-900 dark:text-zinc-100">{formatQty(g.countedSum)}</b></span>
+                    <span className="text-zinc-500">ຖ້າບໍ່ປັບ <b className="text-amber-600 dark:text-amber-400">{formatQty(g.projected)}</b></span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {g.bins.map((b) => (
+                      <span key={pNodePath(b)} className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                        {pNodePath(b)} <span className="tabular-nums">{formatQty(b.qty)} → 0</span>
+                      </span>
+                    ))}
+                  </div>
+                  {g.partial && (
+                    <div className="mt-1.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                      ⚠ ສິນຄ້ານີ້ຢູ່ຫຼາຍກວ່າ 8 ບ່ອນ — ປັບໄດ້ສະເພາະບ່ອນທີ່ສະແດງ ຍອດອາດຍັງບໍ່ຕົງ
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button type="button" onClick={() => setAskFill(false)} className={ghostBtn}>
+                ຍົກເລີກ
+              </button>
+              <button
+                type="button"
+                onClick={() => void doSubmit(false)}
+                disabled={submitting}
+                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                ບໍ່ — ບັນທຶກສະເພາະທີ່ນັບ
+              </button>
+              <button
+                type="button"
+                onClick={() => void doSubmit(true)}
+                disabled={submitting}
+                className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50"
+              >
+                ແມ່ນ — ປັບໃຫ້ເທົ່າ
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {serialLine && (() => {

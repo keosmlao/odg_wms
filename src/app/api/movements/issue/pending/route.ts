@@ -121,8 +121,9 @@ export async function GET(request: Request) {
      LEFT JOIN pending pd ON pd.doc_no = s.doc_no
      LEFT JOIN public.ar_customer cu ON cu.code = h.cust_code
      WHERE COALESCE(h.is_cancel, 0) = 0
-       -- ໃບຂໍໂອນ (124) ຕ້ອງຖືກ "ອະນຸມັດ" (status=1) ກ່ອນ ຈຶ່ງຈ່າຍໄດ້
-       AND (h.trans_flag <> 124 OR h.status = 1)
+       -- ໃບຂໍໂອນ (124) ບໍ່ຕ້ອງລໍການອະນຸມັດອີກຕໍ່ໄປ — ລໍຖ້າ (0) ຫຼື ອະນຸມັດ (1) ຈ່າຍໄດ້ເລີຍ.
+       -- ກັນໄວ້ສະເພາະໃບທີ່ຖືກ "ປฏิเสธ" (2) ເພາະນັ້ນຄືການປະຕິເສດໂດຍເຈດຕະນາ.
+       AND (h.trans_flag <> 124 OR COALESCE(h.status, 0) <> 2)
        AND (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0)) > 0.0001
      ORDER BY h.doc_date DESC, s.doc_no DESC
      LIMIT $${limitIdx}`,

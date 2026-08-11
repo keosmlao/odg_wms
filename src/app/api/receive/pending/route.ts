@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import { needsIsnSql } from "@/lib/isnScope";
 
 /**
  * Pending lines to receive into a warehouse, for several source-document types:
@@ -53,7 +54,7 @@ async function getPoRemain(wh: string, fresh: boolean): Promise<PoRow[]> {
             to_char(p.send_date,'YYYY-MM-DD') AS send_date,
             p.item_code, p.item_name, p.unit_code, p.barcode,
             p.qty::text AS ordered, p.qty_balance::text AS erp_balance,
-            COALESCE(i.is_isn,0) = 1 AS is_isn
+            ${needsIsnSql("i")} AS is_isn
      FROM public.odg_po_remain p
      JOIN public.ic_warehouse w ON w.name_1 = p.warehouse
      LEFT JOIN public.ic_inventory i ON i.code = p.item_code
@@ -73,7 +74,7 @@ function getTransfer(wh: string): Promise<PoRow[]> {
             to_char(t.doc_date,'YYYY-MM-DD') AS doc_date, NULL AS send_date,
             d.item_code, d.item_name, d.unit_code, d.barcode,
             abs(d.qty)::text AS ordered, abs(d.qty)::text AS erp_balance,
-            COALESCE(i.is_isn,0) = 1 AS is_isn
+            ${needsIsnSql("i")} AS is_isn
      FROM public.ic_trans t
      JOIN public.ic_trans_detail d ON d.doc_no = t.doc_no AND d.trans_flag = 72
      LEFT JOIN public.ic_warehouse w ON w.code = t.wh_to
@@ -96,7 +97,7 @@ function getReturn(wh: string, flag: number): Promise<PoRow[]> {
             to_char(t.doc_date,'YYYY-MM-DD') AS doc_date, NULL AS send_date,
             d.item_code, d.item_name, d.unit_code, d.barcode,
             abs(d.qty)::text AS ordered, abs(d.qty)::text AS erp_balance,
-            COALESCE(i.is_isn,0) = 1 AS is_isn
+            ${needsIsnSql("i")} AS is_isn
      FROM public.ic_trans_detail d
      JOIN public.ic_trans t ON t.doc_no = d.doc_no AND t.trans_flag = $2
      LEFT JOIN public.ic_warehouse w ON w.code = d.wh_code

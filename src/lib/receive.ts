@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { getIsnScope } from "@/lib/isnScope";
 
 /**
  * Shared WMS goods-receipt helpers, used by both the direct receive route
@@ -40,14 +41,16 @@ export async function genDocNo(client: PoolClient, prefix: string): Promise<stri
 
 export type IsnInfo = { is_isn: boolean; category: string };
 
-/** is_isn flag + trimmed item_category for the given items (ISN-eligible = is_isn AND category<>''). */
+/**
+ * ຕ້ອງເກັບ ISN ບໍ + ໝວດ (ISN ອອກໄດ້ຕໍ່ເມື່ອ ຕ້ອງເກັບ ແລະ ໝວດບໍ່ຫວ່າງ).
+ *
+ * ອ່ານຈາກ config ຂອງ WMS (ໝວດ + ຍົກເວັ້ນລາຍການ — src/lib/isnScope.ts) ບໍ່ແມ່ນ
+ * `ic_inventory.is_isn` ອີກຕໍ່ໄປ: SML ຕັ້ງທຸງນັ້ນໄວ້ 99.8% ຂອງລາຍການ ຈຶ່ງເຮັດໃຫ້
+ * ຮັບສິນຄ້າຫຍັງເຂົ້າກໍບັງຄັບສ້າງ ISN ທຸກຕົວ.
+ */
 export async function getIsnInfo(client: PoolClient, itemCodes: string[]): Promise<Map<string, IsnInfo>> {
-  if (itemCodes.length === 0) return new Map();
-  const r = await client.query<{ code: string; item_category: string | null; is_isn: number | null }>(
-    `SELECT code, item_category, is_isn FROM public.ic_inventory WHERE code = ANY($1)`,
-    [itemCodes],
-  );
-  return new Map(r.rows.map((x) => [x.code, { is_isn: (x.is_isn ?? 0) === 1, category: (x.item_category ?? "").trim() }]));
+  const scope = await getIsnScope(client, itemCodes);
+  return new Map(Array.from(scope, ([code, s]) => [code, { is_isn: s.needs_isn, category: s.category }]));
 }
 
 /**

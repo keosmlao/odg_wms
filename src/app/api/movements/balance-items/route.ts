@@ -3,6 +3,7 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { phDimensionLateralJoin } from "@/lib/ph-dimension";
+import { needsIsnSql } from "@/lib/isnScope";
 
 export type BalanceItemRow = {
   ic_code: string | null;
@@ -112,7 +113,7 @@ export async function GET(request: Request) {
        agg.item_name AS ic_name,
        agg.unit_code AS ic_unit_code,
        agg.balance_qty::text AS balance_qty,
-       inv.is_isn,
+       (CASE WHEN ${needsIsnSql("inv")} THEN 1 ELSE 0 END) AS is_isn,
        CASE WHEN ph.pallet > 0 AND agg.balance_qty > 0
             THEN round((agg.balance_qty / ph.pallet)::numeric, 3)::text
             ELSE NULL END AS pallet_positions,

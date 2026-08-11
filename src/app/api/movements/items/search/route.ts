@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import { needsIsnSql } from "@/lib/isnScope";
 
 /** One (rack, location, pallet) node holding stock of the item. */
 export type MovementItemNode = {
@@ -130,7 +131,8 @@ export async function GET(request: Request) {
   // per-item scan of the (un-indexed-on-item) movements table.
   const rows = await query<MovementItemHit>(
     `WITH hits AS (
-       SELECT i.code, i.name_1, i.unit_standard, i.is_isn
+       SELECT i.code, i.name_1, i.unit_standard,
+              (CASE WHEN ${needsIsnSql("i")} THEN 1 ELSE 0 END) AS is_isn
        FROM public.ic_inventory i
        WHERE (i.code ILIKE $5 ESCAPE '\\' OR i.name_1 ILIKE $5 ESCAPE '\\')
        ORDER BY CASE WHEN i.code ILIKE $6 ESCAPE '\\' THEN 0 ELSE 1 END, i.code
