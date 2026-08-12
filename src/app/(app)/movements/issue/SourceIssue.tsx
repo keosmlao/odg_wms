@@ -15,6 +15,7 @@ import {
   ChevronRightIcon,
   MapPinIcon,
 } from "@/components/ui/Icons";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import TripIssue from "./TripIssue";
 
 const PhoneIcon = ({ className = "h-4 w-4" }) => (
@@ -44,6 +45,7 @@ type PendingLine = {
 };
 type PendingDoc = {
   doc_no: string;
+  wh_code: string;
   doc_date: string | null;
   doc_time: string | null;
   cust_code: string | null;
@@ -254,7 +256,9 @@ function parseAndCleanRemark(remark: string | null) {
 }
 
 export default function SourceIssue({ warehouses }: { warehouses: WarehouseOption[] }) {
-  const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
+  // ບໍ່ມີການ "ເລືອກສາງ" ອີກແລ້ວ — ລາຍການຄ້າງຈ່າຍໂຫຼດມາທຸກສາງທີ່ມີສິດ ແລ້ວແຍກກຸ່ມຕາມສາງ.
+  // `whCode` ຈຶ່ງເປັນສາງ "ຂອງໃບທີ່ກຳລັງເຮັດຢູ່" ເທົ່ານັ້ນ (ຕັ້ງຕອນເປີດໃບ).
+  const [whCode, setWhCode] = useState("");
   const [tab, setTab] = useState<SourceTab>("sale");
   // ແທັບຖ້ຽວໃຊ້ຕົວອ່ານຂອງມັນເອງ; ສ່ວນ type ຍັງເປັນປະເພດເອກະສານ ERP ຄືເກົ່າ.
   const type: SourceType = tab === "trip" ? "sale" : tab;
@@ -293,41 +297,35 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   }, []);
 
   const whName = useMemo(() => warehouses.find((w) => w.code === whCode)?.name ?? null, [warehouses, whCode]);
+  const docGroups = useMemo(() => groupByWarehouse(docs, (d) => d.wh_code, warehouses), [docs, warehouses]);
 
-  useEffect(() => {
-    if (!whCode) { setSnIssueOn(true); setSnPickRequired(true); return; }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/movements/warehouse-sn-flags?wh=${encodeURIComponent(whCode)}`);
-        const data = (await res.json()) as { flags?: { issue?: boolean; issue_pick?: boolean } };
-        if (cancelled) return;
-        const issueOn = data.flags?.issue !== false;
-        setSnIssueOn(issueOn);
-        setSnPickRequired(issueOn && data.flags?.issue_pick !== false);
-      } catch {
-        if (!cancelled) { setSnIssueOn(true); setSnPickRequired(true); }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [whCode]);
+  /** ນະໂຍບາຍ SN ແມ່ນ "ຕໍ່ສາງ" — ໂຫຼດຕອນເປີດໃບ (ສາງມາຈາກໃບ, ບໍ່ແມ່ນຈາກ dropdown ອີກ). */
+  const loadSnFlags = useCallback(async (wh: string) => {
+    try {
+      const res = await fetch(`/api/movements/warehouse-sn-flags?wh=${encodeURIComponent(wh)}`);
+      const data = (await res.json()) as { flags?: { issue?: boolean; issue_pick?: boolean } };
+      const issueOn = data.flags?.issue !== false;
+      return { issueOn, pickRequired: issueOn && data.flags?.issue_pick !== false };
+    } catch {
+      return { issueOn: true, pickRequired: true };
+    }
+  }, []);
 
-  // Deep-link from the transfer dashboard (?type=&wh=&doc=) → preselect + auto-open.
+  // Deep-link from the transfer dashboard (?type=&doc=) → auto-open that doc.
+  // ບໍ່ຕ້ອງອ່ານ `wh` ອີກແລ້ວ — ສາງມາຈາກຕົວໃບເອງຕອນເປີດ.
   const searchParams = useSearchParams();
   const autoOpenRef = useRef<string | null>(null);
   useEffect(() => {
     const pType = searchParams.get("type");
-    const pWh = searchParams.get("wh");
     const pDoc = searchParams.get("doc");
     if (pType === "req" || pType === "transfer" || pType === "sale" || pType === "trip") setTab(pType);
-    if (pWh) setWhCode(pWh);
     if (pDoc) autoOpenRef.current = pDoc;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load pending source documents (debounced on search / wh / type).
+  // Load pending source documents across every accessible warehouse (debounced).
   useEffect(() => {
-    if (!whCode || tab === "trip") {
+    if (tab === "trip") {
       setDocs([]);
       return;
     }
@@ -335,7 +333,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
     const t = setTimeout(async () => {
       setLoadingDocs(true);
       try {
-        const params = new URLSearchParams({ wh: whCode, type });
+        const params = new URLSearchParams({ type });
         if (search.trim()) params.set("q", search.trim());
         const res = await fetch(`/api/movements/issue/pending?${params}`);
         const data = (await res.json()) as { docs?: PendingDoc[]; error?: string };
@@ -352,7 +350,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
       cancelled = true;
       clearTimeout(t);
     };
-  }, [whCode, tab, type, search, reloadKey, showToast]);
+  }, [tab, type, search, reloadKey, showToast]);
 
   /** Build allocation rows for one source line. If the needed qty exceeds the
    *  recommended (FIFO) location's stock, AUTO-SPLIT across the next locations
@@ -362,7 +360,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
    *  node whose WMS balance is not backed by serials cannot actually be picked
    *  from, so those nodes are tried LAST (still tried, so the defaulted total
    *  never comes up short — an uncoverable row is then flagged as incomplete). */
-  function buildAllocations(l: SourceLine): WorkingLine[] {
+  function buildAllocations(l: SourceLine, pickNeedsSn: boolean): WorkingLine[] {
     const remaining = Number.parseFloat(l.remaining) || 0;
     const serialized = (l.is_isn ?? 0) === 1;
     const base: WorkingLine = {
@@ -387,7 +385,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
 
     // Try serial-backed nodes first when the pick slip must carry ISN; the
     // dropdown itself stays in FIFO order, only the auto-fill order changes.
-    const needsSn = serialized && snPickRequired;
+    const needsSn = serialized && pickNeedsSn;
     const order = l.locations.map((_, i) => i);
     if (needsSn) {
       const covered = (i: number) => (l.locations[i].sn_qty ?? 0) > 0;
@@ -417,18 +415,23 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   async function openDoc(doc: PendingDoc) {
     setLoadingLines(true);
     setSelDoc(doc);
+    setWhCode(doc.wh_code);
     setLastIssued(null);
     setRemoved(new Set());
     try {
-      const params = new URLSearchParams({ doc: doc.doc_no, type, wh: whCode });
+      // ນະໂຍບາຍ SN ຂອງສາງໃບນີ້ ຕ້ອງຮູ້ກ່ອນຈັດສັນແຖວ (ມັນກຳນົດລຳດັບ node ທີ່ມີ serial).
+      const flags = await loadSnFlags(doc.wh_code);
+      setSnIssueOn(flags.issueOn);
+      setSnPickRequired(flags.pickRequired);
+      const params = new URLSearchParams({ doc: doc.doc_no, type, wh: doc.wh_code });
       const res = await fetch(`/api/movements/issue/source?${params}`);
       const data = (await res.json()) as { lines?: SourceLine[]; pending_docs?: PendingPick[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
-      const built = (data.lines ?? []).flatMap(buildAllocations);
+      const built = (data.lines ?? []).flatMap((l) => buildAllocations(l, flags.pickRequired));
       setLines(built);
       setPendingPicks(data.pending_docs ?? []);
       // Eager-load serials for serialized lines so the global SN scan can match.
-      for (const l of built) if (l.serialized && l.selIdx >= 0) void loadSerials(l);
+      for (const l of built) if (l.serialized && l.selIdx >= 0) void loadSerials(l, doc.wh_code);
     } catch (err) {
       showToast("err", err instanceof Error ? err.message : "ບໍ່ສຳເລັດ");
       setSelDoc(null);
@@ -486,9 +489,10 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
     });
   }
 
-  async function loadSerials(line: WorkingLine) {
+  /** `wh` ຮັບເຂົ້າມາໄດ້ ເພາະຕອນ openDoc ຄ່າ state `whCode` ຍັງບໍ່ທັນອັບເດດ. */
+  async function loadSerials(line: WorkingLine, wh?: string) {
     const loc = line.locations[line.selIdx];
-    const params = new URLSearchParams({ warehouse: whCode, item: line.item_code });
+    const params = new URLSearchParams({ warehouse: wh ?? whCode, item: line.item_code });
     if (loc) {
       params.set("rack", loc.rack);
       params.set("location", loc.location);
@@ -765,29 +769,13 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
       {/* STEP 1 — pick source document */}
       {!selDoc && (
         <div className="space-y-4">
-          {/* Header Row: Warehouse selector (ซ้าย) + Document Type Tabs (ขวา) — bare, ຄືหน้ารับ */}
+          {/* Header Row: ຂອບເຂດສາງ (ອ່ານຢ່າງດຽວ) + Document Type Tabs */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* Warehouse Select */}
-            <div className="relative w-full sm:max-w-xs">
-              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500">
-                <BuildingIcon className="h-4.5 w-4.5" />
-              </span>
-              <select
-                value={whCode}
-                onChange={(e) => setWhCode(e.target.value)}
-                className="w-full h-11 rounded-xl bg-zinc-50/60 dark:bg-zinc-950/60 pl-10 pr-10 text-sm text-zinc-900 dark:text-zinc-100 font-bold tracking-tight ring-1 ring-zinc-200 dark:ring-zinc-800 outline-none transition-all duration-200 hover:ring-zinc-300 dark:hover:ring-zinc-750 focus:ring-2 focus:ring-red-500 focus:bg-white dark:focus:bg-zinc-950 appearance-none cursor-pointer"
-              >
-                <option value="">— ເລືອກສາງ —</option>
-                {warehouses.map((w) => (
-                  <option key={w.code} value={w.code}>
-                    {w.code} {w.name ? ` · ${w.name}` : ""}
-                  </option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
-                </svg>
+            <div className="inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-50/60 px-3.5 text-sm font-bold text-zinc-700 ring-1 ring-zinc-200 dark:bg-zinc-950/60 dark:text-zinc-200 dark:ring-zinc-800">
+              <BuildingIcon className="h-4.5 w-4.5 text-zinc-400 dark:text-zinc-500" />
+              ທຸກສາງ
+              <span className="rounded-full bg-zinc-200/70 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                {warehouses.length}
               </span>
             </div>
 
@@ -816,7 +804,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
 
           {tab === "trip" ? (
             /* ໃບຈັດຖ້ຽວຂອງຂົນສົ່ງ → ໃບສັ່ງຈ່າຍ (1 ຖ້ຽວ = ຫຼາຍບິນ) */
-            <TripIssue whCode={whCode} whName={whName} />
+            <TripIssue warehouses={warehouses} />
           ) : (
             <>
           {/* Search Bar */}
@@ -826,7 +814,6 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              disabled={!whCode}
               placeholder="ສະແກນ / ພິມ ເລກເອກະສານ ຫຼື ສິນຄ້າ..."
               className="w-full rounded-xl bg-zinc-50/50 dark:bg-zinc-950/40 pl-11 pr-11 py-3.5 text-sm text-zinc-900 dark:text-zinc-100 ring-1 ring-zinc-250 dark:ring-zinc-800 outline-none transition-all duration-300 hover:ring-zinc-300 focus:ring-2 focus:ring-red-500/30 focus:border-red-500 focus:bg-white dark:focus:bg-zinc-950 focus:shadow-lg focus:shadow-red-500/5 disabled:opacity-60"
             />
@@ -843,15 +830,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
 
           {/* Documents List */}
           <div>
-            {!whCode ? (
-              <div className="rounded-2xl border-2 border-dashed border-zinc-200 py-16 text-center dark:border-zinc-800/80 bg-zinc-50/20 dark:bg-zinc-950/10">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-400 dark:bg-zinc-850 dark:text-zinc-500 ring-1 ring-zinc-200/50 dark:ring-zinc-800/50">
-                  <BuildingIcon className="h-6 w-6" />
-                </div>
-                <p className="mt-4 text-sm font-bold text-zinc-500 dark:text-zinc-400">ກະລຸນາເລືອກສາງກ່ອນ</p>
-                <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">ເລືອກສາງເພື່ອສະແດງລາຍການເອກະສານຄ້າງຈ່າຍ</p>
-              </div>
-            ) : loadingDocs ? (
+            {loadingDocs ? (
               <div className="py-16 text-center">
                 <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-red-500 border-t-transparent" />
                 <p className="mt-4 text-sm font-semibold text-zinc-550 dark:text-zinc-450">ກຳລັງໂຫຼດເອກະສານ...</p>
@@ -862,11 +841,26 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                   <ListIcon className="h-6 w-6" />
                 </div>
                 <p className="mt-4 text-sm font-bold text-zinc-500 dark:text-zinc-400">ບໍ່ມີເອກະສານຄ້າງ{SOURCE_TYPES.find((t) => t.key === type)?.label}</p>
-                <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">ບໍ່ພົບເອກະສານທີ່ຍັງຄ້າງໃນສາງ ຫຼື ຂໍ້ມູນຄົ້ນຫາບໍ່ຖືກຕ້ອງ</p>
+                <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">ບໍ່ພົບເອກະສານທີ່ຍັງຄ້າງໃນທຸກສາງທີ່ທ່ານມີສິດ ຫຼື ຂໍ້ມູນຄົ້ນຫາບໍ່ຖືກຕ້ອງ</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {docs.map((d) => {
+              <div className="space-y-7">
+                {docGroups.map((g) => (
+                  <WarehouseGroup
+                    key={g.code}
+                    code={g.code}
+                    name={warehouses.find((w) => w.code === g.code)?.name}
+                    count={g.rows.length}
+                    countLabel="ໃບ"
+                    tone="red"
+                    right={
+                      <span className="font-mono text-xs font-black tabular-nums text-red-600 dark:text-red-400">
+                        ຄ້າງເບີກ {formatQty(String(g.rows.reduce((s, d) => s + (Number.parseFloat(d.remaining_qty) || 0), 0)))}
+                      </span>
+                    }
+                  >
+                    <div className="space-y-4">
+                {g.rows.map((d) => {
                   const cleaned = parseAndCleanRemark(d.remark);
                   const customerDisplay = cleaned.customer || d.cust_name?.trim() || d.cust_code || "—";
                   const today = new Date().toISOString().slice(0, 10);
@@ -876,9 +870,9 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                   if (type === "transfer") typeBadge = "bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300";
                   else if (type === "sale") typeBadge = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300";
                   return (
-                    <details key={d.doc_no} open={docs.length <= 4} className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+                    <details key={`${d.wh_code}-${d.doc_no}`} open={docs.length <= 4} className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
                       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-5 py-3.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 font-mono text-[10px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">{(whCode ?? "?").slice(-2)}</div>
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 font-mono text-[10px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">{d.wh_code.slice(-2)}</div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{d.doc_no}</span>
@@ -891,7 +885,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                             <Elapsed since={d.created_at} />
                             {d.want_date && <span className={`inline-flex items-center gap-1 ${overdueWant ? "font-bold text-red-600 dark:text-red-400" : ""}`}><CalendarIcon className="h-3 w-3" />ຕ້ອງການ {fmtDate(d.want_date)}</span>}
                             <span className="inline-flex items-center gap-1"><UserIcon className="h-3 w-3" />{customerDisplay}</span>
-                            <span className="inline-flex items-center gap-1"><BuildingIcon className="h-3 w-3" />{whCode}{whName ? ` · ${whName}` : ""}</span>
+                            <span className="inline-flex items-center gap-1"><BuildingIcon className="h-3 w-3" />{d.wh_code}{warehouses.find((w) => w.code === d.wh_code)?.name ? ` · ${warehouses.find((w) => w.code === d.wh_code)?.name}` : ""}</span>
                             {cleaned.address && <span className="inline-flex items-center gap-1"><MapPinIcon className="h-3 w-3" />{cleaned.address}</span>}
                             {cleaned.phone && <span className="inline-flex items-center gap-1"><PhoneIcon className="h-3 w-3" />{cleaned.phone}</span>}
                           </div>
@@ -936,6 +930,9 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                     </details>
                   );
                 })}
+                    </div>
+                  </WarehouseGroup>
+                ))}
               </div>
             )}
           </div>

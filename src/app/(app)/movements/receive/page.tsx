@@ -123,7 +123,6 @@ export default async function ReceivePage({
             warehouses={warehouses}
             initialSearch={Array.isArray(params.q) ? (params.q[0] ?? "") : (params.q ?? "")}
             initialType={Array.isArray(params.type) ? (params.type[0] ?? "") : (params.type ?? "")}
-            initialWh={Array.isArray(params.wh) ? (params.wh[0] ?? "") : (params.wh ?? "")}
           />
         ) : (
           <PendingList session={session} params={params} />

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertIcon, CheckIcon, PackageIcon, SearchIcon } from "@/components/ui/Icons";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import { MOVE_REASONS } from "@/lib/moveReasons";
 import ScanLogPanel from "./ScanLogPanel";
 import type { WarehouseOption } from "./SourceIssue";
@@ -52,7 +53,6 @@ function ddmm(d: string | null) {
 // doc, so refreshing (or navigating away) never loses them — the operator can
 // come back and keep scanning where they left off.
 const LS_ACTIVE = "wms.issueConfirm.activeDoc";
-const LS_WH = "wms.issueConfirm.wh";
 const scanKey = (doc: string) => `wms.issueConfirm.scan.${doc}`;
 
 function lsGet(key: string): string | null {
@@ -74,7 +74,6 @@ function loadScan(doc: string): { scanned: string[]; reasons: Record<string, str
 }
 
 export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOption[] }) {
-  const [wh, setWh] = useState(warehouses.length === 1 ? warehouses[0].code : "");
   const [docs, setDocs] = useState<DraftDoc[]>([]);
   /** ກອງຕາມລົດ/ຖ້ຽວ — "" = ທັງໝົດ, "-" = ໃບທີ່ບໍ່ໄດ້ມາຈາກຖ້ຽວ, ອື່ນໆ = trip_doc_no */
   const [tripFilter, setTripFilter] = useState("");
@@ -131,29 +130,25 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
     return () => { window.removeEventListener("beforeunload", onLeave); void flushLog(); };
   }, [flushLog]);
 
+  /** ໂຫຼດໃບ pick ຄ້າງຢືນຢັນ ຂອງທຸກສາງທີ່ມີສິດ (ບໍ່ມີການເລືອກສາງອີກແລ້ວ). */
   async function loadDocs() {
-    if (!wh) { setDocs([]); return; }
     setLoading(true);
     try {
-      const res = await fetch(`/api/movements/issue/draft?wh=${encodeURIComponent(wh)}`);
+      const res = await fetch(`/api/movements/issue/draft`);
       const data = (await res.json()) as { docs?: DraftDoc[] };
       setDocs(data.docs ?? []);
     } finally { setLoading(false); }
   }
-  useEffect(() => { void loadDocs(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [wh]);
+  useEffect(() => { void loadDocs(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  // On first mount, restore the warehouse + auto-reopen the doc the operator was
-  // confirming (with its stashed scans), so a page refresh resumes in place.
+  // On first mount, auto-reopen the doc the operator was confirming (with its
+  // stashed scans), so a page refresh resumes in place.
   useEffect(() => {
-    const savedWh = lsGet(LS_WH);
-    if (savedWh) setWh(savedWh);
     const savedDoc = lsGet(LS_ACTIVE);
     if (savedDoc) void openDoc(savedDoc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist the selected warehouse, and the active doc's scans, as they change.
-  useEffect(() => { if (wh) lsSet(LS_WH, wh); }, [wh]);
   useEffect(() => {
     if (!active) return;
     lsSet(scanKey(active.header.doc_no), JSON.stringify({ scanned: [...scanned], reasons, moves }));
@@ -428,6 +423,10 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
     if (tripFilter === "-") return docs.filter((d) => !d.trip_doc_no);
     return docs.filter((d) => d.trip_doc_no === tripFilter);
   }, [docs, tripFilter]);
+  const docGroups = useMemo(
+    () => groupByWarehouse(shownDocs, (d) => d.warehouse_code ?? "—", warehouses),
+    [shownDocs, warehouses],
+  );
 
   return (
     <div className="space-y-4">
@@ -436,10 +435,10 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
           <section className="shadow-card flex flex-wrap items-end gap-4 rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
             <div className="min-w-0 flex-1">
               <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ</label>
-              <select value={wh} onChange={(e) => setWh(e.target.value)} className={`${inputCls} w-full`}>
-                {warehouses.length !== 1 && <option value="">— ເລືອກສາງ —</option>}
-                {warehouses.map((w) => <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>)}
-              </select>
+              <div className={`${inputCls} flex w-full items-center gap-2 font-bold`}>
+                ທຸກສາງ
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+              </div>
             </div>
             {tripOptions.length > 0 && (
               <div className="min-w-0 flex-1">
@@ -456,9 +455,18 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
           </section>
           <section className="space-y-2">
             {loading ? <div className="py-10 text-center text-sm text-zinc-400">ກຳລັງໂຫຼດ...</div>
-            : !wh ? <div className="py-10 text-center text-sm text-zinc-400">ເລືອກສາງເພື່ອเริ่ม</div>
             : shownDocs.length === 0 ? <div className="py-10 text-center text-sm text-zinc-400">{docs.length === 0 ? "ບໍ່ມີໃບ pick ລໍຖ້າຢືນຢັນ" : "ບໍ່ມີໃບ pick ຂອງລົດ/ຖ້ຽວທີ່ເລືອກ"}</div>
-            : shownDocs.map((d) => (
+            : docGroups.map((g) => (
+              <WarehouseGroup
+                key={g.code}
+                code={g.code}
+                name={warehouses.find((w) => w.code === g.code)?.name}
+                count={g.rows.length}
+                countLabel="ໃບ"
+                tone="red"
+              >
+              <div className="space-y-2">
+              {g.rows.map((d) => (
               <div key={d.doc_no} className="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-200 transition hover:ring-red-300 dark:bg-zinc-900 dark:ring-zinc-800">
                 <div className="flex w-full items-center gap-3 p-3.5">
                   <button type="button" onClick={() => toggleExpand(d.doc_no)} className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer">
@@ -502,6 +510,9 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                   </div>
                 )}
               </div>
+              ))}
+              </div>
+              </WarehouseGroup>
             ))}
           </section>
         </>

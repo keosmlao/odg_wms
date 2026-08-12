@@ -28,19 +28,22 @@ export default function BalanceFilters({
   accessibleAll: boolean;
 }) {
   const router = useRouter();
-  const [wh, setWh] = useState(initial.wh);
-  const [rack, setRack] = useState(initial.rack);
+  // ບໍ່ມີ dropdown ເລືອກສາງແລ້ວ — ສະແດງທຸກສາງທີ່ມີສິດສະເໝີ. ການເຈາະລົງ Rack
+  // ຍັງເຮັດໄດ້: ຕົວເລືອກ Rack ລວມທຸກສາງ ແລະ ຄ່າຂອງມັນພາສາງມານຳ ("ສາງ|rack").
+  const [rackSel, setRackSel] = useState(initial.rack ? `${initial.wh}|${initial.rack}` : "");
   const [location, setLocation] = useState(initial.location);
   const [q, setQ] = useState(initial.q);
 
-  // Cascade: racks belong to the chosen warehouse, locations to the chosen rack.
-  const rackChoices = useMemo(
-    () => (wh ? racks.filter((r) => r.wh === wh) : []),
-    [racks, wh],
-  );
+  const [selWh, rack] = useMemo(() => {
+    const [a, b] = rackSel.split("|");
+    return rackSel ? [a ?? "", b ?? ""] : ["", ""];
+  }, [rackSel]);
+  const wh = selWh;
+
+  const rackChoices = racks;
   const locChoices = useMemo(
-    () => (wh && rack ? locations.filter((l) => l.wh === wh && l.rack === rack) : []),
-    [locations, wh, rack],
+    () => (selWh && rack ? locations.filter((l) => l.wh === selWh && l.rack === rack) : []),
+    [locations, selWh, rack],
   );
 
   function buildQuery(): string {
@@ -60,8 +63,7 @@ export default function BalanceFilters({
   }
 
   function clearAll() {
-    setWh("");
-    setRack("");
+    setRackSel("");
     setLocation("");
     setQ("");
     router.push(view === "tree" ? "/movements/balance" : `/movements/balance?view=${view}`);
@@ -83,39 +85,25 @@ export default function BalanceFilters({
   return (
     <form onSubmit={submit} className="mt-4 space-y-2.5">
       <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Warehouse */}
-        <select
-          value={wh}
-          onChange={(e) => {
-            setWh(e.target.value);
-            setRack("");
-            setLocation("");
-          }}
-          className={selectCls}
-        >
-          <option value="">{accessibleAll ? "ທຸກສາງ" : `ສາງທີ່ຮັບຜິດຊອບ (${warehouses.length})`}</option>
-          {warehouses.map((w) => (
-            <option key={w.code} value={w.code}>
-              {optLabel(w.code, w.name)}
-            </option>
-          ))}
-        </select>
+        {/* ສາງ — ອ່ານຢ່າງດຽວ (ສະແດງທຸກສາງ, ຕາຕະລາງແຍກກຸ່ມຕາມສາງ) */}
+        <div className={`${selectCls} flex items-center gap-2 font-bold`}>
+          {accessibleAll ? "ທຸກສາງ" : "ສາງທີ່ຮັບຜິດຊອບ"}
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+        </div>
 
-        {/* Rack */}
+        {/* Rack — ລວມທຸກສາງ, ປ້າຍກຳກັບດ້ວຍລະຫັດສາງ */}
         <select
-          value={rack}
-          disabled={!wh}
+          value={rackSel}
           onChange={(e) => {
-            setRack(e.target.value);
+            setRackSel(e.target.value);
             setLocation("");
           }}
           className={selectCls}
-          title={!wh ? "ເລືອກສາງກ່ອນ" : undefined}
         >
-          <option value="">{!wh ? "— ເລືອກສາງກ່ອນ —" : `ທຸກ Rack (${rackChoices.length})`}</option>
+          <option value="">ທຸກ Rack ({rackChoices.length})</option>
           {rackChoices.map((r) => (
-            <option key={r.code} value={r.code}>
-              {optLabel(r.code, r.name)}
+            <option key={`${r.wh}|${r.code}`} value={`${r.wh}|${r.code}`}>
+              {r.wh} · {optLabel(r.code, r.name)}
             </option>
           ))}
         </select>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import { AlertIcon, CheckIcon, LayersIcon, PackageIcon, PlusIcon, SearchIcon } from "@/components/ui/Icons";
 import AdjustSerialModal, { type SerialPlan } from "../adjust/AdjustSerialModal";
 
@@ -28,8 +29,10 @@ function addedOf(l: Line): number {
 }
 
 export default function PalletLoadClient({ warehouses }: { warehouses: WarehouseOption[] }) {
-  const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
-  const [pallets, setPallets] = useState<PalletOption[]>([]);
+  // ບໍ່ມີ dropdown ເລືອກສາງແລ້ວ — pallet ມາທຸກສາງທີ່ມີສິດ ແຍກກຸ່ມຕາມສາງ;
+  // ສາງ (`whCode`) ມາຈາກ pallet ທີ່ເລືອກ.
+  const [whCode, setWhCode] = useState("");
+  const [pallets, setPallets] = useState<(PalletOption & { wh_code: string })[]>([]);
   const [palletCode, setPalletCode] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [search, setSearch] = useState("");
@@ -45,25 +48,33 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
     setTimeout(() => setToast(null), 3000);
   }
 
-  const pallet = useMemo(() => pallets.find((p) => p.code === palletCode) ?? null, [pallets, palletCode]);
+  const pallet = useMemo(
+    () => pallets.find((p) => p.code === palletCode && p.wh_code === whCode) ?? null,
+    [pallets, palletCode, whCode],
+  );
+  const palletGroups = useMemo(() => groupByWarehouse(pallets, (p) => p.wh_code, warehouses), [pallets, warehouses]);
   const rack = pallet?.rack ?? "";
   const loc = pallet?.location ?? "";
 
+  // ໂຫຼດ pallet ຂອງທຸກສາງທີ່ມີສິດ (ເທື່ອດຽວ) — ຕິດປ້າຍສາງໃສ່ແຕ່ລະ pallet.
   useEffect(() => {
-    setPallets([]); setPalletCode(""); setLines([]);
-    if (!whCode) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(whCode)}`);
-        const data = (await res.json()) as { pallets?: PalletOption[] };
-        if (!cancelled) setPallets(data.pallets ?? []);
+        const all = await Promise.all(
+          warehouses.map(async (w) => {
+            const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(w.code)}`);
+            const data = (await res.json()) as { pallets?: PalletOption[] };
+            return (data.pallets ?? []).map((p) => ({ ...p, wh_code: w.code }));
+          }),
+        );
+        if (!cancelled) setPallets(all.flat());
       } catch {
         if (!cancelled) showToast("err", "ໂຫຼດ pallet ບໍ່ສຳເລັດ");
       }
     })();
     return () => { cancelled = true; };
-  }, [whCode]);
+  }, [warehouses]);
 
   // item search at the pallet node
   useEffect(() => {
@@ -155,17 +166,43 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
       <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className={labelCls}>ສາງ *</label>
-            <select value={whCode} onChange={(e) => setWhCode(e.target.value)} className={`${inputCls} w-full`}>
-              <option value="">— ເລືອກສາງ —</option>
-              {warehouses.map((w) => (<option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>))}
-            </select>
+            <label className={labelCls}>ສາງ</label>
+            <div className={`${inputCls} flex w-full items-center gap-2 font-bold`}>
+              {whCode ? (
+                <>
+                  <span className="rounded bg-emerald-50 px-2 py-0.5 font-mono text-xs font-black text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{whCode}</span>
+                  <span className="truncate">{warehouses.find((w) => w.code === whCode)?.name ?? ""}</span>
+                </>
+              ) : (
+                <>
+                  ທຸກສາງ
+                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+                </>
+              )}
+            </div>
           </div>
           <div>
-            <label className={labelCls}>Pallet *</label>
-            <select value={palletCode} onChange={(e) => { setPalletCode(e.target.value); setLines([]); }} disabled={!whCode} className={`${inputCls} w-full`}>
+            <label className={labelCls}>Pallet * <span className="font-normal text-zinc-400">(ທຸກສາງ · ແຍກກຸ່ມຕາມສາງ)</span></label>
+            <select
+              value={whCode && palletCode ? `${whCode}|${palletCode}` : ""}
+              onChange={(e) => {
+                const [w, code] = e.target.value.split("|");
+                setWhCode(w ?? "");
+                setPalletCode(code ?? "");
+                setLines([]);
+              }}
+              className={`${inputCls} w-full`}
+            >
               <option value="">— ເລືອກ pallet —</option>
-              {pallets.map((p) => (<option key={p.code} value={p.code}>{p.code}{p.location ? ` @ ${p.location}` : " (ສาง)"}</option>))}
+              {palletGroups.map((g) => (
+                <optgroup key={g.code} label={`${g.code}${warehouses.find((w) => w.code === g.code)?.name ? ` · ${warehouses.find((w) => w.code === g.code)?.name}` : ""} (${g.rows.length})`}>
+                  {g.rows.map((p) => (
+                    <option key={`${p.wh_code}|${p.code}`} value={`${p.wh_code}|${p.code}`}>
+                      {p.code}{p.location ? ` @ ${p.location}` : " (ສาง)"}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
         </div>

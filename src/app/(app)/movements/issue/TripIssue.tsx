@@ -12,6 +12,7 @@ import {
   SearchIcon,
   UserIcon,
 } from "@/components/ui/Icons";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 
 /**
  * ດຶງ "ໃບຈັດຖ້ຽວ" ຂອງຂົນສົ່ງ (TMS) ມາເຮັດໃບສັ່ງຈ່າຍ.
@@ -75,6 +76,7 @@ type TripListBill = {
   picks: string[];
 };
 type TripRow = TripHeader & {
+  wh_code: string;
   created_at: string | null;
   bills_total: number;
   bills_pending: number;
@@ -84,6 +86,7 @@ type TripRow = TripHeader & {
   bills: TripListBill[];
 };
 type ExistingPick = { doc_no: string; bill_no: string | null; status: number | null; doc_date: string | null; qty: string; line_count: number };
+type WarehouseOption = { code: string; name: string | null };
 
 /** ISN ທີ່ເລືອກໄດ້ຢູ່ບ່ອນຈັດເກັບໜຶ່ງ (ຈາກ /api/movements/item-serials). */
 type SerialOption = { sn: string; isn: string | null; received?: string | null; days?: number | null };
@@ -139,7 +142,10 @@ function fifo(need: number, locs: NodeStock[], needsSn: boolean): { locIdx: numb
   return out;
 }
 
-export default function TripIssue({ whCode, whName }: { whCode: string; whName: string | null }) {
+export default function TripIssue({ warehouses }: { warehouses: WarehouseOption[] }) {
+  // ບໍ່ມີ dropdown ເລືອກສາງ — ດຶງຖ້ຽວມາທຸກສາງທີ່ມີສິດ ແລ້ວແຍກກຸ່ມ; ສາງທີ່ໃຊ້
+  // ເຮັດວຽກ (`whCode`) ຕັ້ງຕອນເປີດຖ້ຽວ ຈາກຕົວຖ້ຽວເອງ.
+  const [whCode, setWhCode] = useState("");
   const [trips, setTrips] = useState<TripRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -174,14 +180,16 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  // ລາຍການຖ້ຽວ (debounce ຕາມການຄົ້ນຫາ)
+  const whName = useMemo(() => warehouses.find((w) => w.code === whCode)?.name ?? null, [warehouses, whCode]);
+  const tripGroups = useMemo(() => groupByWarehouse(trips, (t) => t.wh_code, warehouses), [trips, warehouses]);
+
+  // ລາຍການຖ້ຽວ ທຸກສາງ (debounce ຕາມການຄົ້ນຫາ)
   useEffect(() => {
-    if (!whCode) { setTrips([]); return; }
     let cancelled = false;
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const params = new URLSearchParams({ wh: whCode, days: String(days) });
+        const params = new URLSearchParams({ days: String(days) });
         if (showStarted) params.set("started", "1");
         if (search.trim()) params.set("q", search.trim());
         const res = await fetch(`/api/movements/issue/trips?${params}`);
@@ -196,7 +204,7 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
       }
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [whCode, days, search, showStarted, reload, showToast]);
+  }, [days, search, showStarted, reload, showToast]);
 
   /** ສ້າງແຜນເກັບ (FIFO) ໃໝ່ ຈາກຊຸດບິນທີ່ເລືອກ. */
   const buildPlan = useCallback((its: TripItem[], selectedBills: Set<string>, needsSn: boolean) => {
@@ -214,11 +222,12 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
     return rows;
   }, []);
 
-  async function openTrip(docNo: string) {
+  async function openTrip(docNo: string, wh: string) {
     setLoadingTrip(true);
+    setWhCode(wh);
     setCreated(null);
     try {
-      const res = await fetch(`/api/movements/issue/trips/${encodeURIComponent(docNo)}?wh=${encodeURIComponent(whCode)}`);
+      const res = await fetch(`/api/movements/issue/trips/${encodeURIComponent(docNo)}?wh=${encodeURIComponent(wh)}`);
       const data = (await res.json()) as {
         trip?: TripHeader; bills?: Bill[]; items?: TripItem[]; picks?: ExistingPick[];
         sn?: { issue: boolean; pick: boolean }; error?: string;
@@ -782,7 +791,6 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            disabled={!whCode}
             placeholder="ຄົ້ນຫາ ເລກຖ້ຽວ / ລົດ / ຄົນຂັບ / ເລກບິນ..."
             className="w-full rounded-xl bg-zinc-50/50 py-3.5 pl-11 pr-4 text-sm text-zinc-900 ring-1 ring-zinc-250 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-red-500/30 disabled:opacity-60 dark:bg-zinc-950/40 dark:text-zinc-100 dark:ring-zinc-800"
           />
@@ -802,12 +810,7 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
         </label>
       </div>
 
-      {!whCode ? (
-        <div className="rounded-2xl border-2 border-dashed border-zinc-200 py-16 text-center dark:border-zinc-800/80">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-400 dark:bg-zinc-850 dark:text-zinc-500"><BuildingIcon className="h-6 w-6" /></div>
-          <p className="mt-4 text-sm font-bold text-zinc-500 dark:text-zinc-400">ກະລຸນາເລືອກສາງກ່ອນ</p>
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="py-16 text-center">
           <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-red-500 border-t-transparent" />
           <p className="mt-4 text-sm font-semibold text-zinc-500">ກຳລັງໂຫຼດໃບຈັດຖ້ຽວ...</p>
@@ -815,15 +818,25 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
       ) : trips.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-zinc-200 py-16 text-center dark:border-zinc-800/80">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-400 dark:bg-zinc-850 dark:text-zinc-500"><ListIcon className="h-6 w-6" /></div>
-          <p className="mt-4 text-sm font-bold text-zinc-500 dark:text-zinc-400">ບໍ່ມີໃບຈັດຖ້ຽວທີ່ຄ້າງຈ່າຍໃນສາງນີ້</p>
+          <p className="mt-4 text-sm font-bold text-zinc-500 dark:text-zinc-400">ບໍ່ມີໃບຈັດຖ້ຽວທີ່ຄ້າງຈ່າຍໃນທຸກສາງທີ່ທ່ານມີສິດ</p>
           <p className="mt-1 text-xs text-zinc-400">ຖ້ຽວທີ່ຂົນສົ່ງຫາກໍຈັດ ຈະຂຶ້ນມາອັດຕະໂນມັດ</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {trips.map((t) => {
+        <div className="space-y-7">
+          {tripGroups.map((g) => (
+            <WarehouseGroup
+              key={g.code}
+              code={g.code}
+              name={warehouses.find((w) => w.code === g.code)?.name}
+              count={g.rows.length}
+              countLabel="ຖ້ຽວ"
+              tone="red"
+            >
+              <div className="space-y-4">
+          {g.rows.map((t) => {
             const status = JOB_STATUS[t.job_status ?? 0];
             return (
-              <details key={t.doc_no} className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+              <details key={`${t.wh_code}-${t.doc_no}`} className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
                 <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-5 py-3.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300">🚚</div>
                   <div className="min-w-0 flex-1">
@@ -848,7 +861,7 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
                     </div>
                     <button
                       type="button"
-                      onClick={(e) => { e.preventDefault(); void openTrip(t.doc_no); }}
+                      onClick={(e) => { e.preventDefault(); void openTrip(t.doc_no, t.wh_code); }}
                       disabled={loadingTrip}
                       className="cursor-pointer rounded-lg bg-gradient-to-r from-red-500 to-orange-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:shadow active:scale-95 disabled:opacity-50"
                     >
@@ -886,6 +899,9 @@ export default function TripIssue({ whCode, whName }: { whCode: string; whName: 
               </details>
             );
           })}
+              </div>
+            </WarehouseGroup>
+          ))}
         </div>
       )}
     </div>

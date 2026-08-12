@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SearchIcon } from "@/components/ui/Icons";
+import { WarehouseGroup } from "@/components/ui/WarehouseGroup";
 
 export type WarehouseOption = { code: string; name: string | null };
 
@@ -48,69 +49,91 @@ const TONE: Record<string, string> = {
   rose: "text-rose-600 dark:text-rose-400",
 };
 
+type WhAging = { code: string; name: string | null; kpi: Kpi | null; rows: Row[]; err: string | null };
+
+const inputCls =
+  "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-amber-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+
 export default function AgingClient({ warehouses }: { warehouses: WarehouseOption[] }) {
-  const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
-  const [kpi, setKpi] = useState<Kpi | null>(null);
-  const [rows, setRows] = useState<Row[]>([]);
+  const [results, setResults] = useState<WhAging[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState("");
   const [bucket, setBucket] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
 
+  /** ບໍ່ມີການເລືອກສາງ — ກວດທຸກສາງທີ່ມີສິດ ແລ້ວສະແດງເປັນກຸ່ມຕໍ່ສາງ. */
   async function load() {
-    if (!whCode) return;
     setLoading(true);
-    setErr(null);
     try {
-      const res = await fetch(`/api/movements/aging?wh=${encodeURIComponent(whCode)}`);
-      const data = (await res.json()) as { kpi?: Kpi; rows?: Row[]; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
-      setKpi(data.kpi ?? null);
-      setRows(data.rows ?? []);
-      setLoaded(true);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "ບໍ່ສຳເລັດ");
+      const all = await Promise.all(
+        warehouses.map(async (w): Promise<WhAging> => {
+          try {
+            const res = await fetch(`/api/movements/aging?wh=${encodeURIComponent(w.code)}`);
+            const data = (await res.json()) as { kpi?: Kpi; rows?: Row[]; error?: string };
+            if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
+            return { code: w.code, name: w.name, kpi: data.kpi ?? null, rows: data.rows ?? [], err: null };
+          } catch (e) {
+            return { code: w.code, name: w.name, kpi: null, rows: [], err: e instanceof Error ? e.message : "ບໍ່ສຳເລັດ" };
+          }
+        }),
+      );
+      setResults(all);
     } finally {
       setLoading(false);
     }
   }
   useEffect(() => {
-    if (whCode && !loaded && !loading) void load();
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (bucket && bucketOf(r.days_idle ?? 0) !== bucket) return false;
-      if (s && !r.item_code.toLowerCase().includes(s) && !(r.item_name ?? "").toLowerCase().includes(s)) return false;
-      return true;
-    });
-  }, [rows, q, bucket]);
-
-  const inputCls =
-    "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-amber-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
   return (
     <div className="space-y-5">
       <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[240px] flex-1">
-            <label className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">ສາງ *</label>
-            <select value={whCode} onChange={(e) => { setWhCode(e.target.value); setLoaded(false); setKpi(null); setRows([]); setBucket(null); }} className={`${inputCls} w-full`}>
-              <option value="">— ເລືອກສາງ —</option>
-              {warehouses.map((w) => (<option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>))}
-            </select>
+            <label className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">ສາງ</label>
+            <div className={`${inputCls} flex w-full items-center gap-2 font-bold`}>
+              ທຸກສາງ
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+            </div>
           </div>
-          <button type="button" onClick={load} disabled={!whCode || loading} className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-amber-500/20 transition hover:shadow-lg disabled:opacity-50">
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+            <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="ກອງສິນຄ້າ..." className={`${inputCls} py-2 pl-8 text-xs`} />
+          </div>
+          <button type="button" onClick={load} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-amber-500/20 transition hover:shadow-lg disabled:opacity-50">
             <SearchIcon className="h-4 w-4" />
             {loading ? "ກຳລັງກວດ..." : "ກວດສິນຄ້າຄ້າງ"}
           </button>
         </div>
-        {err && <p className="mt-3 text-xs font-semibold text-rose-600 dark:text-rose-400">{err}</p>}
       </section>
 
+      {results.map((r) => (
+        <WarehouseGroup key={r.code} code={r.code} name={r.name} tone="amber">
+          <WhAgingBlock r={r} q={q} bucket={bucket} setBucket={setBucket} />
+        </WarehouseGroup>
+      ))}
+    </div>
+  );
+}
+
+/** KPI + ໄລຍະຄ້າງ + ຕາຕະລາງ ຂອງສາງໜຶ່ງ. */
+function WhAgingBlock({ r, q, bucket, setBucket }: { r: WhAging; q: string; bucket: string | null; setBucket: (b: string | null) => void }) {
+  const { kpi, rows } = r;
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return rows.filter((x) => {
+      if (bucket && bucketOf(x.days_idle ?? 0) !== bucket) return false;
+      if (s && !x.item_code.toLowerCase().includes(s) && !(x.item_name ?? "").toLowerCase().includes(s)) return false;
+      return true;
+    });
+  }, [rows, q, bucket]);
+
+  if (r.err) return <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{r.err}</p>;
+  if (!kpi) return <p className="text-xs text-zinc-400">ກຳລັງກວດ...</p>;
+
+  return (
+    <div className="space-y-5">
       {kpi && (
         <>
           {/* KPI */}
@@ -162,10 +185,6 @@ export default function AgingClient({ warehouses }: { warehouses: WarehouseOptio
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
                 {bucket ? `ໄລຍະ ${BUCKET_DEF.find((b) => b.id === bucket)?.label}` : "ທັງໝົດ"} · {filtered.length} ລາຍການ
-              </div>
-              <div className="relative">
-                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
-                <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="ກອງສິນຄ້າ..." className={`${inputCls} py-2 pl-8 text-xs`} />
               </div>
             </div>
             <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">

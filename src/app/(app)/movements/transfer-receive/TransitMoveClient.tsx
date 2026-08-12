@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { MOVE_REASONS } from "@/lib/moveReasons";
 import type { ROption } from "@/components/ui/RSelect";
 import { PutawayPicker } from "@/app/(app)/movements/receive/_receiveUI";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import MoveDetailDrawer from "./MoveDetailDrawer";
 
 type DocRow = {
@@ -630,19 +631,33 @@ export default function TransitMoveClient({
       ) : docs.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">{t.empty}</div>
       ) : (
-        docs.map((d) => (
-          <button key={d.doc_no} onClick={() => openDoc(d.doc_no)}
-            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-emerald-300 hover:shadow-md transition cursor-pointer">
-            <div>
-              <div className="font-bold text-slate-800">{d.doc_no}</div>
-              <div className="text-xs text-slate-500">
-                {d.wh_from_name ?? d.wh_from} → {d.wh_to_name ?? d.wh_to} · {d.doc_date}
+        // ແຍກກຸ່ມຕາມ "ສາງປາຍທາງຂອງງານນີ້" — ຮັບເຂົ້າ = wh_to, ຮັບຄືນ = wh_from.
+        groupByWarehouse(docs, (d) => (mode === "receive" ? d.wh_to : d.wh_from) ?? "—").map((g) => (
+          <WarehouseGroup
+            key={g.code}
+            code={g.code}
+            name={g.rows.map((d) => (mode === "receive" ? d.wh_to_name : d.wh_from_name)).find(Boolean) ?? null}
+            count={g.rows.length}
+            countLabel="ໃບ"
+            tone="emerald"
+          >
+          <div className="space-y-3">
+          {g.rows.map((d) => (
+            <button key={d.doc_no} onClick={() => openDoc(d.doc_no)}
+              className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-emerald-300 hover:shadow-md transition cursor-pointer">
+              <div>
+                <div className="font-bold text-slate-800">{d.doc_no}</div>
+                <div className="text-xs text-slate-500">
+                  {d.wh_from_name ?? d.wh_from} → {d.wh_to_name ?? d.wh_to} · {d.doc_date}
+                </div>
               </div>
-            </div>
-            <div className="text-right">
-              <div className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-600">ຄ້າງ {Number.parseFloat(d.in_transit)} ໃນ {d.items} ລາຍการ</div>
-            </div>
-          </button>
+              <div className="text-right">
+                <div className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-600">ຄ້າງ {Number.parseFloat(d.in_transit)} ໃນ {d.items} ລາຍการ</div>
+              </div>
+            </button>
+          ))}
+          </div>
+          </WarehouseGroup>
         ))
       )}
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 
 type Row = {
   doc_no: string; doc_date: string | null; want_date: string | null; status: number | null;
@@ -74,7 +75,6 @@ export default function DashboardClient() {
   const [q, setQ] = useState("");
   const [itemHits, setItemHits] = useState<Map<string, ItemHit[]>>(() => new Map());
   const [itemBusy, setItemBusy] = useState(false);
-  const [selWh, setSelWh] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const today = new Date().toISOString().slice(0, 10);
 
@@ -129,8 +129,6 @@ export default function DashboardClient() {
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [rows, mine]);
 
-  // require a warehouse selection; auto-pick if the user owns only one.
-  useEffect(() => { if (!selWh && whOptions.length === 1) setSelWh(whOptions[0][0]); }, [whOptions, selWh]);
 
   // ຄົ້ນຫາໄດ້ທັງ ເລກທີ່ໃບໂອນ / ຊື່ສາງ ແລະ ລະຫັດ-ຊື່ ສິນຄ້າ (ຈາກ itemHits).
   const bySearch = useMemo(() => {
@@ -139,17 +137,23 @@ export default function DashboardClient() {
     return rows.filter((d) =>
       `${d.doc_no} ${d.wh_from_name ?? ""} ${d.wh_to_name ?? ""}`.toLowerCase().includes(term) || itemHits.has(d.doc_no));
   }, [rows, q, itemHits]);
-  // Combined list — both จ่าย (ต้นทาง) and รับ (ปลายทาง) of the selected warehouse.
+  // ບໍ່ມີການເລືອກສາງແລ້ວ — ລວມທຸກສາງທີ່ຜູ້ໃຊ້ຮັບຜິດຊອບ, ຕິດປ້າຍສາງໃສ່ແຕ່ລະລາຍການ
+  // ແລ້ວແຍກກຸ່ມຕາມສາງ. ໃບໜຶ່ງອາດປະກົດ 2 ເທື່ອ (ຕົ້ນທາງ + ປາຍທາງ) ຄືເກົ່າ.
   const combined = useMemo(() => {
-    const items: { d: Row; role: "out" | "in" }[] = [];
+    const items: { d: Row; role: "out" | "in"; wh: string }[] = [];
+    const ok = (c: string | null) => c != null && (mine === null || mine.includes(c));
     for (const d of bySearch) {
-      if (d.wh_from === selWh) items.push({ d, role: "out" });
-      if (d.wh_to === selWh) items.push({ d, role: "in" });
+      if (ok(d.wh_from)) items.push({ d, role: "out", wh: d.wh_from! });
+      if (ok(d.wh_to)) items.push({ d, role: "in", wh: d.wh_to! });
     }
     return items.sort((a, b) => (b.d.doc_date ?? "").localeCompare(a.d.doc_date ?? ""));
-  }, [bySearch, selWh]);
+  }, [bySearch, mine]);
   const nOut = combined.filter((x) => x.role === "out").length;
   const nIn = combined.filter((x) => x.role === "in").length;
+  const whGroups = useMemo(
+    () => groupByWarehouse(combined, (x) => x.wh, whOptions.map(([code]) => ({ code }))),
+    [combined, whOptions],
+  );
   const nItemDocs = useMemo(
     () => new Set(combined.filter((x) => itemHits.has(x.d.doc_no)).map((x) => x.d.doc_no)).size,
     [combined, itemHits],
@@ -171,14 +175,13 @@ export default function DashboardClient() {
         ))}
       </div>
 
-      {/* เลือกสาง (บังคับ) + ค้นหา */}
+      {/* ທຸກສາງ (ບໍ່ມີການເລືອກ) + ຄົ້ນຫາ */}
       <div className="flex flex-wrap items-center gap-2">
-        <select value={selWh} onChange={(e) => setSelWh(e.target.value)}
-          className="rounded-xl bg-white px-3 py-2.5 text-sm font-bold ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-aqua-500">
-          <option value="">— ເລືອກສາງ —</option>
-          {whOptions.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
-        </select>
-        {selWh && (
+        <span className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2.5 text-sm font-bold text-slate-700 ring-1 ring-slate-200">
+          🏢 ທຸກສາງ
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">{whOptions.length}</span>
+        </span>
+        {(
           <div className="min-w-[200px] flex-1 sm:max-w-md">
             <div className="relative">
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 ຄົ້ນຫາ ໃບຂໍໂອນ / ລະຫັດສິນຄ້າ / ຊື່ສິນຄ້າ…"
@@ -194,25 +197,32 @@ export default function DashboardClient() {
 
       {loading ? (
         <div className="py-12 text-center text-sm text-slate-400">ກຳລັງໂຫລດ…</div>
-      ) : !selWh ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 py-16 text-center">
-          <div className="text-2xl">🏢</div>
-          <p className="mt-2 text-sm font-bold text-slate-500">ກະລຸນາເລືອກສາງກ່ອນ</p>
-          <p className="mt-1 text-xs text-slate-400">ເລືອກສາງ เพื่อดูงานโอน ໃນฐานะ ຕົ້ນທາງ (จ่าย) ແລະ ປາຍທາງ (รับ)</p>
-        </div>
       ) : combined.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
-          {q.trim() ? (itemBusy ? "ກຳລັງຄົ້ນຫາ…" : `ບໍ່ພົບ ໃບຂໍໂອນ ທີ່ຍັງບໍ່ສຳເລັດ ສຳລັບ “${q.trim()}”`) : "ບໍ່ມີ ໃບຂໍໂອນ ທີ່ກຳລັງດำเนินการ ໃນສางนี้"}
+          {q.trim() ? (itemBusy ? "ກຳລັງຄົ້ນຫາ…" : `ບໍ່ພົບ ໃບຂໍໂອນ ທີ່ຍັງບໍ່ສຳເລັດ ສຳລັບ “${q.trim()}”`) : "ບໍ່ມີ ໃບຂໍໂອນ ທີ່ກຳລັງດำเนินการ ໃນທຸກສາງທີ່ທ່ານຮັບຜິດຊອບ"}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
             ຕິດຕາມ {combined.length} ລາຍການ
             <span className="rounded-full bg-red-50 px-2 py-0.5 text-red-600">📤 ຈ່າຍ (ຕົ້ນທາງ) {nOut}</span>
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">📥 ຮັບ (ປາຍທາງ) {nIn}</span>
             {nItemDocs > 0 && <span className="rounded-full bg-aqua-50 px-2 py-0.5 text-aqua-700">🔎 ພົບສິນຄ້າໃນ {nItemDocs} ໃບໂອນ</span>}
           </div>
-          {combined.map(({ d, role }) => <TrackCard key={`${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />)}
+          {whGroups.map((g) => (
+            <WarehouseGroup
+              key={g.code}
+              code={g.code}
+              name={(whOptions.find(([c]) => c === g.code)?.[1] ?? "").split(" · ")[1] ?? null}
+              count={g.rows.length}
+              countLabel="ລາຍການ"
+              tone="aqua"
+            >
+              <div className="space-y-3">
+                {g.rows.map(({ d, role }) => <TrackCard key={`${g.code}-${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />)}
+              </div>
+            </WarehouseGroup>
+          ))}
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { accessibleWarehouses } from "@/lib/session-shared";
+import { scopedWarehouses } from "@/lib/warehouseScope";
 import { listTrips } from "@/lib/tripPick";
 
 /**
@@ -18,22 +18,21 @@ export async function GET(request: Request) {
   if (!session.role) return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງ WMS" }, { status: 403 });
 
   const url = new URL(request.url);
-  const wh = url.searchParams.get("wh")?.trim() ?? "";
-  if (!wh) return NextResponse.json({ error: "ກະລຸນາເລືອກສາງ" }, { status: 400 });
+  const warehouses = await scopedWarehouses(session, url.searchParams.get("wh"));
+  if (warehouses.length === 0) return NextResponse.json({ warehouses: [], trips: [] });
 
-  const accessible = accessibleWarehouses(session);
-  if (Array.isArray(accessible) && !accessible.includes(wh)) {
-    return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
-  }
-
-  const trips = await listTrips({
-    wh,
+  const common = {
     q: url.searchParams.get("q") ?? "",
     days: Number.parseInt(url.searchParams.get("days") ?? "14", 10) || 14,
     limit: Number.parseInt(url.searchParams.get("limit") ?? "40", 10) || 40,
     onlyPending: url.searchParams.get("all") !== "1",
     onlyNotStarted: url.searchParams.get("started") !== "1",
-  });
+  };
 
-  return NextResponse.json({ trips });
+  // ຖ້ຽວແມ່ນ "ຕໍ່ສາງ" (ຄ້າງເກັບຂອງບິນນັບຈາກສາງນັ້ນ) → ດຶງເທື່ອລະສາງ ແລ້ວຕິດປ້າຍ wh_code.
+  const perWh = await Promise.all(
+    warehouses.map(async (w) => (await listTrips({ ...common, wh: w.code })).map((t) => ({ ...t, wh_code: w.code }))),
+  );
+
+  return NextResponse.json({ warehouses, trips: perWh.flat() });
 }

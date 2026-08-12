@@ -1,7 +1,8 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronRightIcon, SearchIcon } from "@/components/ui/Icons";
+import { groupByWarehouse } from "@/components/ui/WarehouseGroup";
 
 export type WarehouseOption = { code: string; name: string | null };
 type Row = {
@@ -48,7 +49,6 @@ function op(r: Row): { label: string; cls: string } {
 export default function LedgerClient({ warehouses }: { warehouses: WarehouseOption[] }) {
   const today = new Date().toISOString().slice(0, 10);
   const ago30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
-  const [wh, setWh] = useState(warehouses.length === 1 ? warehouses[0].code : "");
   const [from, setFrom] = useState(ago30);
   const [to, setTo] = useState(today);
   const [type, setType] = useState("");
@@ -63,8 +63,8 @@ export default function LedgerClient({ warehouses }: { warehouses: WarehouseOpti
   const load = useCallback(async (pg: number) => {
     setLoading(true);
     try {
+      // ບໍ່ສົ່ງ wh — ໜ້ານີ້ສະແດງທຸກສາງທີ່ມີສິດ ແລ້ວແຍກກຸ່ມໃນຕາຕະລາງ.
       const p = new URLSearchParams({ from, to, type, q, page: String(pg) });
-      if (wh) p.set("wh", wh);
       const res = await fetch(`/api/movements/ledger?${p}`);
       const data = (await res.json()) as { rows?: Row[]; has_more?: boolean };
       setRows(data.rows ?? []);
@@ -74,9 +74,9 @@ export default function LedgerClient({ warehouses }: { warehouses: WarehouseOpti
     } finally {
       setLoading(false);
     }
-  }, [from, to, type, q, wh]);
+  }, [from, to, type, q]);
 
-  useEffect(() => { void load(0); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [type, wh]);
+  useEffect(() => { void load(0); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [type]);
 
   async function toggle(r: Row) {
     const key = `${r.doc_no}@${r.wh_code}`;
@@ -91,16 +91,25 @@ export default function LedgerClient({ warehouses }: { warehouses: WarehouseOpti
 
   const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
+  /** ຈັດແຖວເປັນກຸ່ມຕາມສາງ ແລ້ວໝາຍແຖວທຳອິດຂອງແຕ່ລະກຸ່ມ (ຄ່າ = ຈຳນວນໃບໃນກຸ່ມ). */
+  const grouped = useMemo(() => {
+    const out: { r: Row; groupHead: number | null }[] = [];
+    for (const g of groupByWarehouse(rows, (r) => r.wh_code, warehouses)) {
+      g.rows.forEach((r, i) => out.push({ r, groupHead: i === 0 ? g.rows.length : null }));
+    }
+    return out;
+  }, [rows, warehouses]);
+
   return (
     <div className="space-y-4">
       <section className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ</label>
-            <select value={wh} onChange={(e) => setWh(e.target.value)} className={inputCls}>
-              {warehouses.length !== 1 && <option value="">ທຸກສາງ</option>}
-              {warehouses.map((w) => <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>)}
-            </select>
+            <div className={`${inputCls} flex items-center gap-2 font-bold`}>
+              ທຸກສາງ
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ແຕ່ວັນທີ</label>
@@ -127,7 +136,7 @@ export default function LedgerClient({ warehouses }: { warehouses: WarehouseOpti
             {loading ? "..." : "ກອງ"}
           </button>
           <a
-            href={`/api/movements/ledger?${new URLSearchParams({ from, to, type, q, ...(wh ? { wh } : {}), format: "csv" })}`}
+            href={`/api/movements/ledger?${new URLSearchParams({ from, to, type, q, format: "csv" })}`}
             className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-50 dark:bg-zinc-900 dark:text-emerald-400 dark:ring-emerald-900/50"
           >
             ⬇ CSV
@@ -157,12 +166,24 @@ export default function LedgerClient({ warehouses }: { warehouses: WarehouseOpti
             {rows.length === 0 && !loading && (
               <tr><td colSpan={9} className="px-4 py-12 text-center text-sm text-zinc-400">ບໍ່ມີຂໍ້ມູນໃນຊ່ວງທີ່ເລືອກ</td></tr>
             )}
-            {rows.map((r) => {
+            {grouped.map(({ r, groupHead }) => {
               const key = `${r.doc_no}@${r.wh_code}`;
               const o = op(r);
               const isOpen = expanded === key;
               return (
                 <Fragment key={key}>
+                  {groupHead && (
+                    // ຫົວກຸ່ມ "ຕາມສາງ" ໃນຕາຕະລາງດຽວ (ບໍ່ມີ dropdown ເລືອກສາງແລ້ວ)
+                    <tr className="bg-zinc-50/80 dark:bg-zinc-950/50">
+                      <td colSpan={9} className="px-4 py-2">
+                        <span className="inline-flex items-center gap-2">
+                          <span className="rounded-lg bg-brand-50 px-2 py-0.5 font-mono text-[11px] font-black text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">{r.wh_code}</span>
+                          <span className="text-sm font-extrabold text-zinc-800 dark:text-zinc-100">{warehouses.find((w) => w.code === r.wh_code)?.name ?? ""}</span>
+                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{groupHead} ໃບ</span>
+                        </span>
+                      </td>
+                    </tr>
+                  )}
                   <tr onClick={() => toggle(r)} className="cursor-pointer transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
                     <td className="px-4 py-2.5 whitespace-nowrap"><span className="font-medium text-zinc-700 dark:text-zinc-300">{ddmmyyyy(r.doc_date)}</span>{r.doc_time && <span className="ml-1.5 text-[11px] text-zinc-400">{r.doc_time}</span>}</td>
                     <td className="px-4 py-2.5 font-mono text-[12px] font-semibold text-zinc-800 dark:text-zinc-200">{r.doc_no}{r.doc_ref && <span className="ml-1 block text-[10px] font-normal text-zinc-400">← {r.doc_ref}</span>}</td>

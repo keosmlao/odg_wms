@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import RSelect, { type ROption } from "@/components/ui/RSelect";
+import { WarehouseGroupHeader, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import { MOVE_REASONS } from "@/lib/moveReasons";
 
 export type WarehouseOption = { code: string; name: string | null };
-type Hit = { item_code: string; item_name: string | null; unit_code: string | null };
+type Hit = { wh_code: string; item_code: string; item_name: string | null; unit_code: string | null; wh_balance?: string | null };
 type Line = { item_code: string; item_name: string | null; unit_code: string | null; qty: string; location: string; serials: string[]; serialInput: string };
 
 export default function SaleReturnClient({ warehouses }: { warehouses: WarehouseOption[] }) {
-  const [wh, setWh] = useState(warehouses.length === 1 ? warehouses[0].code : "");
+  // ບໍ່ມີ dropdown ເລືອກສາງ — ຄົ້ນຫາສິນຄ້າໄດ້ທຸກສາງ, ຜົນລັບແຍກກຸ່ມຕາມສາງ;
+  // ສາງປາຍທາງຂອງໃບຮັບຄືນ ຖືກກຳນົດຈາກແຖວທຳອິດທີ່ເລືອກ (1 ໃບ = 1 ສາງ).
+  const [wh, setWh] = useState("");
   const [cust, setCust] = useState("");
   const [refInv, setRefInv] = useState("");
   const [reason, setReason] = useState("");
@@ -22,20 +24,28 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
   const searchRef = useRef<HTMLInputElement>(null);
   const show = (k: "ok" | "err", t: string) => { setToast({ k, t }); setTimeout(() => setToast(null), 3500); };
 
-  const whOpts: ROption[] = warehouses.map((w) => ({ value: w.code, label: w.name ?? w.code, sub: w.code }));
-
+  // ຄົ້ນຫາໃນທຸກສາງທີ່ມີສິດ; ຖ້າມີແຖວແລ້ວ ຈຳກັດຢູ່ສາງຂອງໃບນີ້ (1 ໃບ = 1 ສາງ).
   useEffect(() => {
-    if (!search.trim() || !wh) { setHits([]); return; }
+    if (!search.trim()) { setHits([]); return; }
+    const scope = wh ? warehouses.filter((w) => w.code === wh) : warehouses;
     const t = setTimeout(async () => {
-      const r = await fetch(`/api/movements/items/search?warehouse=${encodeURIComponent(wh)}&q=${encodeURIComponent(search.trim())}`);
-      const j = await r.json();
-      setHits(j.items ?? []);
+      const all = await Promise.all(
+        scope.map(async (w) => {
+          const r = await fetch(`/api/movements/items/search?warehouse=${encodeURIComponent(w.code)}&q=${encodeURIComponent(search.trim())}`);
+          const j = (await r.json()) as { items?: Omit<Hit, "wh_code">[] };
+          return (j.items ?? []).map((it) => ({ ...it, wh_code: w.code }));
+        }),
+      );
+      setHits(all.flat());
     }, 250);
     return () => clearTimeout(t);
-  }, [search, wh]);
+  }, [search, wh, warehouses]);
+
+  const hitGroups = groupByWarehouse(hits, (h) => h.wh_code, warehouses);
 
   const addHit = (h: Hit) => {
     setHits([]); setSearch("");
+    if (!wh) setWh(h.wh_code);
     if (lines.some((l) => l.item_code === h.item_code)) { show("err", "ມີໃນລາຍການແລ້ວ"); return; }
     setLines((p) => [{ item_code: h.item_code, item_name: h.item_name, unit_code: h.unit_code, qty: "1", location: "", serials: [], serialInput: "" }, ...p]);
     setTimeout(() => searchRef.current?.focus(), 50);
@@ -78,8 +88,16 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
       <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
-            <label className="mb-1 block text-[11px] font-semibold text-slate-500">ສາງที่รับคืนเข้า *</label>
-            <RSelect value={wh} options={whOpts} onChange={(v) => { setWh(v); setLines([]); }} placeholder="ເລືອກ ສาง..." />
+            <label className="mb-1 block text-[11px] font-semibold text-slate-500">ສາງที่รับคืนเข้า</label>
+            {wh ? (
+              <div className="flex items-center gap-2">
+                <span className="rounded-lg bg-aqua-50 px-3 py-2 font-mono text-sm font-black text-aqua-700 ring-1 ring-aqua-200">{wh}</span>
+                <span className="truncate text-sm font-bold text-slate-600">{warehouses.find((w) => w.code === wh)?.name ?? ""}</span>
+                <button type="button" onClick={() => { setWh(""); setLines([]); }} className="rounded p-1 text-slate-300 hover:text-rose-500" title="ປ່ຽນສາງ">✕</button>
+              </div>
+            ) : (
+              <p className={`${inputCls} text-slate-500`}>ຄົ້ນຫາສິນຄ້າດ້ານລຸ່ມ — ສາງມາຈາກແຖວທີ່ເລືອກ</p>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-[11px] font-semibold text-slate-500">ລະຫัสลูกค้า (ถ้ามี)</label>
@@ -99,17 +117,28 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
         </div>
       </section>
 
-      {wh && (
+      {(
         <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <div className="relative">
             <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ຄົ້ນຫາ ສິນຄ້າ ເພື່ອเพิ่ม…" className={`${inputCls} w-full`} />
             {hits.length > 0 && (
-              <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-                {hits.map((h) => (
-                  <button key={h.item_code} onClick={() => addHit(h)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-aqua-50">
-                    <span><span className="font-mono text-xs font-bold text-aqua-600">{h.item_code}</span> <span className="text-slate-600">{h.item_name}</span></span>
-                    <span className="text-[10px] text-slate-400">{h.unit_code}</span>
-                  </button>
+              <div className="absolute z-10 mt-1 max-h-80 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                {hitGroups.map((g) => (
+                  <div key={g.code}>
+                    <WarehouseGroupHeader
+                      code={g.code}
+                      name={warehouses.find((w) => w.code === g.code)?.name}
+                      count={g.rows.length}
+                      countLabel="ລາຍການ"
+                      tone="aqua"
+                    />
+                    {g.rows.map((h) => (
+                      <button key={`${h.wh_code}-${h.item_code}`} onClick={() => addHit(h)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-aqua-50">
+                        <span><span className="font-mono text-xs font-bold text-aqua-600">{h.item_code}</span> <span className="text-slate-600">{h.item_name}</span></span>
+                        <span className="text-[10px] text-slate-400">{h.unit_code}</span>
+                      </button>
+                    ))}
+                  </div>
                 ))}
               </div>
             )}

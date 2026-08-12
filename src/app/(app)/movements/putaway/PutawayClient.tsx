@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SearchIcon } from "@/components/ui/Icons";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 
 export type WarehouseOption = { code: string; name: string | null };
-type Bin = { location: string; name: string | null; rack: string | null; items: number; qty: string; empty: boolean };
+type Bin = { wh_code: string; location: string; name: string | null; rack: string | null; items: number; qty: string; empty: boolean };
 type Kpi = { total: number; empty: number; occupied: number; utilization: number };
 
 function fmt(v: string | number) {
@@ -13,20 +14,19 @@ function fmt(v: string | number) {
 }
 
 export default function PutawayClient({ warehouses }: { warehouses: WarehouseOption[] }) {
-  const [wh, setWh] = useState(warehouses.length === 1 ? warehouses[0].code : "");
   const [rows, setRows] = useState<Bin[]>([]);
   const [kpi, setKpi] = useState<Kpi | null>(null);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
   const [onlyEmpty, setOnlyEmpty] = useState(false);
 
+  // ບໍ່ມີການເລືອກສາງ — ໂຫຼດ bin ຂອງທຸກສາງທີ່ມີສິດ ແລ້ວແຍກກຸ່ມຕາມສາງ → rack.
   useEffect(() => {
-    if (!wh) { setRows([]); setKpi(null); return; }
     let cancelled = false;
     setLoading(true);
     (async () => {
       try {
-        const res = await fetch(`/api/movements/putaway?wh=${encodeURIComponent(wh)}`);
+        const res = await fetch(`/api/movements/putaway`);
         const data = (await res.json()) as { rows?: Bin[]; kpi?: Kpi };
         if (!cancelled) { setRows(data.rows ?? []); setKpi(data.kpi ?? null); }
       } finally {
@@ -34,7 +34,7 @@ export default function PutawayClient({ warehouses }: { warehouses: WarehouseOpt
       }
     })();
     return () => { cancelled = true; };
-  }, [wh]);
+  }, []);
 
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase();
@@ -44,14 +44,17 @@ export default function PutawayClient({ warehouses }: { warehouses: WarehouseOpt
     );
   }, [rows, q, onlyEmpty]);
 
-  const byRack = useMemo(() => {
-    const m = new Map<string, Bin[]>();
-    for (const r of filtered) {
-      const k = r.rack ?? "—";
-      (m.get(k) ?? m.set(k, []).get(k)!).push(r);
-    }
-    return [...m.entries()];
-  }, [filtered]);
+  /** ສາງ → rack → bin */
+  const byWh = useMemo(() => {
+    return groupByWarehouse(filtered, (r) => r.wh_code, warehouses).map((g) => {
+      const m = new Map<string, Bin[]>();
+      for (const r of g.rows) {
+        const k = r.rack ?? "—";
+        (m.get(k) ?? m.set(k, []).get(k)!).push(r);
+      }
+      return { code: g.code, bins: g.rows.length, racks: [...m.entries()] };
+    });
+  }, [filtered, warehouses]);
 
   const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-emerald-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
@@ -61,10 +64,10 @@ export default function PutawayClient({ warehouses }: { warehouses: WarehouseOpt
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ</label>
-            <select value={wh} onChange={(e) => setWh(e.target.value)} className={inputCls}>
-              {warehouses.length !== 1 && <option value="">— ເລືອກສາງ —</option>}
-              {warehouses.map((w) => <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>)}
-            </select>
+            <div className={`${inputCls} flex items-center gap-2 font-bold`}>
+              ທຸກສາງ
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+            </div>
           </div>
           <div className="min-w-[180px] flex-1">
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ຄົ້ນຫາ bin / rack</label>
@@ -91,12 +94,20 @@ export default function PutawayClient({ warehouses }: { warehouses: WarehouseOpt
 
       {loading ? (
         <div className="py-16 text-center text-sm text-zinc-400">ກຳລັງໂຫຼດ...</div>
-      ) : !wh ? (
-        <div className="py-16 text-center text-sm text-zinc-400">ເລືອກສາງເພື່ອเริ่ม</div>
       ) : (
+        <div className="space-y-7">
+          {byWh.map((g) => (
+            <WarehouseGroup
+              key={g.code}
+              code={g.code}
+              name={warehouses.find((w) => w.code === g.code)?.name}
+              count={g.bins}
+              countLabel="location"
+              tone="emerald"
+            >
         <div className="space-y-4">
-          {byRack.map(([rack, bins]) => (
-            <section key={rack} className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+          {g.racks.map(([rack, bins]) => (
+            <section key={`${g.code}-${rack}`} className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
               <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-50/60 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-800/40">
                 <span className="font-mono text-sm font-bold text-zinc-700 dark:text-zinc-200">Rack {rack}</span>
                 <span className="text-[11px] text-zinc-500">{bins.filter((b) => b.empty).length} ວ່າງ / {bins.length}</span>
@@ -115,7 +126,10 @@ export default function PutawayClient({ warehouses }: { warehouses: WarehouseOpt
               </div>
             </section>
           ))}
-          {byRack.length === 0 && <div className="py-12 text-center text-sm text-zinc-400">ບໍ່ພົບ location</div>}
+        </div>
+            </WarehouseGroup>
+          ))}
+          {byWh.length === 0 && <div className="py-12 text-center text-sm text-zinc-400">ບໍ່ພົບ location</div>}
         </div>
       )}
     </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { accessibleWarehouses } from "@/lib/session-shared";
+import { scopedWarehouses } from "@/lib/warehouseScope";
 
 /**
  * Pending source documents to issue against, read from the ERP transaction table
@@ -14,9 +14,11 @@ import { accessibleWarehouses } from "@/lib/session-shared";
  * issued for it (odg_wms_trans_detail rows with doc_ref = the source doc_no and
  * the issue trans_flag), the mirror of how goods-receipt nets a PO.
  *
- * Query: ?wh=<code>&type=req|transfer|sale&q=&days=&limit=
- * Returns: { docs:[{ doc_no, doc_date, cust_code, cust_name, remark, line_count,
- *            remaining_qty }] }
+ * Query: ?type=req|transfer|sale&q=&days=&limit=  (`wh` optional — ບໍ່ສົ່ງ = ທຸກສາງ
+ * ທີ່ຜູ້ໃຊ້ມີສິດ; ໜ້າຈໍບໍ່ໃຫ້ເລືອກສາງແລ້ວ ແຕ່ຮັບໄວ້ໃຫ້ deep-link ເກົ່າ)
+ * Returns: { warehouses:[{code,name}],
+ *            docs:[{ doc_no, wh_code, doc_date, cust_code, cust_name, remark,
+ *            line_count, remaining_qty }] }
  */
 const FLAG_BY_TYPE: Record<string, number> = { req: 122, transfer: 124, sale: 44 };
 const ISSUE_STOCK_FLAG = 72; // odg_wms_trans_detail flag written by the issue route
@@ -39,14 +41,12 @@ export async function GET(request: Request) {
 
   const flag = FLAG_BY_TYPE[type];
   if (flag === undefined) return NextResponse.json({ error: "ປະເພດເອກະສານບໍ່ຖືກຕ້ອງ" }, { status: 400 });
-  if (!wh) return NextResponse.json({ error: "ກະລຸນາເລືອກສາງ" }, { status: 400 });
 
-  const accessible = accessibleWarehouses(session);
-  if (Array.isArray(accessible) && !accessible.includes(wh)) {
-    return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
-  }
+  const warehouses = await scopedWarehouses(session, wh);
+  if (warehouses.length === 0) return NextResponse.json({ warehouses: [], docs: [] });
+  const whCodes = warehouses.map((w) => w.code);
 
-  const args: unknown[] = [flag, wh, days];
+  const args: unknown[] = [flag, whCodes, days];
   let searchSql = "";
   if (q) {
     args.push(`%${escapeLike(q)}%`);
@@ -57,6 +57,7 @@ export async function GET(request: Request) {
 
   const docs = await query<{
     doc_no: string;
+    wh_code: string;
     doc_date: string | null;
     doc_time: string | null;
     cust_code: string | null;
@@ -71,38 +72,41 @@ export async function GET(request: Request) {
   }>(
     `WITH src AS (
        SELECT d.doc_no,
+              d.wh_code,
               count(*)::int AS line_count,
               SUM(GREATEST(d.qty - COALESCE(d.cancel_qty, 0), 0)) AS src_qty
        FROM public.ic_trans_detail d
        WHERE d.trans_flag = $1
-         AND d.wh_code = $2
+         AND d.wh_code = ANY($2)
          AND (d.status = 0 OR d.status IS NULL)
          AND d.doc_date >= CURRENT_DATE - ($3::int)
          AND d.item_code NOT LIKE '97%'  -- ໝວດ 97 ບໍ່ຈ່າຍອອກສາງ
          ${searchSql}
-       GROUP BY d.doc_no
+       GROUP BY d.doc_no, d.wh_code
      ),
      issued AS (
        -- ນັບเฉพาะขาออกจากต้นทาง (calc_flag −1, ไม่ใช่ขา +1 เข้าสางกลาง 9903)
-       SELECT w.doc_ref AS doc_no, SUM(w.qty) AS wms_qty
+       SELECT w.doc_ref AS doc_no, w.wh_code, SUM(w.qty) AS wms_qty
        FROM public.odg_wms_trans_detail w
        WHERE w.trans_flag = ${ISSUE_STOCK_FLAG}
          AND (w.status = 0 OR w.status IS NULL)
          AND w.calc_flag = -1 AND w.wh_code <> '9903'
          AND w.doc_ref IN (SELECT doc_no FROM src)
-       GROUP BY w.doc_ref
+       GROUP BY w.doc_ref, w.wh_code
      ),
      -- ໃບສັ່ງຈ່າຍ (pick) ທີ່ສ້າງແລ້ວ ລໍຖ້າຢືນຢັນ (status 0) — ຫักออกจากค้างทันที
      -- ໃບຖ້ຽວ (1 ໃບ ຫຼາຍບິນ) ເກັບບິນຕົ້ນທາງໄວ້ລະດັບແຖວ → ໃຊ້ d.ref_doc_no ກ່ອນ.
      pending AS (
-       SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) AS doc_no, SUM(d.qty) AS pend_qty
+       SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) AS doc_no,
+              o.warehouse_code AS wh_code, SUM(d.qty) AS pend_qty
        FROM public.wms_product_out o
        JOIN public.wms_product_out_detail d ON d.doc_no = o.doc_no
        WHERE COALESCE(o.status, 0) = 0
          AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) IN (SELECT doc_no FROM src)
-       GROUP BY 1
+       GROUP BY 1, 2
      )
      SELECT s.doc_no,
+            s.wh_code,
             to_char(h.doc_date, 'YYYY-MM-DD') AS doc_date,
             h.doc_time,
             h.cust_code,
@@ -117,74 +121,78 @@ export async function GET(request: Request) {
             to_char(COALESCE(h.create_date_time_now, h.doc_date::timestamp + COALESCE(NULLIF(h.doc_time, '')::time, '00:00'::time)), 'YYYY-MM-DD HH24:MI:SS') AS created_at
      FROM src s
      JOIN public.ic_trans h ON h.doc_no = s.doc_no AND h.trans_flag = $1
-     LEFT JOIN issued i ON i.doc_no = s.doc_no
-     LEFT JOIN pending pd ON pd.doc_no = s.doc_no
+     LEFT JOIN issued i ON i.doc_no = s.doc_no AND i.wh_code = s.wh_code
+     LEFT JOIN pending pd ON pd.doc_no = s.doc_no AND pd.wh_code = s.wh_code
      LEFT JOIN public.ar_customer cu ON cu.code = h.cust_code
      WHERE COALESCE(h.is_cancel, 0) = 0
        -- ໃບຂໍໂອນ (124) ບໍ່ຕ້ອງລໍການອະນຸມັດອີກຕໍ່ໄປ — ລໍຖ້າ (0) ຫຼື ອະນຸມັດ (1) ຈ່າຍໄດ້ເລີຍ.
        -- ກັນໄວ້ສະເພາະໃບທີ່ຖືກ "ປฏิเสธ" (2) ເພາະນັ້ນຄືການປະຕິເສດໂດຍເຈດຕະນາ.
        AND (h.trans_flag <> 124 OR COALESCE(h.status, 0) <> 2)
        AND (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0)) > 0.0001
-     ORDER BY h.doc_date DESC, s.doc_no DESC
+     ORDER BY s.wh_code, h.doc_date DESC, s.doc_no DESC
      LIMIT $${limitIdx}`,
     args,
   );
 
   // Per-item lines for the listed docs (netted), so each card can show its
   // contents inline — like the goods-receipt bill cards.
-  const docNos = docs.map((d) => d.doc_no);
+  const docNos = [...new Set(docs.map((d) => d.doc_no))];
   const lineRows = docNos.length
     ? await query<{
         doc_no: string;
+        wh_code: string;
         item_code: string;
         item_name: string | null;
         unit_code: string | null;
         remaining: string;
       }>(
         `WITH src AS (
-           SELECT d.doc_no, d.item_code, MAX(d.item_name) AS item_name, MAX(d.unit_code) AS unit_code,
+           SELECT d.doc_no, d.wh_code, d.item_code, MAX(d.item_name) AS item_name, MAX(d.unit_code) AS unit_code,
                   SUM(GREATEST(d.qty - COALESCE(d.cancel_qty, 0), 0)) AS src_qty
            FROM public.ic_trans_detail d
-           WHERE d.doc_no = ANY($1) AND d.trans_flag = $2 AND d.wh_code = $3
+           WHERE d.doc_no = ANY($1) AND d.trans_flag = $2 AND d.wh_code = ANY($3)
              AND (d.status = 0 OR d.status IS NULL)
-           GROUP BY d.doc_no, d.item_code
+           GROUP BY d.doc_no, d.wh_code, d.item_code
          ),
          issued AS (
-           SELECT w.doc_ref AS doc_no, w.item_code, SUM(w.qty) AS wms_qty
+           SELECT w.doc_ref AS doc_no, w.wh_code, w.item_code, SUM(w.qty) AS wms_qty
            FROM public.odg_wms_trans_detail w
            WHERE w.doc_ref = ANY($1) AND w.trans_flag = ${ISSUE_STOCK_FLAG}
              AND (w.status = 0 OR w.status IS NULL)
              AND w.calc_flag = -1 AND w.wh_code <> '9903'
-           GROUP BY w.doc_ref, w.item_code
+           GROUP BY w.doc_ref, w.wh_code, w.item_code
          ),
          pending AS (
-           SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) AS doc_no, d.item_code, SUM(d.qty) AS pend_qty
+           SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) AS doc_no,
+                  o.warehouse_code AS wh_code, d.item_code, SUM(d.qty) AS pend_qty
            FROM public.wms_product_out o
            JOIN public.wms_product_out_detail d ON d.doc_no = o.doc_no
            WHERE COALESCE(o.status, 0) = 0
              AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) = ANY($1)
-           GROUP BY 1, d.item_code
+           GROUP BY 1, 2, d.item_code
          )
-         SELECT s.doc_no, s.item_code, s.item_name, s.unit_code,
+         SELECT s.doc_no, s.wh_code, s.item_code, s.item_name, s.unit_code,
                 (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0))::numeric::text AS remaining
          FROM src s
-         LEFT JOIN issued i ON i.doc_no = s.doc_no AND i.item_code = s.item_code
-         LEFT JOIN pending pd ON pd.doc_no = s.doc_no AND pd.item_code = s.item_code
+         LEFT JOIN issued i ON i.doc_no = s.doc_no AND i.wh_code = s.wh_code AND i.item_code = s.item_code
+         LEFT JOIN pending pd ON pd.doc_no = s.doc_no AND pd.wh_code = s.wh_code AND pd.item_code = s.item_code
          WHERE (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0)) > 0.0001
          ORDER BY s.doc_no, s.item_code`,
-        [docNos, flag, wh],
+        [docNos, flag, whCodes],
       )
     : [];
 
   const linesByDoc = new Map<string, { item_code: string; item_name: string | null; unit_code: string | null; remaining: string }[]>();
   for (const r of lineRows) {
-    const arr = linesByDoc.get(r.doc_no);
+    const k = `${r.doc_no} ${r.wh_code}`;
+    const arr = linesByDoc.get(k);
     const entry = { item_code: r.item_code, item_name: r.item_name, unit_code: r.unit_code, remaining: r.remaining };
     if (arr) arr.push(entry);
-    else linesByDoc.set(r.doc_no, [entry]);
+    else linesByDoc.set(k, [entry]);
   }
 
   return NextResponse.json({
-    docs: docs.map((d) => ({ ...d, lines: linesByDoc.get(d.doc_no) ?? [] })),
+    warehouses,
+    docs: docs.map((d) => ({ ...d, lines: linesByDoc.get(`${d.doc_no} ${d.wh_code}`) ?? [] })),
   });
 }

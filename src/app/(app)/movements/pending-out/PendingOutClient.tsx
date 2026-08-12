@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertIcon, ChevronRightIcon, ListIcon, PackageIcon, SearchIcon } from "@/components/ui/Icons";
+import { WarehouseGroup } from "@/components/ui/WarehouseGroup";
 
 export type WarehouseOption = { code: string; name: string | null };
 
@@ -157,16 +158,98 @@ function ageTone(d: number) {
   return "text-zinc-600 dark:text-zinc-300";
 }
 
+const inputCls =
+  "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-amber-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+
+/**
+ * ບໍ່ມີ dropdown ເລືອກສາງແລ້ວ — ຕົວກອງໃຊ້ຮ່ວມກັນຢູ່ຊັ້ນນອກ, ແລ້ວແຕ່ລະສາງທີ່ຜູ້ໃຊ້
+ * ມີສິດ ຈະມີບລັອກລາຍງານຂອງໂຕເອງ (`PendingOutWarehouse`).
+ */
 export default function PendingOutClient({ warehouses }: { warehouses: WarehouseOption[] }) {
-  const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
   const [days, setDays] = useState(30);
   const [types, setTypes] = useState<string[]>(TYPES.map((t) => t.key));
-  const [data, setData] = useState<Payload | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<"docs" | "items">("docs");
   const [q, setQ] = useState("");
   const [bucket, setBucket] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  function toggleType(key: string) {
+    setTypes((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* ── ຕົວກອງ (ໃຊ້ຮ່ວມທຸກສາງ) ─────────────────────────── */}
+      <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800 print:hidden">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[220px] flex-1">
+            <label className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">ສາງ</label>
+            <div className={`${inputCls} flex w-full items-center gap-2 font-bold`}>
+              ທຸກສາງ
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+            </div>
+          </div>
+          <div className="min-w-[130px]">
+            <label className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">ຍ້ອນຫຼັງ</label>
+            <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={`${inputCls} w-full`}>
+              {DAY_OPTIONS.map((d) => (<option key={d.v} value={d.v}>{d.label}</option>))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">ປະເພດເອກະສານ</label>
+            <div className="flex flex-wrap gap-1.5">
+              {TYPES.map((t) => {
+                const on = types.includes(t.key);
+                return (
+                  <button key={t.key} type="button" onClick={() => toggleType(t.key)}
+                    className={`rounded-lg px-3 py-2.5 text-xs font-semibold ring-1 transition ${on ? "bg-amber-50 text-amber-700 ring-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-800" : "bg-white text-zinc-500 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:ring-zinc-800"}`}>
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="inline-flex rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
+            {([["docs", "ຕາມໃບເອກະສານ", <ListIcon key="a" className="h-3.5 w-3.5" />], ["items", "ຕາມສິນຄ້າ", <PackageIcon key="b" className="h-3.5 w-3.5" />]] as const).map(([k, label, icon]) => (
+              <button key={k} type="button" onClick={() => setTab(k)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${tab === k ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-50" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"}`}>
+                {icon}{label}
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+            <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="ຄົ້ນຫາ..." className={`${inputCls} py-2 pl-8 text-xs`} />
+          </div>
+          <button type="button" onClick={() => setReloadKey((k) => k + 1)} disabled={types.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-amber-500/20 transition hover:shadow-lg disabled:opacity-50">
+            <SearchIcon className="h-4 w-4" />
+            ກວດລາຍງານ
+          </button>
+        </div>
+        {types.length === 0 && <p className="mt-3 text-xs font-semibold text-amber-600 dark:text-amber-400">ເລືອກຢ່າງໜ້ອຍ 1 ປະເພດເອກະສານ</p>}
+      </section>
+
+      {warehouses.map((w) => (
+        <WarehouseGroup key={w.code} code={w.code} name={w.name} tone="amber">
+          <PendingOutWarehouse
+            whCode={w.code} whName={w.name} days={days} types={types}
+            tab={tab} q={q} bucket={bucket} setBucket={setBucket} reloadKey={reloadKey}
+          />
+        </WarehouseGroup>
+      ))}
+    </div>
+  );
+}
+
+/** ລາຍງານສິນຄ້າຄ້າງຈ່າຍອອກ ຂອງສາງໜຶ່ງ. */
+function PendingOutWarehouse({ whCode, whName, days, types, tab, q, bucket, setBucket, reloadKey }: {
+  whCode: string; whName: string | null; days: number; types: string[];
+  tab: "docs" | "items"; q: string; bucket: string | null; setBucket: (b: string | null) => void; reloadKey: number;
+}) {
+  const [data, setData] = useState<Payload | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
   // Seconds since this result set was loaded — added to every stored waiting time
   // so the clocks tick live. One timer for the whole table, not one per row.
@@ -188,34 +271,36 @@ export default function PendingOutClient({ warehouses }: { warehouses: Warehouse
     return p;
   }, [params, tab, q, bucket]);
 
-  async function load() {
-    if (!whCode) return;
-    setLoading(true);
-    setErr(null);
-    try {
-      const res = await fetch(`/api/movements/pending-out?${params}`);
-      const json = (await res.json()) as Partial<Payload> & { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "ບໍ່ສຳເລັດ");
-      setData({
-        kpi: json.kpi as Kpi,
-        docs: json.docs ?? [],
-        items: json.items ?? [],
-        lines: json.lines ?? [],
-        truncated: json.truncated ?? false,
-      });
-      setOpenDoc(null);
-      loadedAtRef.current = Date.now();
-      setElapsed(0);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "ບໍ່ສຳເລັດ");
-    } finally {
-      setLoading(false);
-    }
-  }
   useEffect(() => {
-    if (whCode) void load();
+    if (types.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setErr(null);
+      try {
+        const res = await fetch(`/api/movements/pending-out?${params}`);
+        const json = (await res.json()) as Partial<Payload> & { error?: string };
+        if (cancelled) return;
+        if (!res.ok) throw new Error(json.error ?? "ບໍ່ສຳເລັດ");
+        setData({
+          kpi: json.kpi as Kpi,
+          docs: json.docs ?? [],
+          items: json.items ?? [],
+          lines: json.lines ?? [],
+          truncated: json.truncated ?? false,
+        });
+        setOpenDoc(null);
+        loadedAtRef.current = Date.now();
+        setElapsed(0);
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : "ບໍ່ສຳເລັດ");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params, reloadKey]);
 
   // Tick the waiting clocks once a second while a result set is on screen.
   useEffect(() => {
@@ -223,10 +308,6 @@ export default function PendingOutClient({ warehouses }: { warehouses: Warehouse
     const id = setInterval(() => setElapsed(Math.floor((Date.now() - loadedAtRef.current) / 1000)), 1000);
     return () => clearInterval(id);
   }, [data]);
-
-  function toggleType(key: string) {
-    setTypes((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
-  }
 
   /** doc key → its lines, for the expandable detail row. */
   const linesByDoc = useMemo(() => {
@@ -280,77 +361,23 @@ export default function PendingOutClient({ warehouses }: { warehouses: Warehouse
     [tab, docsFiltered, itemsFiltered],
   );
 
-  const inputCls =
-    "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-amber-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
-  const whName = warehouses.find((w) => w.code === whCode)?.name;
-  const whLabel = whCode ? `${whCode}${whName ? ` · ${whName}` : ""}` : "—";
+  const whLabel = `${whCode}${whName ? ` · ${whName}` : ""}`;
 
   return (
     <div className="space-y-5">
-      {/* ── ຕົວກອງ ─────────────────────────────────────────── */}
-      <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800 print:hidden">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[220px] flex-1">
-            <label className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">ສາງ *</label>
-            <select value={whCode} onChange={(e) => { setWhCode(e.target.value); setData(null); }} className={`${inputCls} w-full`}>
-              <option value="">— ເລືອກສາງ —</option>
-              {warehouses.map((w) => (
-                <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>
-              ))}
-            </select>
-          </div>
-          <div className="min-w-[130px]">
-            <label className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">ຍ້ອນຫຼັງ</label>
-            <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={`${inputCls} w-full`}>
-              {DAY_OPTIONS.map((d) => (<option key={d.v} value={d.v}>{d.label}</option>))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300">ປະເພດເອກະສານ</label>
-            <div className="flex flex-wrap gap-1.5">
-              {TYPES.map((t) => {
-                const on = types.includes(t.key);
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => toggleType(t.key)}
-                    className={`rounded-lg px-3 py-2.5 text-xs font-semibold ring-1 transition ${on ? "bg-amber-50 text-amber-700 ring-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-800" : "bg-white text-zinc-500 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:ring-zinc-800"}`}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading || !whCode || types.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-amber-500/20 transition hover:shadow-lg disabled:opacity-50"
-          >
-            <SearchIcon className="h-4 w-4" />
-            {loading ? "ກຳລັງກວດ..." : "ກວດລາຍງານ"}
-          </button>
-          <a
-            href={whCode ? `/api/movements/pending-out/export?${params}` : undefined}
-            className={`inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 transition hover:shadow-lg ${whCode ? "" : "pointer-events-none opacity-50"}`}
-          >
-            Excel
-          </a>
-          {/* ເປີດເປັນເອກະສານ A4 (ຫົວຈົດໝາຍ + ສະຫຼຸບ + ບ່ອນເຊັນ) ພ້ອມພິມ */}
-          <a
-            href={whCode ? `/print/pending-out?${printParams}` : undefined}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg ${whCode ? "" : "pointer-events-none opacity-50"}`}
-          >
-            ເອກະສານ / ພິມ
-          </a>
-        </div>
-        {types.length === 0 && <p className="mt-3 text-xs font-semibold text-amber-600 dark:text-amber-400">ເລືອກຢ່າງໜ້ອຍ 1 ປະເພດເອກະສານ</p>}
-        {err && <p className="mt-3 text-xs font-semibold text-rose-600 dark:text-rose-400">{err}</p>}
-      </section>
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
+        <a href={`/api/movements/pending-out/export?${params}`}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:shadow">
+          Excel
+        </a>
+        {/* ເປີດເປັນເອກະສານ A4 (ຫົວຈົດໝາຍ + ສະຫຼຸບ + ບ່ອນເຊັນ) ພ້ອມພິມ */}
+        <a href={`/print/pending-out?${printParams}`} target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:shadow">
+          ເອກະສານ / ພິມ
+        </a>
+        {loading && <span className="text-xs text-zinc-400">ກຳລັງກວດ...</span>}
+        {err && <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">{err}</span>}
+      </div>
 
       {data && (
         <>
@@ -412,28 +439,10 @@ export default function PendingOutClient({ warehouses }: { warehouses: Warehouse
               </div>
             </div>
 
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="inline-flex rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800 print:hidden">
-                {([["docs", "ຕາມໃບເອກະສານ", <ListIcon key="a" className="h-3.5 w-3.5" />], ["items", "ຕາມສິນຄ້າ", <PackageIcon key="b" className="h-3.5 w-3.5" />]] as const).map(([k, label, icon]) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setTab(k)}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${tab === k ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-50" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"}`}
-                  >
-                    {icon}{label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-zinc-500">
-                  {tab === "docs" ? `${docsFiltered.length} ໃບ` : `${itemsFiltered.length} ລາຍການ`} · ຄ້າງ {fmt(shownQty)}
-                </span>
-                <div className="relative print:hidden">
-                  <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
-                  <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="ເລກໃບ / ລູກຄ້າ / ສິນຄ້າ..." className={`${inputCls} py-2 pl-8 text-xs`} />
-                </div>
-              </div>
+            <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+              <span className="text-xs text-zinc-500">
+                {tab === "docs" ? `${docsFiltered.length} ໃບ` : `${itemsFiltered.length} ລາຍການ`} · ຄ້າງ {fmt(shownQty)}
+              </span>
             </div>
 
             {data.truncated && (

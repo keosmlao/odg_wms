@@ -11,6 +11,7 @@ import {
   PlusIcon,
   SearchIcon,
 } from "@/components/ui/Icons";
+import { WarehouseGroupHeader, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import AdjustSerialModal, { type SerialPlan } from "./AdjustSerialModal";
 
 export type WarehouseOption = { code: string; name: string | null; sn_adjust: boolean };
@@ -23,6 +24,8 @@ type PalletOption = { code: string; name: string | null; location: string | null
 type StockNode = { rack: string; location: string; pallet: string; qty: string };
 
 type ItemHit = {
+  /** ສາງທີ່ພົບ — ຕິດປ້າຍຢູ່ client ຕອນຄົ້ນຫາຫຼາຍສາງ. */
+  wh_code?: string;
   item_code: string;
   item_name: string | null;
   unit_code: string | null;
@@ -451,31 +454,38 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   }, [whCode]);
 
   const whName = useMemo(() => warehouses.find((w) => w.code === whCode)?.name ?? null, [warehouses, whCode]);
+  const hitGroups = useMemo(() => groupByWarehouse(hits, (h) => h.wh_code ?? "—", warehouses), [hits, warehouses]);
   const snOn = useMemo(() => warehouses.find((w) => w.code === whCode)?.sn_adjust ?? true, [warehouses, whCode]);
   const locationsForRack = (rack: string) => (rack ? locations.filter((l) => l.rack_code === rack) : locations);
 
-  // Debounced item search (warehouse-wide — location is chosen per line later).
+  // Debounced item search. ບໍ່ມີການເລືອກສາງແລ້ວ — ຄົ້ນຫາທຸກສາງທີ່ມີສິດ ແລ້ວແຍກ
+  // ຜົນລັບເປັນກຸ່ມຕາມສາງ; ພໍເລືອກແຖວແລ້ວ ໃບປັບປຸງນີ້ຜູກກັບສາງນັ້ນ (1 ໃບ = 1 ສາງ).
   useEffect(() => {
     if (search.trim().length === 0) {
       setHits([]);
       return;
     }
-    if (!whCode) return;
+    const scope = whCode ? warehouses.filter((w) => w.code === whCode) : warehouses;
     const t = setTimeout(async () => {
       setSearching(true);
       try {
         // locations=1 → each hit also reports where it currently sits, so the
         // user can see the item's node before committing to one.
-        const params = new URLSearchParams({ warehouse: whCode, q: search.trim(), locations: "1" });
-        const res = await fetch(`/api/movements/items/search?${params}`);
-        const data = (await res.json()) as { items?: ItemHit[] };
-        setHits(data.items ?? []);
+        const all = await Promise.all(
+          scope.map(async (w) => {
+            const params = new URLSearchParams({ warehouse: w.code, q: search.trim(), locations: "1" });
+            const res = await fetch(`/api/movements/items/search?${params}`);
+            const data = (await res.json()) as { items?: ItemHit[] };
+            return (data.items ?? []).map((it) => ({ ...it, wh_code: w.code }));
+          }),
+        );
+        setHits(all.flat());
       } finally {
         setSearching(false);
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [search, whCode]);
+  }, [search, whCode, warehouses]);
 
   /**
    * Fetch the system balance of an item AT a given node and store it as the
@@ -521,6 +531,8 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   function addHit(hit: ItemHit) {
     setHits([]);
     setSearch("");
+    // ສາງມາຈາກແຖວທີ່ເລືອກ — ໃບປັບປຸງໜຶ່ງໃບຜູກກັບສາງດຽວ.
+    if (hit.wh_code) setWhCode(hit.wh_code);
     const whBal = hit.wh_balance === null ? null : Number.parseFloat(hit.wh_balance) || 0;
     const nodes = hit.locations ?? [];
 
@@ -795,16 +807,23 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
           {/* Warehouse + search */}
           <div className="mb-4 grid gap-4 sm:grid-cols-[240px_1fr]">
             <div>
-              <label className={labelCls}>ສາງ *</label>
-              <select value={whCode} onChange={(e) => setWhCode(e.target.value)} className={inputCls}>
-                <option value="">— ເລືອກສາງ —</option>
-                {warehouses.map((w) => (
-                  <option key={w.code} value={w.code}>
-                    {w.code}
-                    {w.name ? ` · ${w.name}` : ""}
-                  </option>
-                ))}
-              </select>
+              <label className={labelCls}>ສາງ</label>
+              <div className={`${inputCls} flex items-center gap-2 font-bold`}>
+                {whCode ? (
+                  <>
+                    <span className="rounded bg-brand-50 px-2 py-0.5 font-mono text-xs font-black text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">{whCode}</span>
+                    <span className="truncate">{whName ?? ""}</span>
+                    {items.length === 0 && (
+                      <button type="button" onClick={() => setWhCode("")} className="ml-auto rounded p-1 text-zinc-300 hover:text-rose-500" title="ຄົ້ນຫາທຸກສາງອີກຄັ້ງ">✕</button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    ທຸກສາງ
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+                  </>
+                )}
+              </div>
             </div>
             <div>
               <label className={labelCls}>
@@ -822,16 +841,24 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  disabled={!whCode}
-                  placeholder={whCode ? "ສະແກນ / ພິມ ລະຫັດ ຫຼື ຊື່ ເພື່ອເພີ່ມສິນຄ້າ..." : "ເລືອກສາງກ່ອນ"}
+                  placeholder="ສະແກນ / ພິມ ລະຫັດ ຫຼື ຊື່ ເພື່ອເພີ່ມສິນຄ້າ (ທຸກສາງ)..."
                   className={`${inputCls} pl-9`}
                 />
                 {(hits.length > 0 || searching) && (
                   <div className="absolute inset-x-0 top-[calc(100%+0.3rem)] z-30 max-h-72 overflow-auto rounded-xl bg-white p-1 shadow-2xl ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
                     {searching && <div className="p-3 text-center text-xs text-zinc-400">ກຳລັງຄົ້ນຫາ...</div>}
-                    {hits.map((h) => (
+                    {hitGroups.map((g) => (
+                      <div key={g.code}>
+                        <WarehouseGroupHeader
+                          code={g.code}
+                          name={warehouses.find((w) => w.code === g.code)?.name}
+                          count={g.rows.length}
+                          countLabel="ລາຍການ"
+                          tone="brand"
+                        />
+                    {g.rows.map((h) => (
                       <button
-                        key={h.item_code}
+                        key={`${h.wh_code}-${h.item_code}`}
                         type="button"
                         onClick={() => addHit(h)}
                         className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-800/70"
@@ -850,6 +877,8 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                         </div>
                       </button>
                     ))}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -860,7 +889,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
             <div className="rounded-xl border border-dashed border-zinc-200 py-10 text-center dark:border-zinc-800">
               <PackageIcon className="mx-auto h-7 w-7 text-zinc-300 dark:text-zinc-600" />
               <p className="mt-2 text-xs font-semibold text-zinc-500">
-                {whCode ? "ຄົ້ນຫາ ແລະ ເພີ່ມສິນຄ້າ → ໃສ່ຈຳນວນ → ເລືອກ location/pallet" : "ເລືອກສາງເພື່ອເລີ່ມ"}
+                ຄົ້ນຫາ ແລະ ເພີ່ມສິນຄ້າ (ທຸກສາງ) → ໃສ່ຈຳນວນ → ເລືອກ location/pallet
               </p>
             </div>
           ) : (
@@ -1307,10 +1336,12 @@ type LWorking = CountLine & {
 function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
-  const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
-  const [racks, setRacks] = useState<RackOption[]>([]);
-  const [locations, setLocations] = useState<LocationOption[]>([]);
-  const [pallets, setPallets] = useState<PalletOption[]>([]);
+  // ບໍ່ມີ dropdown ເລືອກສາງແລ້ວ — ຕົວເລືອກ Rack ລວມທຸກສາງທີ່ມີສິດ ແລ້ວແຍກກຸ່ມ
+  // ຕາມສາງ; ສາງ (`whCode`) ມາຈາກ rack ທີ່ເລືອກ.
+  const [whCode, setWhCode] = useState("");
+  const [racks, setRacks] = useState<(RackOption & { wh_code: string })[]>([]);
+  const [locations, setLocations] = useState<(LocationOption & { wh_code: string })[]>([]);
+  const [pallets, setPallets] = useState<(PalletOption & { wh_code: string })[]>([]);
   const [rackCode, setRackCode] = useState("");
   const [locationCode, setLocationCode] = useState("");
   const [palletCode, setPalletCode] = useState("");
@@ -1337,25 +1368,26 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     setTimeout(() => setToast(null), 3000);
   }
 
+  // ໂຫຼດ rack/location/pallet ຂອງທຸກສາງທີ່ມີສິດ (ເທື່ອດຽວ) ພ້ອມປ້າຍສາງ.
   useEffect(() => {
-    setRacks([]);
-    setLocations([]);
-    setPallets([]);
-    setRackCode("");
-    setLocationCode("");
-    setPalletCode("");
-    setItems([]);
-    setLoaded(false);
-    if (!whCode) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(whCode)}`);
-        const data = (await res.json()) as { racks?: RackOption[]; locations?: LocationOption[]; pallets?: PalletOption[] };
+        const all = await Promise.all(
+          warehouses.map(async (w) => {
+            const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(w.code)}`);
+            const data = (await res.json()) as { racks?: RackOption[]; locations?: LocationOption[]; pallets?: PalletOption[] };
+            return {
+              racks: (data.racks ?? []).map((r) => ({ ...r, wh_code: w.code })),
+              locations: (data.locations ?? []).map((l) => ({ ...l, wh_code: w.code })),
+              pallets: (data.pallets ?? []).map((pl) => ({ ...pl, wh_code: w.code })),
+            };
+          }),
+        );
         if (cancelled) return;
-        setRacks(data.racks ?? []);
-        setLocations(data.locations ?? []);
-        setPallets(data.pallets ?? []);
+        setRacks(all.flatMap((a) => a.racks));
+        setLocations(all.flatMap((a) => a.locations));
+        setPallets(all.flatMap((a) => a.pallets));
       } catch {
         if (!cancelled) showToast("err", "ບໍ່ສາມາດໂຫຼດພື້ນທີ່ຈັດເກັບ");
       }
@@ -1363,12 +1395,14 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     return () => {
       cancelled = true;
     };
-  }, [whCode]);
+  }, [warehouses]);
 
+  const rackGroups = useMemo(() => groupByWarehouse(racks, (r) => r.wh_code, warehouses), [racks, warehouses]);
   const availableLocations = useMemo(
-    () => (rackCode ? locations.filter((l) => l.rack_code === rackCode) : locations),
-    [locations, rackCode],
+    () => locations.filter((l) => l.wh_code === whCode && (!rackCode || l.rack_code === rackCode)),
+    [locations, whCode, rackCode],
   );
+  const availablePallets = useMemo(() => pallets.filter((p) => p.wh_code === whCode), [pallets, whCode]);
 
   useEffect(() => {
     if (locationCode && rackCode && !availableLocations.find((l) => l.code === locationCode)) {
@@ -1598,26 +1632,49 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
           </h3>
           <div className="grid grid-cols-4 gap-4">
             <div>
-              <label className={labelCls}>ສາງ *</label>
-              <select value={whCode} onChange={(e) => setWhCode(e.target.value)} className={inputCls}>
-                <option value="">— ເລືອກສາງ —</option>
-                {warehouses.map((w) => (
-                  <option key={w.code} value={w.code}>
-                    {w.code}
-                    {w.name ? ` · ${w.name}` : ""}
-                  </option>
-                ))}
-              </select>
+              <label className={labelCls}>ສາງ</label>
+              <div className={`${inputCls} flex items-center gap-2 font-bold`}>
+                {whCode ? (
+                  <>
+                    <span className="rounded bg-brand-50 px-2 py-0.5 font-mono text-xs font-black text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">{whCode}</span>
+                    <span className="truncate">{whName ?? ""}</span>
+                    {items.length === 0 && (
+                      <button type="button" onClick={() => setWhCode("")} className="ml-auto rounded p-1 text-zinc-300 hover:text-rose-500" title="ຄົ້ນຫາທຸກສາງອີກຄັ້ງ">✕</button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    ທຸກສາງ
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+                  </>
+                )}
+              </div>
             </div>
             <div>
-              <label className={labelCls}>Rack (ຊັ້ນວາງ)</label>
-              <select value={rackCode} onChange={(e) => setRackCode(e.target.value)} disabled={!whCode} className={inputCls}>
-                <option value="">— ທຸກ rack —</option>
-                {racks.map((r) => (
-                  <option key={r.code} value={r.code}>
-                    {r.code}
-                    {r.name ? ` · ${r.name}` : ""}
-                  </option>
+              <label className={labelCls}>Rack (ຊັ້ນວາງ) *</label>
+              <select
+                value={whCode && rackCode ? `${whCode}|${rackCode}` : ""}
+                onChange={(e) => {
+                  const [w, code] = e.target.value.split("|");
+                  setWhCode(w ?? "");
+                  setRackCode(code ?? "");
+                  setLocationCode("");
+                  setPalletCode("");
+                  setItems([]);
+                  setLoaded(false);
+                }}
+                className={inputCls}
+              >
+                <option value="">— ເລືອກ rack (ທຸກສາງ) —</option>
+                {rackGroups.map((g) => (
+                  <optgroup key={g.code} label={`${g.code}${warehouses.find((w) => w.code === g.code)?.name ? ` · ${warehouses.find((w) => w.code === g.code)?.name}` : ""} (${g.rows.length})`}>
+                    {g.rows.map((r) => (
+                      <option key={`${r.wh_code}|${r.code}`} value={`${r.wh_code}|${r.code}`}>
+                        {r.code}
+                        {r.name ? ` · ${r.name}` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -1632,8 +1689,8 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   </option>
                 ))}
               </select>
-              {locationCode && pallets.some((p) => p.location === locationCode) && (
-                <p className="mt-1 text-[10px] text-zinc-400">📦 pallet ຢູ່ບ່ອນນີ້: {pallets.filter((p) => p.location === locationCode).map((p) => p.code).join(", ")}</p>
+              {locationCode && availablePallets.some((p) => p.location === locationCode) && (
+                <p className="mt-1 text-[10px] text-zinc-400">📦 pallet ຢູ່ບ່ອນນີ້: {availablePallets.filter((p) => p.location === locationCode).map((p) => p.code).join(", ")}</p>
               )}
             </div>
             <div>
@@ -1643,7 +1700,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                 onChange={(e) => {
                   const code = e.target.value;
                   setPalletCode(code);
-                  const p = pallets.find((x) => x.code === code);
+                  const p = availablePallets.find((x) => x.code === code);
                   if (p) {
                     if (p.rack) setRackCode(p.rack);
                     if (p.location) setLocationCode(p.location);
@@ -1653,7 +1710,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                 className={inputCls}
               >
                 <option value="">— ບໍ່ມີ pallet —</option>
-                {pallets.map((p) => (
+                {availablePallets.map((p) => (
                   <option key={p.code} value={p.code}>
                     {p.code}
                     {p.location ? ` → ${p.location}` : ""}

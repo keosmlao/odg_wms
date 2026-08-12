@@ -8,6 +8,7 @@ import {
   PackageIcon,
   SearchIcon,
 } from "@/components/ui/Icons";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import type { ROption } from "@/components/ui/RSelect";
 import { BackLink, type DestType, ItemCard, PutawayPicker, ReceiveHeaderCard, StickyFooter } from "./_receiveUI";
 
@@ -34,6 +35,8 @@ type PendingLine = {
 
 type PoGroup = {
   po_no: string;
+  /** ສາງທີ່ໃບນີ້ຮັບເຂົ້າ — ມາຈາກຕົວໃບ, ບໍ່ແມ່ນ dropdown. */
+  wh_code: string;
   cust_code: string | null;
   cust_name: string | null;
   doc_date: string | null;
@@ -73,8 +76,9 @@ const DOC_TYPES = [
   { value: "issue_return", label: "ຮັບคืนเบิก" },
 ] as const;
 
-export default function ReceiveClient({ warehouses, initialSearch = "", initialType = "", initialWh = "" }: { warehouses: WarehouseOption[]; initialSearch?: string; initialType?: string; initialWh?: string }) {
-  const [whCode, setWhCode] = useState(initialWh || (warehouses.length === 1 ? warehouses[0].code : ""));
+export default function ReceiveClient({ warehouses, initialSearch = "", initialType = "" }: { warehouses: WarehouseOption[]; initialSearch?: string; initialType?: string }) {
+  // ບໍ່ມີ dropdown ເລືອກສາງແລ້ວ — `whCode` ຄືສາງຂອງໃບທີ່ເລືອກມາຮັບ.
+  const [whCode, setWhCode] = useState("");
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [pallets, setPallets] = useState<PalletOption[]>([]);
   const [putMode, setPutMode] = useState<"all" | "line">("all");
@@ -161,29 +165,30 @@ export default function ReceiveClient({ warehouses, initialSearch = "", initialT
     return () => { cancelled = true; };
   }, [po, whCode, lines]);
 
-  // Auto-load once when arriving from "ໄປຮັບ" (pending list) with a PO prefilled
-  // and a warehouse already resolved (single-warehouse users). Mount-only.
+  // Auto-load once when arriving from "ໄປຮັບ" (pending list) with a PO prefilled.
+  // ບໍ່ຕ້ອງລໍສາງອີກແລ້ວ — ໂຫຼດທຸກສາງທີ່ມີສິດ. Mount-only.
   useEffect(() => {
-    if (initialSearch && whCode) loadPending();
+    if (initialSearch) loadPending();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadPending(fresh = false) {
-    if (!whCode) { showToast("err", "ກະລຸນາເລືອກສາງ"); return; }
     setLoadingPending(true);
     try {
-      const params = new URLSearchParams({ wh: whCode, type: docType });
+      const params = new URLSearchParams({ type: docType });
       if (search.trim()) params.set("q", search.trim());
       if (fresh) params.set("fresh", "1");
       const res = await fetch(`/api/receive/pending?${params}`);
       const data = (await res.json()) as { lines?: PendingLine[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? "ໂຫຼດບໍ່ສຳເລັດ");
+      // ໃບດຽວກັນອາດມີໃນຫຼາຍສາງ → ຈັດກຸ່ມດ້ວຍ (ສາງ + ເລກໃບ).
       const byPo = new Map<string, PoGroup>();
       for (const l of data.lines ?? []) {
-        let g = byPo.get(l.po_no);
+        const key = `${l.wh_code} ${l.po_no}`;
+        let g = byPo.get(key);
         if (!g) {
-          g = { po_no: l.po_no, cust_code: l.cust_code, cust_name: l.cust_name, doc_date: l.doc_date, send_date: l.send_date, lines: [], totalRemaining: 0 };
-          byPo.set(l.po_no, g);
+          g = { po_no: l.po_no, wh_code: l.wh_code, cust_code: l.cust_code, cust_name: l.cust_name, doc_date: l.doc_date, send_date: l.send_date, lines: [], totalRemaining: 0 };
+          byPo.set(key, g);
         }
         g.lines.push(l);
         g.totalRemaining += Number.parseFloat(l.remaining) || 0;
@@ -198,6 +203,7 @@ export default function ReceiveClient({ warehouses, initialSearch = "", initialT
 
   function selectPo(g: PoGroup) {
     setPo(g);
+    setWhCode(g.wh_code); // ສາງມາຈາກໃບທີ່ເລືອກ
     setLines(
       g.lines.map((l) => {
         const remaining = Number.parseFloat(l.remaining) || 0;
@@ -243,6 +249,7 @@ export default function ReceiveClient({ warehouses, initialSearch = "", initialT
     }),
     [lines],
   );
+  const poGroups = useMemo(() => groupByWarehouse(pos, (g) => g.wh_code, warehouses), [pos, warehouses]);
   const totalWant = useMemo(() => lines.reduce((s, l) => s + l.remaining, 0), [lines]);
   const totalGot = useMemo(() => lines.reduce((s, l) => s + (parsedQty(l.qty) ?? 0), 0), [lines]);
 
@@ -432,13 +439,11 @@ export default function ReceiveClient({ warehouses, initialSearch = "", initialT
         </div>
         <div className="grid gap-3 sm:grid-cols-[260px_1fr_auto]">
           <div>
-            <label className={labelCls}>ສາງ *</label>
-            <select value={whCode} onChange={(e) => setWhCode(e.target.value)} className={inputCls}>
-              <option value="">— ເລືອກສາງ —</option>
-              {warehouses.map((w) => (
-                <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>
-              ))}
-            </select>
+            <label className={labelCls}>ສາງ</label>
+            <div className={`${inputCls} flex items-center gap-2 font-bold`}>
+              ທຸກສາງ
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+            </div>
           </div>
           <div>
             <label className={labelCls}>ຄົ້ນຫາ (PO / ສິນຄ້າ / ຜູ້ສະໜອງ)</label>
@@ -448,7 +453,7 @@ export default function ReceiveClient({ warehouses, initialSearch = "", initialT
             </div>
           </div>
           <div className="flex items-end">
-            <button type="button" onClick={() => loadPending()} disabled={!whCode || loadingPending} className={primaryBtn}>
+            <button type="button" onClick={() => loadPending()} disabled={loadingPending} className={primaryBtn}>
               {loadingPending ? "ກຳລັງໂຫຼດ..." : "ໂຫຼດເອກະສານຄ້າງຮັບ"}
             </button>
           </div>
@@ -468,8 +473,18 @@ export default function ReceiveClient({ warehouses, initialSearch = "", initialT
                   ↻ ໂຫຼດສด (ล่าสุดจาก ERP)
                 </button>
               </div>
-              {pos.map((g) => (
-                <button key={g.po_no} type="button" onClick={() => selectPo(g)} className="flex w-full items-center gap-4 rounded-xl bg-white p-4 text-left ring-1 ring-zinc-200 transition hover:ring-emerald-400 dark:bg-zinc-900 dark:ring-zinc-800">
+              {poGroups.map((grp) => (
+                <WarehouseGroup
+                  key={grp.code}
+                  code={grp.code}
+                  name={warehouses.find((w) => w.code === grp.code)?.name}
+                  count={grp.rows.length}
+                  countLabel="ໃບ"
+                  tone="emerald"
+                >
+                <div className="space-y-2.5">
+              {grp.rows.map((g) => (
+                <button key={`${g.wh_code}-${g.po_no}`} type="button" onClick={() => selectPo(g)} className="flex w-full items-center gap-4 rounded-xl bg-white p-4 text-left ring-1 ring-zinc-200 transition hover:ring-emerald-400 dark:bg-zinc-900 dark:ring-zinc-800">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
                     <ArrowDownIcon className="h-5 w-5" />
                   </div>
@@ -483,6 +498,9 @@ export default function ReceiveClient({ warehouses, initialSearch = "", initialT
                     <div className="font-mono text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{fmt(g.totalRemaining)}</div>
                   </div>
                 </button>
+              ))}
+                </div>
+                </WarehouseGroup>
               ))}
             </div>
           )}

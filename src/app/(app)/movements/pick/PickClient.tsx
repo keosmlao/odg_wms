@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Barcode from "@/components/Barcode";
 import { ChevronRightIcon } from "@/components/ui/Icons";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 
 export type WarehouseOption = { code: string; name: string | null };
 type DocLine = { item_code: string; item_name: string | null; unit_code: string | null; remaining: string };
-type PendingDoc = { doc_no: string; doc_date: string | null; cust_code: string | null; cust_name: string | null; line_count: number; remaining_qty: string; lines: DocLine[] };
+type PendingDoc = { doc_no: string; wh_code: string; doc_date: string | null; cust_code: string | null; cust_name: string | null; line_count: number; remaining_qty: string; lines: DocLine[] };
 type Loc = { rack: string; location: string; pallet: string; qty: string };
 type SrcLine = { item_code: string; item_name: string | null; unit_code: string | null; is_isn: number | null; src_qty: string; remaining: string; locations: Loc[] };
 type Task = { key: string; sortKey: string; loc: string; barcode: string; rack: string; pallet: string; item_code: string; item_name: string | null; unit: string | null; qty: number; short: boolean };
@@ -51,7 +52,8 @@ function buildPlan(lines: SrcLine[]): Task[] {
 }
 
 export default function PickClient({ warehouses }: { warehouses: WarehouseOption[] }) {
-  const [wh, setWh] = useState(warehouses.length === 1 ? warehouses[0].code : "");
+  // ບໍ່ມີການເລືອກສາງ — ລາຍການມາທຸກສາງ; `wh` ຄືສາງຂອງໃບທີ່ເປີດ.
+  const [wh, setWh] = useState("");
   const [type, setType] = useState("req");
   const [docs, setDocs] = useState<PendingDoc[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -62,12 +64,11 @@ export default function PickClient({ warehouses }: { warehouses: WarehouseOption
 
   useEffect(() => {
     setActive(null); setTasks(null); setDone(new Set());
-    if (!wh) { setDocs([]); return; }
     let cancelled = false;
     setLoadingDocs(true);
     (async () => {
       try {
-        const res = await fetch(`/api/movements/issue/pending?wh=${encodeURIComponent(wh)}&type=${type}`);
+        const res = await fetch(`/api/movements/issue/pending?type=${type}`);
         const data = (await res.json()) as { docs?: PendingDoc[] };
         if (!cancelled) setDocs(data.docs ?? []);
       } finally {
@@ -75,18 +76,20 @@ export default function PickClient({ warehouses }: { warehouses: WarehouseOption
       }
     })();
     return () => { cancelled = true; };
-  }, [wh, type]);
+  }, [type]);
 
   async function openDoc(d: PendingDoc) {
-    setActive(d); setTasks(null); setDone(new Set()); setLoadingPlan(true);
+    setActive(d); setWh(d.wh_code); setTasks(null); setDone(new Set()); setLoadingPlan(true);
     try {
-      const res = await fetch(`/api/movements/issue/source?wh=${encodeURIComponent(wh)}&type=${type}&doc=${encodeURIComponent(d.doc_no)}`);
+      const res = await fetch(`/api/movements/issue/source?wh=${encodeURIComponent(d.wh_code)}&type=${type}&doc=${encodeURIComponent(d.doc_no)}`);
       const data = (await res.json()) as { lines?: SrcLine[] };
       setTasks(buildPlan(data.lines ?? []));
     } finally {
       setLoadingPlan(false);
     }
   }
+
+  const docGroups = useMemo(() => groupByWarehouse(docs, (d) => d.wh_code, warehouses), [docs, warehouses]);
 
   const pickStats = useMemo(() => {
     if (!tasks) return null;
@@ -103,10 +106,10 @@ export default function PickClient({ warehouses }: { warehouses: WarehouseOption
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ</label>
-            <select value={wh} onChange={(e) => setWh(e.target.value)} className={inputCls}>
-              {warehouses.length !== 1 && <option value="">— ເລືອກສາງ —</option>}
-              {warehouses.map((w) => <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>)}
-            </select>
+            <div className={`${inputCls} flex items-center gap-2 font-bold`}>
+              ທຸກສາງ
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ປະເພດເອກະສານ</label>
@@ -122,10 +125,19 @@ export default function PickClient({ warehouses }: { warehouses: WarehouseOption
       {!active && (
         <section className="space-y-2 print:hidden">
           {loadingDocs ? <div className="py-10 text-center text-sm text-zinc-400">ກຳລັງໂຫຼດ...</div>
-          : !wh ? <div className="py-10 text-center text-sm text-zinc-400">ເລືອກສາງເພື່ອเริ่ม</div>
           : docs.length === 0 ? <div className="py-10 text-center text-sm text-zinc-400">ບໍ່ມີເອກະສານຄ້າງເກັບ</div>
-          : docs.map((d) => (
-            <button key={d.doc_no} type="button" onClick={() => openDoc(d)} className="flex w-full items-center gap-3 rounded-xl bg-white p-3.5 text-left ring-1 ring-zinc-200 transition hover:ring-emerald-300 hover:shadow-md dark:bg-zinc-900 dark:ring-zinc-800">
+          : docGroups.map((g) => (
+            <WarehouseGroup
+              key={g.code}
+              code={g.code}
+              name={warehouses.find((w) => w.code === g.code)?.name}
+              count={g.rows.length}
+              countLabel="ໃບ"
+              tone="emerald"
+            >
+            <div className="space-y-2">
+            {g.rows.map((d) => (
+            <button key={`${d.wh_code}-${d.doc_no}`} type="button" onClick={() => openDoc(d)} className="flex w-full items-center gap-3 rounded-xl bg-white p-3.5 text-left ring-1 ring-zinc-200 transition hover:ring-emerald-300 hover:shadow-md dark:bg-zinc-900 dark:ring-zinc-800">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2"><span className="font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400">{d.doc_no}</span><span className="text-[11px] text-zinc-400">{ddmm(d.doc_date)}</span></div>
                 <div className="truncate text-xs text-zinc-500">{d.cust_name ?? d.cust_code ?? "—"}</div>
@@ -133,6 +145,9 @@ export default function PickClient({ warehouses }: { warehouses: WarehouseOption
               <div className="text-right text-[11px] text-zinc-500"><div>{d.line_count} ລາຍການ</div><div className="font-semibold text-zinc-700 dark:text-zinc-300">ຍັງ {fmt(d.remaining_qty)}</div></div>
               <ChevronRightIcon className="h-4 w-4 text-zinc-300" />
             </button>
+            ))}
+            </div>
+            </WarehouseGroup>
           ))}
         </section>
       )}

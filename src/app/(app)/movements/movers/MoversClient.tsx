@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { WarehouseGroup } from "@/components/ui/WarehouseGroup";
 
 export type WarehouseOption = { code: string; name: string | null };
 type Mover = { item_code: string; item_name: string | null; unit_code: string | null; qin: string; qout: string; outmoves: number };
@@ -17,37 +18,34 @@ function ddmm(d: string) {
   return `${day}/${m}`;
 }
 
+type WhResult = { code: string; name: string | null; movers: Mover[]; trend: TrendPt[]; kpi: Kpi | null };
+
 export default function MoversClient({ warehouses }: { warehouses: WarehouseOption[] }) {
   const today = new Date().toISOString().slice(0, 10);
   const ago30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
-  const [wh, setWh] = useState(warehouses.length === 1 ? warehouses[0].code : "");
   const [from, setFrom] = useState(ago30);
   const [to, setTo] = useState(today);
-  const [movers, setMovers] = useState<Mover[]>([]);
-  const [trend, setTrend] = useState<TrendPt[]>([]);
-  const [kpi, setKpi] = useState<Kpi | null>(null);
+  const [results, setResults] = useState<WhResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [sort, setSort] = useState<SortKey>("qout");
 
+  /** ບໍ່ມີການເລືອກສາງ — ດຶງທຸກສາງທີ່ມີສິດ ແລ້ວສະແດງເປັນກຸ່ມຕໍ່ສາງ. */
   async function load() {
-    if (!wh) return;
     setLoading(true);
     try {
-      const p = new URLSearchParams({ wh, from, to });
-      const res = await fetch(`/api/movements/movers?${p}`);
-      const data = (await res.json()) as { movers?: Mover[]; trend?: TrendPt[]; kpi?: Kpi };
-      setMovers(data.movers ?? []); setTrend(data.trend ?? []); setKpi(data.kpi ?? null);
+      const all = await Promise.all(
+        warehouses.map(async (w) => {
+          const p = new URLSearchParams({ wh: w.code, from, to });
+          const res = await fetch(`/api/movements/movers?${p}`);
+          const data = (await res.json()) as { movers?: Mover[]; trend?: TrendPt[]; kpi?: Kpi };
+          return { code: w.code, name: w.name, movers: data.movers ?? [], trend: data.trend ?? [], kpi: data.kpi ?? null };
+        }),
+      );
+      setResults(all);
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [wh]);
-
-  const sorted = useMemo(() => {
-    const v = (m: Mover) => sort === "qout" ? Number.parseFloat(m.qout) : sort === "qin" ? Number.parseFloat(m.qin) : m.outmoves;
-    return [...movers].sort((a, b) => v(b) - v(a)).slice(0, 50);
-  }, [movers, sort]);
-
-  const trendMax = useMemo(() => Math.max(1, ...trend.map((t) => Math.max(Number.parseFloat(t.inq) || 0, Number.parseFloat(t.outq) || 0))), [trend]);
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
@@ -57,10 +55,10 @@ export default function MoversClient({ warehouses }: { warehouses: WarehouseOpti
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ</label>
-            <select value={wh} onChange={(e) => setWh(e.target.value)} className={inputCls}>
-              {warehouses.length !== 1 && <option value="">— ເລືອກສາງ —</option>}
-              {warehouses.map((w) => <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>)}
-            </select>
+            <div className={`${inputCls} flex items-center gap-2 font-bold`}>
+              ທຸກສາງ
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ແຕ່</label>
@@ -70,10 +68,32 @@ export default function MoversClient({ warehouses }: { warehouses: WarehouseOpti
             <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ຫາ</label>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inputCls} />
           </div>
-          <button type="button" onClick={load} disabled={loading || !wh} className="rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">{loading ? "..." : "ກອງ"}</button>
+          <button type="button" onClick={load} disabled={loading} className="rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">{loading ? "..." : "ກອງ"}</button>
         </div>
       </section>
 
+      {loading && results.length === 0 && <div className="py-12 text-center text-sm text-zinc-400">ກຳລັງໂຫຼດ...</div>}
+
+      {results.map((r) => (
+        <WarehouseGroup key={r.code} code={r.code} name={r.name} tone="brand">
+          <WhMovers r={r} sort={sort} setSort={setSort} loading={loading} />
+        </WarehouseGroup>
+      ))}
+    </div>
+  );
+}
+
+/** ບລັອກ KPI + ແນວໂນ້ມ + Top 50 ຂອງສາງໜຶ່ງ. */
+function WhMovers({ r, sort, setSort, loading }: { r: WhResult; sort: SortKey; setSort: (k: SortKey) => void; loading: boolean }) {
+  const { movers, trend, kpi } = r;
+  const sorted = useMemo(() => {
+    const v = (m: Mover) => sort === "qout" ? Number.parseFloat(m.qout) : sort === "qin" ? Number.parseFloat(m.qin) : m.outmoves;
+    return [...movers].sort((a, b) => v(b) - v(a)).slice(0, 50);
+  }, [movers, sort]);
+  const trendMax = useMemo(() => Math.max(1, ...trend.map((t) => Math.max(Number.parseFloat(t.inq) || 0, Number.parseFloat(t.outq) || 0))), [trend]);
+
+  return (
+    <div className="space-y-4">
       {kpi && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Kard label="ຮັບເຂົ້າລວມ" value={fmt(kpi.total_in)} tone="emerald" />

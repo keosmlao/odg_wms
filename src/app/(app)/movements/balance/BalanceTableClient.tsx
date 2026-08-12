@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+import { groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import ItemMovementsDrawer from "./ItemMovementsDrawer";
 import SerialDrawer from "./SerialDrawer";
 
@@ -28,6 +29,15 @@ export default function BalanceTableClient({
   } | null>(null);
   const [snItem, setSnItem] = useState<{ item_code: string; item_name: string | null; wh_code: string; rack_code: string; location_code: string; pallet_code: string } | null>(null);
 
+  /** ຈັດແຖວເປັນກຸ່ມຕາມສາງ ແລ້ວໝາຍແຖວທຳອິດຂອງແຕ່ລະກຸ່ມ (ຄ່າ = ຈຳນວນແຖວໃນກຸ່ມ). */
+  const grouped = useMemo(() => {
+    const out: { row: TableStockRow; groupHead: number | null }[] = [];
+    for (const g of groupByWarehouse(rows, (r) => r.wh_code)) {
+      g.rows.forEach((row, i) => out.push({ row, groupHead: i === 0 ? g.rows.length : null }));
+    }
+    return out;
+  }, [rows]);
+
   function formatQty(value: number) {
     return value.toLocaleString("en-US", {
       minimumFractionDigits: 0,
@@ -54,9 +64,20 @@ export default function BalanceTableClient({
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {rows.map((row, idx) => (
+            {grouped.map(({ row, groupHead }, idx) => (
+              <Fragment key={`${row.wh_code}-${row.rack_code}-${row.location_code}-${row.pallet_code}-${row.item_code}-${idx}`}>
+              {groupHead !== null && (
+                // ຫົວກຸ່ມ "ຕາມສາງ" — ບໍ່ມີ dropdown ເລືອກສາງແລ້ວ, ຕາຕະລາງລວມທຸກສາງ
+                <tr className="bg-zinc-50/80 dark:bg-zinc-950/50">
+                  <td colSpan={10} className="px-4 py-2">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="rounded-lg bg-brand-50 px-2 py-0.5 font-mono text-[11px] font-black text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">{row.wh_code}</span>
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{groupHead} ແຖວ</span>
+                    </span>
+                  </td>
+                </tr>
+              )}
               <tr
-                key={`${row.wh_code}-${row.rack_code}-${row.location_code}-${row.pallet_code}-${row.item_code}-${idx}`}
                 className="group transition-colors hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20"
               >
                 <td className="p-4 font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
@@ -131,6 +152,7 @@ export default function BalanceTableClient({
                   </button>
                 </td>
               </tr>
+              </Fragment>
             ))}
           </tbody>
         </table>

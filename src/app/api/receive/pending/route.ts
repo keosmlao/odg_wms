@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { accessibleWarehouses } from "@/lib/session-shared";
+import { scopedWarehouses } from "@/lib/warehouseScope";
 import { needsIsnSql } from "@/lib/isnScope";
 
 /**
@@ -117,48 +117,45 @@ export async function GET(request: Request) {
   if (!session) return NextResponse.json({ error: "ກະລຸນາເຂົ້າສູ່ລະບົບ" }, { status: 401 });
   if (!session.role) return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງ WMS" }, { status: 403 });
 
-  const accessible = accessibleWarehouses(session);
-  if (Array.isArray(accessible) && accessible.length === 0) {
-    return NextResponse.json({ lines: [] });
-  }
-
   const url = new URL(request.url);
-  const wh = (url.searchParams.get("wh") ?? "").trim();
   const type = (url.searchParams.get("type") ?? "po").trim();
   const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
   const fresh = url.searchParams.get("fresh") === "1";
   const limit = Math.min(Math.max(Number.parseInt(url.searchParams.get("limit") ?? "300", 10) || 300, 1), 1000);
 
-  if (!wh) return NextResponse.json({ lines: [], needWarehouse: true });
-  if (Array.isArray(accessible) && !accessible.includes(wh)) {
-    return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
-  }
+  // ບໍ່ມີການເລືອກສາງແລ້ວ — ດຶງທຸກສາງທີ່ຜູ້ໃຊ້ມີສິດ ແລ້ວໜ້າຈໍຈຶ່ງແຍກກຸ່ມຕາມສາງ.
+  const warehouses = await scopedWarehouses(session, url.searchParams.get("wh"));
+  if (warehouses.length === 0) return NextResponse.json({ type, warehouses: [], lines: [] });
 
-  // Source lines by document type + WMS receipts (subtracted) in parallel.
-  const sourceP =
-    type === "transfer" ? getTransfer(wh)
-    : type in RETURN_FLAG ? getReturn(wh, RETURN_FLAG[type])
-    : getPoRemain(wh, fresh);
-
-  const [srcRows, rcv] = await Promise.all([
-    sourceP,
-    query<{ po_no: string; item_code: string; received: string }>(
-      // Attribute each received line to its own PO (multi-PO receipts set
-      // d.ref_doc_no per line); fall back to the header PO for legacy receipts.
-      `SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no) AS po_no, d.item_code, SUM(d.qty)::text AS received
-       FROM public.wms_product_receive h
-       JOIN public.wms_product_receive_detail d ON d.doc_no = h.doc_no
-       WHERE h.warehouse_code = $1 AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no) IS NOT NULL AND (h.status = 0 OR h.status IS NULL)
-       GROUP BY COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no), d.item_code`,
-      [wh],
-    ),
-  ]);
-
-  const receivedBy = new Map<string, number>();
-  for (const r of rcv) receivedBy.set(`${r.po_no} ${r.item_code}`, Number.parseFloat(r.received) || 0);
+  // Source lines by document type + WMS receipts (subtracted), per warehouse.
+  const perWh = await Promise.all(
+    warehouses.map(async (w) => {
+      const sourceP =
+        type === "transfer" ? getTransfer(w.code)
+        : type in RETURN_FLAG ? getReturn(w.code, RETURN_FLAG[type])
+        : getPoRemain(w.code, fresh);
+      const [srcRows, rcv] = await Promise.all([
+        sourceP,
+        query<{ po_no: string; item_code: string; received: string }>(
+          // Attribute each received line to its own PO (multi-PO receipts set
+          // d.ref_doc_no per line); fall back to the header PO for legacy receipts.
+          `SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no) AS po_no, d.item_code, SUM(d.qty)::text AS received
+           FROM public.wms_product_receive h
+           JOIN public.wms_product_receive_detail d ON d.doc_no = h.doc_no
+           WHERE h.warehouse_code = $1 AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no) IS NOT NULL AND (h.status = 0 OR h.status IS NULL)
+           GROUP BY COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no), d.item_code`,
+          [w.code],
+        ),
+      ]);
+      return { wh: w, srcRows, rcv };
+    }),
+  );
 
   const lines = [];
-  for (const p of srcRows) {
+  outer: for (const { wh: w, srcRows, rcv } of perWh) {
+    const receivedBy = new Map<string, number>();
+    for (const r of rcv) receivedBy.set(`${r.po_no} ${r.item_code}`, Number.parseFloat(r.received) || 0);
+    for (const p of srcRows) {
     const received = receivedBy.get(`${p.po_no} ${p.item_code}`) ?? 0;
     const remaining = (Number.parseFloat(p.erp_balance) || 0) - received;
     if (remaining <= 0) continue;
@@ -170,8 +167,8 @@ export async function GET(request: Request) {
       po_no: p.po_no,
       cust_code: p.cust_code,
       cust_name: p.cust_name,
-      wh_code: p.wh_code,
-      wh_name: p.wh_name,
+      wh_code: p.wh_code || w.code,
+      wh_name: p.wh_name ?? w.name,
       doc_date: p.doc_date,
       send_date: p.send_date,
       item_code: p.item_code,
@@ -184,8 +181,9 @@ export async function GET(request: Request) {
       remaining: String(remaining),
       is_isn: p.is_isn,
     });
-    if (lines.length >= limit) break;
+    if (lines.length >= limit) break outer;
+    }
   }
 
-  return NextResponse.json({ type, lines });
+  return NextResponse.json({ type, warehouses, lines });
 }

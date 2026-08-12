@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 
 type DocRow = {
   doc_no: string; doc_date: string | null; doc_time: string | null; wh_from: string | null; wh_to: string | null;
@@ -72,7 +73,17 @@ export default function ApproveClient() {
         <div className="py-12 text-center text-sm text-slate-400">ກຳລັງໂຫລດ…</div>
       ) : docs.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">ບໍ່ມີໃບຂໍໂອນ ລໍຖ້າອະນຸມັດ</div>
-      ) : docs.map((d) => {
+      ) : groupByWarehouse(docs, (d) => d.wh_from ?? "—").map((g) => (
+        <WarehouseGroup
+          key={g.code}
+          code={g.code}
+          name={docs.find((d) => d.wh_from === g.code)?.wh_from_name ?? null}
+          count={g.rows.length}
+          countLabel="ໃບ"
+          tone="amber"
+        >
+        <div className="space-y-3">
+        {g.rows.map((d) => {
         const open = expanded === d.doc_no;
         const overdue = !!d.want_date && d.want_date < new Date().toISOString().slice(0, 10);
         return (
@@ -127,7 +138,10 @@ export default function ApproveClient() {
             )}
           </div>
         );
-      })}
+        })}
+        </div>
+        </WarehouseGroup>
+      ))}
     </div>
   );
 }

@@ -24,6 +24,12 @@ type MismatchRow = {
   sml: number;
   wms: number;
   sn: number;
+  /**
+   * ຈຳນວນທີ່ຢູ່ໃນ "ໃບຝາກສາງ" ທີ່ຍັງ active — ບິນຖືກຕັດ stock ໃນ ERP ໄປແລ້ວ ແຕ່
+   * ເຄື່ອງຍັງຢູ່ໃນສາງ (WMS ຍັງນັບ). ສະແດງເປັນຂໍ້ມູນປະກອບເທົ່ານັ້ນ — ບໍ່ໄດ້ນຳໄປ
+   * ຫັກໃນ `var_wms_sml` ຫຼື %ຄວາມຖືກຕ້ອງ.
+   */
+  deposit: number;
   var_wms_sml: number;
 };
 type Kpi = { total: number; matched: number; mismatched: number; accuracy: number; total_abs_var: number };
@@ -54,10 +60,27 @@ async function compute(wh: string): Promise<Entry> {
     [wh],
   );
 
+  // 2b) ເຄື່ອງຝາກສາງທີ່ຍັງ active — ບິນທີ່ຮັບຝາກໄວ້ ຕັດ stock ໃນ ERP ໄປແລ້ວ ແຕ່
+  //     ຂອງຍັງຢູ່ໃນສາງ. `wms_deposit_bill` ເກັບແຕ່ເລກບິນ → ດຶງແຖວສິນຄ້າຈາກ
+  //     ic_trans_detail ຕາມ (doc_no, trans_flag) ໃນສາງດຽວກັນ.
+  const depRows = await query<{ item_code: string; qty: string }>(
+    `SELECT d.item_code, SUM(d.qty)::numeric::text AS qty
+     FROM public.wms_deposit dep
+     JOIN public.wms_deposit_bill b ON b.deposit_id = dep.deposit_id
+     JOIN public.ic_trans_detail d
+       ON d.doc_no = b.doc_no AND d.trans_flag = b.trans_flag AND d.wh_code = dep.wh_code
+     WHERE dep.status = 'active' AND dep.wh_code = $1
+       AND (d.status = 0 OR d.status IS NULL)
+     GROUP BY d.item_code`,
+    [wh],
+  ).catch(() => [] as { item_code: string; qty: string }[]);
+
   const wmsBy = new Map(wmsRows.map((r) => [r.item_code, Number.parseFloat(r.wms) || 0]));
   const nameBy = new Map(wmsRows.map((r) => [r.item_code, r.item_name]));
   const unitBy = new Map(wmsRows.map((r) => [r.item_code, r.unit_code]));
   const snBy = new Map(snRows.map((r) => [r.item_code, r.sn]));
+  const depBy = new Map(depRows.map((r) => [r.item_code, Number.parseFloat(r.qty) || 0]));
+  // ບໍ່ເອົາສິນຄ້າທີ່ມີແຕ່ໃນໃບຝາກ ເຂົ້າມາໃນຊຸດທີ່ນັບ — ຄ່າ %ຄວາມຖືກຕ້ອງຄືເກົ່າ.
   const items = Array.from(new Set([...wmsBy.keys(), ...snBy.keys()]));
 
   // 3) SML (ERP) balance via the SmartBiz function (slow).
@@ -84,7 +107,7 @@ async function compute(wh: string): Promise<Entry> {
       matched += 1;
     } else {
       totalAbsVar += Math.abs(v);
-      mismatched.push({ item_code: code, item_name: nameBy.get(code) ?? null, unit_code: unitBy.get(code) ?? null, sml: smlV, wms: wmsV, sn: snV, var_wms_sml: v });
+      mismatched.push({ item_code: code, item_name: nameBy.get(code) ?? null, unit_code: unitBy.get(code) ?? null, sml: smlV, wms: wmsV, sn: snV, deposit: depBy.get(code) ?? 0, var_wms_sml: v });
     }
   }
   mismatched.sort((a, b) => Math.abs(b.var_wms_sml) - Math.abs(a.var_wms_sml));

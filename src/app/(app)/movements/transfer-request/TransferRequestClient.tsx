@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertIcon, CheckIcon, ChevronRightIcon, PlusIcon, SearchIcon } from "@/components/ui/Icons";
 import RSelect, { type ROption } from "@/components/ui/RSelect";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import StockLocationsDrawer from "./StockLocationsDrawer";
 
 export type WarehouseOption = { code: string; name: string | null };
@@ -39,7 +40,6 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
   const [fromDate, setFromDate] = useState(ago30);
   const [toDate, setToDate] = useState(today0);
   const [docQuery, setDocQuery] = useState("");
-  const [whFilter, setWhFilter] = useState("");
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [docs, setDocs] = useState<ReqDoc[]>([]);
@@ -105,7 +105,6 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
     try {
       const p = new URLSearchParams({ from: fromDate, to: toDate, page: String(pg) });
       if (docQuery.trim()) p.set("q", docQuery.trim());
-      if (whFilter) p.set("wh", whFilter);
       const res = await fetch(`/api/movements/transfer-request?${p}`);
       const data = (await res.json()) as { docs?: ReqDoc[]; has_more?: boolean; next_doc_no?: string };
       setDocs(data.docs ?? []);
@@ -114,7 +113,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
       setPage(pg);
     } finally { setLoadingList(false); }
   }
-  useEffect(() => { if (mode === "list") void loadList(0); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [mode, fromDate, toDate, whFilter]);
+  useEffect(() => { if (mode === "list") void loadList(0); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [mode, fromDate, toDate]);
 
   async function toggleDetail(docNo: string) {
     if (expanded === docNo) { setExpanded(null); return; }
@@ -210,6 +209,8 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
   const isDone = (d: ReqDoc) => statusOf(d).key === "done";
   const counts = { all: docs.length, pending: docs.filter((d) => !isDone(d)).length, done: docs.filter(isDone).length };
   const filtered = docs.filter((d) => statusTab === "all" || (statusTab === "done" ? isDone(d) : !isDone(d)));
+  // ແຍກກຸ່ມຕາມ "ສາງຜູ້ຂໍ" (wh_to) — ບໍ່ມີ dropdown ກອງສາງອີກແລ້ວ.
+  const docGroups = groupByWarehouse(filtered, (d) => d.wh_to ?? "—", destWarehouses);
 
   if (mode === "list") {
     return (
@@ -227,14 +228,12 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
           </button>
         </div>
         <div className="flex flex-wrap items-end gap-3 rounded-2xl bg-white p-3 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-          {destWarehouses.length > 1 && (
-            <div className="min-w-[170px]"><label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ (ຜູ້ຂໍ)</label>
-              <select value={whFilter} onChange={(e) => setWhFilter(e.target.value)} className={inputCls}>
-                <option value="">ທຸກສາງ</option>
-                {destWarehouses.map((w) => <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>)}
-              </select>
+          <div className="min-w-[170px]"><label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ (ຜູ້ຂໍ)</label>
+            <div className={`${inputCls} flex items-center gap-2 font-bold`}>
+              ທຸກສາງ
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{destWarehouses.length}</span>
             </div>
-          )}
+          </div>
           <div><label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ແຕ່ວັນທີ</label><input type="date" value={fromDate} max={toDate} onChange={(e) => setFromDate(e.target.value)} className={inputCls} /></div>
           <div><label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ຫາວັນທີ</label><input type="date" value={toDate} min={fromDate} onChange={(e) => setToDate(e.target.value)} className={inputCls} /></div>
           <div className="min-w-[160px] flex-1"><label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ເລກທີເອກະສານ</label>
@@ -250,8 +249,18 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
             <p className="mt-1 text-xs text-zinc-400">ກົດ &quot;ສ້າງໃບຂໍໂອນ&quot; ເພື່ອเริ่ม</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {filtered.map((d) => {
+          <div className="space-y-7">
+            {docGroups.map((g) => (
+            <WarehouseGroup
+              key={g.code}
+              code={g.code}
+              name={destWarehouses.find((w) => w.code === g.code)?.name}
+              count={g.rows.length}
+              countLabel="ໃບ"
+              tone="brand"
+            >
+            <div className="space-y-2">
+            {g.rows.map((d) => {
               const st = statusOf(d);
               const open = expanded === d.doc_no;
               const overdue = !!d.want_date && st.key !== "done" && d.want_date < new Date().toISOString().slice(0, 10);
@@ -317,6 +326,9 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
                 </div>
               );
             })}
+            </div>
+            </WarehouseGroup>
+            ))}
           </div>
         )}
         {(page > 0 || hasMore) && (
