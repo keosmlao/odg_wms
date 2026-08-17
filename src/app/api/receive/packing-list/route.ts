@@ -3,6 +3,7 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { phDimensionLateralJoin } from "@/lib/ph-dimension";
+import { needsIsnSql } from "@/lib/isnScope";
 
 /**
  * Resolve receive lines for one or more POs, to build a count sheet (ໃບກວດນັບ).
@@ -125,7 +126,7 @@ export async function GET(request: Request) {
               d.qty::text AS pack_qty,
               COALESCE(rem.ordered, 0)::text  AS ordered,
               COALESCE(rem.balance, 0)::text  AS remaining,
-              COALESCE(inv.is_isn, 0) = 1     AS is_isn,
+              ${needsIsnSql("inv")}           AS is_isn,
               ph.pallet::text AS pallet, ph.stack::text AS stack
        FROM public.odg_packing_list_detail d
        LEFT JOIN public.ic_inventory inv ON inv.code = d.item_code
@@ -166,7 +167,7 @@ export async function GET(request: Request) {
                  WHERE ${RECEIVED_FILTER} = p.doc_no AND rd.item_code = p.item_code
                    AND (rh.status = 0 OR rh.status IS NULL) AND rh.warehouse_code = $2
                ), 0))::text AS remaining,
-              COALESCE(inv.is_isn,0) = 1 AS is_isn,
+              ${needsIsnSql("inv")} AS is_isn,
               ph.pallet::text AS pallet, ph.stack::text AS stack
        FROM public.odg_po_remain p
        JOIN public.ic_warehouse w ON w.name_1 = p.warehouse AND w.code = $2

@@ -28,7 +28,7 @@ export default async function AccuracyPage() {
         title="ຄວາມຖືກຕ້ອງ stock (Accuracy)"
         description="ກວດທຽບ ERP (SML) ↔ WMS ↔ SN ຕໍ່ສິນຄ້າ — ຫາລາຍການທີ່ບໍ່ກົງ ເພື່ອປັບໃຫ້ stock ຖືກຕ້ອງ"
         icon={<TrendIcon className="h-6 w-6" />}
-        tone="blue"
+        tone="navy"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
       <AccuracyClient warehouses={warehouses} />

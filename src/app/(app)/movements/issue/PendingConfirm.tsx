@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertIcon, CheckIcon, PackageIcon, SearchIcon } from "@/components/ui/Icons";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import { MOVE_REASONS } from "@/lib/moveReasons";
 import ScanLogPanel from "./ScanLogPanel";
 import type { WarehouseOption } from "./SourceIssue";
@@ -9,16 +10,22 @@ import type { WarehouseOption } from "./SourceIssue";
 type DraftDoc = {
   doc_no: string; doc_date: string | null; doc_time: string | null; warehouse_code: string | null;
   ref_doc_no: string | null; customer_code: string | null; remark: string | null; line_count: number; serial_count: number; total_qty: string;
+  /** ໃບທີ່ດຶງມາຈາກໃບຈັດຖ້ຽວຂອງຂົນສົ່ງ (wms_pick_trip) — ຫຼາຍໃບຂອງຖ້ຽວດຽວກັນ. */
+  trip_doc_no?: string | null; trip_car?: string | null; trip_car_name?: string | null;
 };
 /** A scannable unit, tagged with the node it currently sits at. */
 type Unit = { sn: string | null; isn: string | null; rack: string; location: string; pallet: string };
 /** A bin in this warehouse that still holds the item — a re-point target. */
 type LocOption = { rack: string; location: string; pallet: string; qty: string; sn_qty: number };
+<<<<<<< HEAD
 /** erp_department_list — chosen fresh at every trans_flag=56 confirm. */
 type DeptOption = { code: string; name: string | null };
 /** erp_doc_format (screen_code 'IO'), filtered to the 122 request's own branch. */
 type DocFormatOption = { code: string; name: string | null; format: string | null; branch: string | null };
 type DraftLine = { roworder: number; item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; serials: string[]; units?: Unit[]; loc_options?: LocOption[]; serial_required?: boolean; dual_required?: boolean };
+=======
+type DraftLine = { roworder: number; item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; /** ບິນຕົ້ນທາງຂອງແຖວ (ໃບຖ້ຽວ: 1 ໃບ ຫຼາຍບິນ). */ ref_doc_no?: string | null; serials: string[]; units?: Unit[]; loc_options?: LocOption[]; serial_required?: boolean; dual_required?: boolean };
+>>>>>>> efc01027f3afc51e1e035d7b5d4bf2a26404ca3c
 /** Where a line's goods were actually taken from, when it differs from the plan. */
 type NodeRef = { rack: string; location: string; pallet: string };
 /** One entry in the confirm-step audit trail (odg_wms_pick_scan_log). */
@@ -54,7 +61,6 @@ function ddmm(d: string | null) {
 // doc, so refreshing (or navigating away) never loses them — the operator can
 // come back and keep scanning where they left off.
 const LS_ACTIVE = "wms.issueConfirm.activeDoc";
-const LS_WH = "wms.issueConfirm.wh";
 const scanKey = (doc: string) => `wms.issueConfirm.scan.${doc}`;
 
 function lsGet(key: string): string | null {
@@ -76,8 +82,9 @@ function loadScan(doc: string): { scanned: string[]; reasons: Record<string, str
 }
 
 export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOption[] }) {
-  const [wh, setWh] = useState(warehouses.length === 1 ? warehouses[0].code : "");
   const [docs, setDocs] = useState<DraftDoc[]>([]);
+  /** ກອງຕາມລົດ/ຖ້ຽວ — "" = ທັງໝົດ, "-" = ໃບທີ່ບໍ່ໄດ້ມາຈາກຖ້ຽວ, ອື່ນໆ = trip_doc_no */
+  const [tripFilter, setTripFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState<{ header: DraftDoc; lines: DraftLine[]; source_type: string } | null>(null);
   // erp_department_list / erp_doc_format — required for a "req" (trans_flag=56)
@@ -140,29 +147,25 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
     return () => { window.removeEventListener("beforeunload", onLeave); void flushLog(); };
   }, [flushLog]);
 
+  /** ໂຫຼດໃບ pick ຄ້າງຢືນຢັນ ຂອງທຸກສາງທີ່ມີສິດ (ບໍ່ມີການເລືອກສາງອີກແລ້ວ). */
   async function loadDocs() {
-    if (!wh) { setDocs([]); return; }
     setLoading(true);
     try {
-      const res = await fetch(`/api/movements/issue/draft?wh=${encodeURIComponent(wh)}`);
+      const res = await fetch(`/api/movements/issue/draft`);
       const data = (await res.json()) as { docs?: DraftDoc[] };
       setDocs(data.docs ?? []);
     } finally { setLoading(false); }
   }
-  useEffect(() => { void loadDocs(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [wh]);
+  useEffect(() => { void loadDocs(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  // On first mount, restore the warehouse + auto-reopen the doc the operator was
-  // confirming (with its stashed scans), so a page refresh resumes in place.
+  // On first mount, auto-reopen the doc the operator was confirming (with its
+  // stashed scans), so a page refresh resumes in place.
   useEffect(() => {
-    const savedWh = lsGet(LS_WH);
-    if (savedWh) setWh(savedWh);
     const savedDoc = lsGet(LS_ACTIVE);
     if (savedDoc) void openDoc(savedDoc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist the selected warehouse, and the active doc's scans, as they change.
-  useEffect(() => { if (wh) lsSet(LS_WH, wh); }, [wh]);
   useEffect(() => {
     if (!active) return;
     lsSet(scanKey(active.header.doc_no), JSON.stringify({ scanned: [...scanned], reasons, moves }));
@@ -495,33 +498,86 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
 
   const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-red-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
+  // ລົດ/ຖ້ຽວ ທີ່ມີໃບຄ້າງຢືນຢັນຢູ່ໃນສາງນີ້ (ໜຶ່ງຖ້ຽວ = ໜຶ່ງໃບ ແຕ່ອາດມີໃບເກົ່າຫຼາຍໃບ)
+  const tripOptions = useMemo(() => {
+    const m = new Map<string, { trip: string; label: string; count: number }>();
+    for (const d of docs) {
+      if (!d.trip_doc_no) continue;
+      const cur = m.get(d.trip_doc_no);
+      if (cur) cur.count += 1;
+      else m.set(d.trip_doc_no, { trip: d.trip_doc_no, label: `${d.trip_car_name ?? d.trip_car ?? "—"} · ${d.trip_doc_no}`, count: 1 });
+    }
+    return [...m.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [docs]);
+  const shownDocs = useMemo(() => {
+    if (!tripFilter) return docs;
+    if (tripFilter === "-") return docs.filter((d) => !d.trip_doc_no);
+    return docs.filter((d) => d.trip_doc_no === tripFilter);
+  }, [docs, tripFilter]);
+  const docGroups = useMemo(
+    () => groupByWarehouse(shownDocs, (d) => d.warehouse_code ?? "—", warehouses),
+    [shownDocs, warehouses],
+  );
+
   return (
     <div className="space-y-4">
       {!active && (
         <>
-          <section className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-            <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ</label>
-            <select value={wh} onChange={(e) => setWh(e.target.value)} className={inputCls}>
-              {warehouses.length !== 1 && <option value="">— ເລືອກສາງ —</option>}
-              {warehouses.map((w) => <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>)}
-            </select>
+          <section className="shadow-card flex flex-wrap items-end gap-4 rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+            <div className="min-w-0 flex-1">
+              <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">ສາງ</label>
+              <div className={`${inputCls} flex w-full items-center gap-2 font-bold`}>
+                ທຸກສາງ
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+              </div>
+            </div>
+            {tripOptions.length > 0 && (
+              <div className="min-w-0 flex-1">
+                <label className="mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">🚚 ລົດ / ໃບຈັດຖ້ຽວ</label>
+                <select value={tripFilter} onChange={(e) => setTripFilter(e.target.value)} className={`${inputCls} w-full`}>
+                  <option value="">— ທັງໝົດ ({docs.length}) —</option>
+                  {tripOptions.map((t) => (
+                    <option key={t.trip} value={t.trip}>{t.label} ({t.count})</option>
+                  ))}
+                  {docs.some((d) => !d.trip_doc_no) && <option value="-">ບໍ່ໄດ້ມາຈາກຖ້ຽວ ({docs.filter((d) => !d.trip_doc_no).length})</option>}
+                </select>
+              </div>
+            )}
           </section>
           <section className="space-y-2">
             {loading ? <div className="py-10 text-center text-sm text-zinc-400">ກຳລັງໂຫຼດ...</div>
-            : !wh ? <div className="py-10 text-center text-sm text-zinc-400">ເລືອກສາງເພື່ອเริ่ม</div>
-            : docs.length === 0 ? <div className="py-10 text-center text-sm text-zinc-400">ບໍ່ມີໃບ pick ລໍຖ້າຢືນຢັນ</div>
-            : docs.map((d) => (
+            : shownDocs.length === 0 ? <div className="py-10 text-center text-sm text-zinc-400">{docs.length === 0 ? "ບໍ່ມີໃບ pick ລໍຖ້າຢືນຢັນ" : "ບໍ່ມີໃບ pick ຂອງລົດ/ຖ້ຽວທີ່ເລືອກ"}</div>
+            : docGroups.map((g) => (
+              <WarehouseGroup
+                key={g.code}
+                code={g.code}
+                name={warehouses.find((w) => w.code === g.code)?.name}
+                count={g.rows.length}
+                countLabel="ໃບ"
+                tone="red"
+              >
+              <div className="space-y-2">
+              {g.rows.map((d) => (
               <div key={d.doc_no} className="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-200 transition hover:ring-red-300 dark:bg-zinc-900 dark:ring-zinc-800">
                 <div className="flex w-full items-center gap-3 p-3.5">
                   <button type="button" onClick={() => toggleExpand(d.doc_no)} className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer">
                     <span className={`shrink-0 text-zinc-400 transition-transform ${expanded === d.doc_no ? "rotate-90" : ""}`}>›</span>
                     <span className="min-w-0">
-                      <span className="flex items-center gap-2"><span className="font-mono text-sm font-bold text-red-600 dark:text-red-400">{d.doc_no}</span>{d.ref_doc_no && <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">ref {d.ref_doc_no}</span>}<span className="text-[11px] text-zinc-400">{ddmm(d.doc_date)} {d.doc_time}</span></span>
+                      <span className="flex items-center gap-2"><span className="font-mono text-sm font-bold text-red-600 dark:text-red-400">{d.doc_no}</span>{d.ref_doc_no && <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">ref {d.ref_doc_no}</span>}{d.trip_doc_no && <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-950/40 dark:text-brand-300" title={`ໃບຈັດຖ້ຽວ ${d.trip_doc_no}`}>🚚 {d.trip_car_name ?? d.trip_car ?? d.trip_doc_no}</span>}<span className="text-[11px] text-zinc-400">{ddmm(d.doc_date)} {d.doc_time}</span></span>
                       <span className="block truncate text-xs text-zinc-500">{d.customer_code ?? "—"}{d.remark ? ` · 🚜 ${d.remark}` : ""}</span>
                     </span>
                   </button>
                   <div className="text-right text-[11px] text-zinc-500"><div className="font-mono text-sm font-bold text-red-600 dark:text-red-400">ຄ້າງ {Number.parseFloat(d.total_qty) || 0}</div><div>{d.line_count} ລາຍການ{d.serial_count > 0 ? ` · ${d.serial_count} ISN` : ""}</div></div>
                   <a href={`/print/pick/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener" title="ພິມໃບ pick" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 hover:bg-slate-50 hover:text-slate-700 dark:ring-zinc-800">🖨</a>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => { if (window.confirm(`ລົບໃບ pick ${d.doc_no}?\nສິນຄ້າຈະກັບໄປເປັນ "ຄ້າງຈ່າຍ" ຂອງບິນຕົ້ນທາງຄືເກົ່າ (ຍັງບໍ່ໄດ້ຕັດ stock).`)) void cancelDraft(d.doc_no); }}
+                    title="ລົບໃບ pick ນີ້ (ຍັງບໍ່ໄດ້ຕັດ stock)"
+                    className="shrink-0 rounded-lg p-2 text-rose-500 ring-1 ring-rose-200 transition hover:bg-rose-50 disabled:opacity-40 dark:text-rose-400 dark:ring-rose-900/50 dark:hover:bg-rose-950/30"
+                  >
+                    🗑
+                  </button>
                   <button type="button" onClick={() => openDoc(d.doc_no)} className="shrink-0 rounded-lg bg-gradient-to-r from-red-500 to-orange-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:shadow active:scale-95 cursor-pointer">ຢືນຢັນຈ່າຍ →</button>
                 </div>
                 {expanded === d.doc_no && (
@@ -534,7 +590,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                           {linesByDoc[d.doc_no].map((l, i) => (
                             <tr key={`${l.item_code}-${i}`}>
-                              <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-red-600 dark:text-red-400">{l.item_code}</span><div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{l.item_name}</div></td>
+                              <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-red-600 dark:text-red-400">{l.item_code}</span>{l.ref_doc_no && <span className="ml-1.5 rounded bg-zinc-100 px-1 text-[9px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" title="ບິນຂາຍຂອງແຖວນີ້">{l.ref_doc_no}</span>}<div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{l.item_name}</div></td>
                               <td className="px-4 py-2 font-mono text-[11px] text-zinc-500">{[l.rack, l.location, l.pallet].filter(Boolean).join(" / ") || "—"}</td>
                               <td className="px-4 py-2">
                                 {l.serials && l.serials.length > 0 ? (
@@ -554,6 +610,9 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                   </div>
                 )}
               </div>
+              ))}
+              </div>
+              </WarehouseGroup>
             ))}
           </section>
         </>
@@ -662,7 +721,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                   <div key={i} className={`overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-zinc-900 ${got >= need && need > 0 ? "border-emerald-300 dark:border-emerald-900/50" : "border-zinc-200 dark:border-zinc-800"}`}>
                     <div className="flex items-start justify-between gap-2 p-4">
                       <div className="min-w-0">
-                        <div className="font-mono text-[11px] text-zinc-400">{l.item_code}{isSer && <span className="ml-1.5 rounded bg-violet-100 px-1 text-[9px] font-bold text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">SN</span>}</div>
+                        <div className="font-mono text-[11px] text-zinc-400">{l.item_code}{isSer && <span className="ml-1.5 rounded bg-aqua-100 px-1 text-[9px] font-bold text-aqua-700 dark:bg-aqua-950/60 dark:text-aqua-300">SN</span>}{l.ref_doc_no && <span className="ml-1.5 rounded bg-red-50 px-1 text-[9px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300" title="ບິນຂາຍຂອງແຖວນີ້">{l.ref_doc_no}</span>}</div>
                         <div className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">{l.item_name}</div>
                         {/* ບ່ອນຈັດເກັບ — ແກ້ໄດ້ ຖ້າໄປເອົາຂອງຕົວຈິງບ່ອນອື່ນ (ທາງຕັນ / ຈັບບໍ່ອອກ) */}
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

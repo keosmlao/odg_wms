@@ -300,8 +300,8 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
       <div className="flex items-center justify-between gap-2">
         <BackLink onClick={() => router.push("/movements/receive?tab=count")} label="← ກັບໄປໃບກວດນັບ" />
         <div className="flex items-center gap-1.5">
-          <a href={`/movements/receive/count/${encodeURIComponent(docNo)}/print`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200 transition hover:bg-indigo-100">🖨 ໃບກວດນັບ</a>
-          <a href={`/movements/receive/count/${encodeURIComponent(docNo)}/labels`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100">🏷 SN</a>
+          <a href={`/movements/receive/count/${encodeURIComponent(docNo)}/print`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 rounded-md bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-200 transition hover:bg-brand-100">🖨 ໃບກວດນັບ</a>
+          <a href={`/movements/receive/count/${encodeURIComponent(docNo)}/labels`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 rounded-md bg-aqua-50 px-2.5 py-1 text-xs font-semibold text-aqua-700 ring-1 ring-aqua-200 transition hover:bg-aqua-100">🏷 SN</a>
           <button type="button" onClick={() => setConfirmDelete(true)} className="text-xs font-semibold text-rose-500 hover:underline">ລົບ</button>
         </div>
       </div>
@@ -317,7 +317,7 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
           ))}
           {header.pack_no && <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">{header.pack_no}</span>}
           <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">ສາງ {header.wh_code}{header.wh_name ? ` · ${header.wh_name}` : ""}</span>
-          {totalPallets > 0 && <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-600">~{totalPallets} ພາເລດ</span>}
+          {totalPallets > 0 && <span className="rounded-md bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-600">~{totalPallets} ພາເລດ</span>}
         </>}
       >
         <div className="flex items-center gap-2">
@@ -354,11 +354,11 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
                   <label className="text-xs font-semibold text-slate-500">ກວດນັບ</label>
                   <input type="number" inputMode="decimal" value={l.qty} onChange={(e) => setLine(l.item_code, { qty: e.target.value })} className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-center font-mono text-sm font-bold" />
                   <span className="text-[11px] text-slate-400">{l.unit_code ?? ""}</span>
-                  {pal > 0 && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-600">~{pal} ພາເລດ</span>}
+                  {pal > 0 && <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-brand-600">~{pal} ພາເລດ</span>}
                   <span className="mx-1 text-slate-300">·</span>
                   <label className="text-xs font-semibold text-slate-500">ຮັບ ຈິງ</label>
                   {l.isIsn ? (
-                    <button type="button" onClick={() => toggleSn(l)} className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 transition hover:bg-violet-100">
+                    <button type="button" onClick={() => toggleSn(l)} className="rounded-lg border border-aqua-300 bg-aqua-50 px-3 py-1.5 text-xs font-bold text-aqua-700 transition hover:bg-aqua-100">
                       {got}/{sns.length} {l.showSn ? "▲" : "▼ ເລືອກ SN"}
                     </button>
                   ) : (
@@ -376,7 +376,7 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
 
                 {/* ISN 3-state serial selector */}
                 {l.isIsn && l.showSn && sns.length > 0 && (
-                  <div className="rounded-lg bg-violet-50/50 p-2">
+                  <div className="rounded-lg bg-aqua-50/50 p-2">
                     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1">
                       <span className="text-[10px] text-slate-500">ກົດ serial ເພື່ອสลับ: <b className="text-emerald-600">ຮັບ</b> → <b className="text-amber-600">ພັກ</b> → <b className="text-rose-600">ຍົກເລີກ</b></span>
                       <span className="flex gap-2">

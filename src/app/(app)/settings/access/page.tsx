@@ -3,6 +3,7 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { WmsRole } from "@/lib/session-shared";
 import { type WmsPerm, permissionsForMany } from "@/lib/permissions";
+import { WMS_DEPARTMENT_CODES } from "@/lib/wmsDepartments";
 import AccessClient from "./AccessClient";
 import { Hero, Chip, KpiCard } from "@/components/ui/Card";
 import {
@@ -18,6 +19,11 @@ export type EmployeeRow = {
   nickname: string | null;
   position_code: string | null;
   department_code: string | null;
+  department_name: string | null;
+  /** ຢູ່ນອກພະແນກ WMS ແຕ່ຖືສິດຢູ່ — ສະແດງໄວ້ເພື່ອໃຫ້ຖອນສິດໄດ້. */
+  out_of_scope: boolean;
+  /** ມີລະຫັດຜ່ານໃນ odg_employee ບໍ່ — ບໍ່ມີ = ມອບສິດໃຫ້ກໍ່ເຂົ້າລະບົບບໍ່ໄດ້. */
+  can_login: boolean;
   role: WmsRole | null;
   warehouses: string[];
   /** Extra grants beyond the role — empty for a manager, who holds them all. */
@@ -32,10 +38,16 @@ export default async function AccessPage() {
   if (session.role !== "manager") redirect("/");
 
   const [employeeRows, warehouses] = await Promise.all([
+    // ພະນັກງານ ACTIVE ທັງໝົດ — ມອບສິດໃຫ້ພະແນກໃດກໍ່ໄດ້. ຄົນນອກພະແນກສາງ/ໄອທີ
+    // ຖືກໝາຍ out_of_scope ໄວ້ ເພື່ອໃຫ້ UI ເຕືອນ ບໍ່ແມ່ນເພື່ອຕັດອອກ.
     query<Omit<EmployeeRow, "permissions">>(`
       SELECT
         e.employee_id, e.employee_code, e.fullname_lo, e.nickname,
         e.position_code, e.department_code,
+        d.department_name_lo AS department_name,
+        (r.role IS NOT NULL
+          AND (e.department_code IS NULL OR NOT (e.department_code = ANY($1)))) AS out_of_scope,
+        (e.password IS NOT NULL AND e.password <> '') AS can_login,
         r.role,
         COALESCE(
           (SELECT array_agg(w.warehouse_code ORDER BY w.warehouse_code)
@@ -45,9 +57,10 @@ export default async function AccessPage() {
         ) AS warehouses
       FROM public.odg_employee e
       LEFT JOIN public.wms_user_role r ON r.employee_id = e.employee_id
+      LEFT JOIN public.odg_department d ON d.department_code = e.department_code
       WHERE COALESCE(e.employment_status, 'ACTIVE') = 'ACTIVE'
       ORDER BY e.fullname_lo NULLS LAST, e.employee_code
-    `),
+    `, [WMS_DEPARTMENT_CODES]),
     query<WarehouseRow>(`
       SELECT code, name_1 AS name
       FROM public.ic_warehouse
@@ -75,9 +88,9 @@ export default async function AccessPage() {
     <div className="w-full space-y-5">
       <Hero
         title="ຈັດການສິດເຂົ້າເຖິງ"
-        description="ກຳນົດ role ແລະ ສາງທີ່ຮັບຜິດຊອບໃຫ້ແຕ່ລະພະນັກງານ"
+        description="ກຳນົດ role ແລະ ສາງທີ່ຮັບຜິດຊອບໃຫ້ແຕ່ລະພະນັກງານ — ພະນັກງານ ACTIVE ທຸກພະແນກ"
         icon={<ShieldIcon className="h-6 w-6" />}
-        tone="violet"
+        tone="aqua"
         chips={
           <>
             <Chip tone="primary">ຜູ້ຈັດການ</Chip>
@@ -98,14 +111,14 @@ export default async function AccessPage() {
           icon={<ShieldIcon className="h-4 w-4" />}
           label="ຜູ້ຈັດການ"
           value={counts.manager}
-          tone="violet"
+          tone="aqua"
           highlight
         />
         <KpiCard
           icon={<UsersIcon className="h-4 w-4" />}
           label="Supervisor"
           value={counts.supervisor}
-          tone="blue"
+          tone="navy"
           highlight
         />
         <KpiCard
@@ -120,7 +133,6 @@ export default async function AccessPage() {
           label="ຍັງບໍ່ມີສິດ"
           value={counts.none}
           tone="amber"
-          highlight={counts.none > 0}
         />
       </section>
 

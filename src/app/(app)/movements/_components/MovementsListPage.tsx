@@ -443,7 +443,7 @@ export default async function MovementsListPage({
           </div>
           <button
             type="submit"
-            className="rounded-lg bg-gradient-to-r from-indigo-500 to-violet-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:shadow-lg hover:shadow-indigo-500/30 active:from-indigo-600 active:to-violet-700"
+            className="rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg hover:shadow-brand-500/30 active:from-brand-600 active:to-aqua-700"
           >
             ກອງ
           </button>

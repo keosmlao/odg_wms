@@ -17,6 +17,7 @@ const SECTIONS: { key: keyof ReportInput["sections"]; label: string }[] = [
   { key: "pending", label: "ໃບຄ້າງຮັບ (PO)" },
   { key: "issue_pending", label: "ສິນຄ້າຄ້າງຈ່າຍ" },
   { key: "movers", label: "ເຄື່ອນໄຫວຫຼາຍສຸດ (7ວັນ)" },
+  { key: "min_stock", label: "ຕ່ຳກວ່າ stock ຂັ້ນຕ່ຳ" },
   { key: "health", label: "ສະຖານະສາງ (dead/SN)" },
 ];
 
@@ -25,7 +26,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 function blankInput(): ReportInput {
   return {
     name: "", enabled: true,
-    sections: { receive: true, issue: true, pending: true, health: true, movers: false, issue_pending: false },
+    sections: { receive: true, issue: true, pending: true, health: true, movers: false, issue_pending: false, min_stock: false },
     send_hour: 8, send_minute: 0, send_days: [1, 2, 3, 4, 5, 6], wh_scope: [], recipients: [],
   };
 }
@@ -165,7 +166,7 @@ export default function EmailReportsClient({
       ) : (
         <button
           type="button" onClick={startNew}
-          className="inline-flex items-center gap-2 rounded-xl border border-dashed border-zinc-300 px-4 py-2.5 text-sm font-semibold text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-600 dark:border-zinc-700 dark:text-zinc-300"
+          className="inline-flex items-center gap-2 rounded-xl border border-dashed border-zinc-300 px-4 py-2.5 text-sm font-semibold text-zinc-600 transition hover:border-brand-400 hover:text-brand-600 dark:border-zinc-700 dark:text-zinc-300"
         >
           + ເພີ່ມລາຍງານໃໝ່
         </button>
@@ -181,7 +182,7 @@ function ReportRow({ r, onEdit }: { r: EmailReport; onEdit: () => void }) {
   return (
     <button
       type="button" onClick={onEdit}
-      className="flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-200/70 bg-white/90 px-5 py-4 text-left shadow-sm transition hover:border-indigo-300 dark:border-zinc-800/70 dark:bg-zinc-900/80"
+      className="flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-200/70 bg-white/90 px-5 py-4 text-left shadow-sm transition hover:border-brand-300 dark:border-zinc-800/70 dark:bg-zinc-900/80"
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -197,7 +198,7 @@ function ReportRow({ r, onEdit }: { r: EmailReport; onEdit: () => void }) {
           </div>
         )}
       </div>
-      <span className="shrink-0 text-xs font-semibold text-indigo-600 dark:text-indigo-400">ແກ້ໄຂ →</span>
+      <span className="shrink-0 text-xs font-semibold text-brand-600 dark:text-brand-400">ແກ້ໄຂ →</span>
     </button>
   );
 }
@@ -224,7 +225,7 @@ function Editor({
     set("sections", { ...draft.sections, [k]: !draft.sections[k] });
 
   return (
-    <div className="space-y-4 rounded-2xl border border-indigo-200/70 bg-white/95 p-5 shadow-sm dark:border-indigo-900/40 dark:bg-zinc-900/90">
+    <div className="space-y-4 rounded-2xl border border-brand-200/70 bg-white/95 p-5 shadow-sm dark:border-brand-900/40 dark:bg-zinc-900/90">
       {/* Name + enabled */}
       <div className="flex items-end gap-3">
         <label className="block flex-1">
@@ -233,7 +234,7 @@ function Editor({
             type="text" value={draft.name} maxLength={100}
             onChange={(e) => set("name", e.target.value)}
             placeholder="ເຊັ່ນ: ລາຍງານປະຈຳວັນ ສາງໃຫຍ່"
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
         </label>
         <label className="flex cursor-pointer items-center gap-2 pb-2">
@@ -295,7 +296,7 @@ function Editor({
           onChange={(e) => set("recipients", e.target.value.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean))}
           rows={Math.max(2, draft.recipients.length + 1)}
           placeholder="name@odien.net"
-          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 font-mono text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 font-mono text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
         />
       </label>
 
@@ -324,7 +325,7 @@ function Editor({
             </button>
           )}
           <button type="button" onClick={onSave} disabled={busy}
-            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-60">
+            className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-500 disabled:opacity-60">
             {busy ? "ກຳລັງບັນທຶກ..." : "ບັນທຶກ"}
           </button>
         </div>
@@ -339,8 +340,8 @@ function Chip({ active, onClick, label, small }: { active: boolean; onClick: () 
       type="button" onClick={onClick}
       className={`rounded-lg border font-semibold transition ${small ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs"} ${
         active
-          ? "border-indigo-500 bg-indigo-600 text-white shadow-sm"
-          : "border-zinc-200 bg-white text-zinc-600 hover:border-indigo-300 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+          ? "border-brand-500 bg-brand-600 text-white shadow-sm"
+          : "border-zinc-200 bg-white text-zinc-600 hover:border-brand-300 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
       }`}
     >
       {label}
@@ -356,7 +357,7 @@ function NumInput({ value, min, max, onChange }: { value: number; min: number; m
         const n = Number.parseInt(e.target.value, 10);
         if (Number.isInteger(n)) onChange(Math.max(min, Math.min(max, n)));
       }}
-      className="w-16 rounded-lg border border-zinc-200 bg-white px-2 py-2 text-center text-sm font-mono tabular-nums shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+      className="w-16 rounded-lg border border-zinc-200 bg-white px-2 py-2 text-center text-sm font-mono tabular-nums shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
     />
   );
 }

@@ -82,13 +82,13 @@ export default async function CountSheetList({ session }: { session: Session; pa
       <div className="px-1 text-xs text-zinc-500 dark:text-zinc-400">ໃບກວດນັບຄ້າງ {sheets.length} ໃບ</div>
       {sheets.map((s) => (
         <Link key={s.doc_no} href={`/movements/receive/count/${encodeURIComponent(s.doc_no)}`} className="shadow-card flex flex-wrap items-center gap-3 rounded-2xl bg-white px-5 py-3.5 ring-1 ring-zinc-200 transition hover:ring-emerald-400 dark:bg-zinc-900 dark:ring-zinc-800">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 font-mono text-[10px] font-bold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-aqua-50 font-mono text-[10px] font-bold text-aqua-700 dark:bg-aqua-950/40 dark:text-aqua-300">
             {(s.wh_code ?? "?").slice(-2)}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{s.doc_no}</span>
-              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">ກວດນັບ</span>
+              <span className="rounded-full bg-aqua-100 px-2 py-0.5 text-[10px] font-semibold text-aqua-700 dark:bg-aqua-950/50 dark:text-aqua-300">ກວດນັບ</span>
               {(s.po_list && s.po_list.length > 0 ? s.po_list : s.po_no ? [s.po_no] : []).slice(0, 3).map((po) => (
                 <span key={po} className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">PO {po}</span>
               ))}
@@ -101,12 +101,12 @@ export default async function CountSheetList({ session }: { session: Session; pa
               <span className="inline-flex items-center gap-1"><CalendarIcon className="h-3 w-3" />{s.doc_date ?? "—"}{s.doc_time ? ` ${s.doc_time}` : ""}</span>
               <span className="inline-flex items-center gap-1"><UserIcon className="h-3 w-3" />{s.creator_name ?? s.creator_code ?? "—"}</span>
               {s.wh_code && <span className="inline-flex items-center gap-1"><BuildingIcon className="h-3 w-3" />{s.wh_code}{s.wh_name ? ` · ${s.wh_name}` : ""}</span>}
-              {s.pallet_positions && Number.parseFloat(s.pallet_positions) > 0 && <span className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400"><PackageIcon className="h-3 w-3" />ຕ້ອງໃຊ້ ~{fmt(s.pallet_positions)} ພາເລດ</span>}
+              {s.pallet_positions && Number.parseFloat(s.pallet_positions) > 0 && <span className="inline-flex items-center gap-1 font-semibold text-brand-600 dark:text-brand-400"><PackageIcon className="h-3 w-3" />ຕ້ອງໃຊ້ ~{fmt(s.pallet_positions)} ພາເລດ</span>}
               {s.sn_count > 0 && <span className="inline-flex items-center gap-1"><PackageIcon className="h-3 w-3" />SN {s.sn_count}</span>}
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <div className="font-mono text-sm font-bold tabular-nums text-sky-600 dark:text-sky-400">{fmt(s.total_qty)}</div>
+            <div className="font-mono text-sm font-bold tabular-nums text-aqua-600 dark:text-aqua-400">{fmt(s.total_qty)}</div>
             <div className="text-[10px] text-zinc-400">{s.line_count} ລາຍການ</div>
           </div>
         </Link>

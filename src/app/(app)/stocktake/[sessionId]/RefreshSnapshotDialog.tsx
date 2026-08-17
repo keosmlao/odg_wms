@@ -203,7 +203,7 @@ export default function RefreshSnapshotDialog({
             type="button"
             onClick={() => run(false)}
             disabled={pending}
-            className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+            className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
           >
             {pending ? "ກຳລັງດຶງ..." : "ດຶງ SML"}
           </button>
@@ -235,8 +235,8 @@ function ModeOption({
         disabled
           ? "cursor-not-allowed border-zinc-200 bg-zinc-50/60 opacity-60 dark:border-zinc-800 dark:bg-zinc-900/40"
           : active
-            ? "border-indigo-300 bg-indigo-50/60 dark:border-indigo-700 dark:bg-indigo-950/30"
-            : "border-zinc-200 hover:border-indigo-200 hover:bg-indigo-50/30 dark:border-zinc-800 dark:hover:border-indigo-800"
+            ? "border-brand-300 bg-brand-50/60 dark:border-brand-700 dark:bg-brand-950/30"
+            : "border-zinc-200 hover:border-brand-200 hover:bg-brand-50/30 dark:border-zinc-800 dark:hover:border-brand-800"
       }`}
     >
       <input
@@ -246,7 +246,7 @@ function ModeOption({
         checked={active}
         onChange={() => !disabled && onChange(value)}
         disabled={disabled}
-        className="mt-0.5 h-4 w-4 cursor-pointer accent-indigo-600 disabled:cursor-not-allowed"
+        className="mt-0.5 h-4 w-4 cursor-pointer accent-brand-600 disabled:cursor-not-allowed"
       />
       <div className="min-w-0">
         <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">

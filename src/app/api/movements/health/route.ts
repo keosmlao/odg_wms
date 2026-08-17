@@ -2,17 +2,26 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import { minStockSummary } from "@/lib/minStock";
 
 /**
  * Lightweight warehouse-health summary for the home control-tower cards:
  *  - dead stock: items still in stock but idle (no outbound) > 90 days
  *  - SN mismatch: (rack, location, pallet, item) nodes where WMS qty != in-stock
  *    serial count, for serial-tracked items — same key as /movements/sn-check
+ *  - min stock: items below their configured minimum, in warehouses that opted
+ *    into min/max control — same aggregate as /movements/min-stock
  *
  * Scoped to the caller's accessible warehouses. Cached in-process (5-min TTL)
  * keyed by scope so the home page never blocks on the heavier aggregates.
  */
-type Health = { dead_items: number; dead_qty: number; sn_mismatch: number; computed_at: number };
+type Health = {
+  dead_items: number;
+  dead_qty: number;
+  sn_mismatch: number;
+  min_below: number;
+  computed_at: number;
+};
 
 const TTL_MS = 5 * 60 * 1000;
 const cacheStore = (globalThis as unknown as { __wmsHealthCache?: Map<string, Health> }).__wmsHealthCache ??=
@@ -25,7 +34,7 @@ export async function GET() {
 
   const accessible = accessibleWarehouses(session); // null = all, [] = none, [..] = list
   if (Array.isArray(accessible) && accessible.length === 0) {
-    return NextResponse.json({ dead_items: 0, dead_qty: 0, sn_mismatch: 0, cached: false });
+    return NextResponse.json({ dead_items: 0, dead_qty: 0, sn_mismatch: 0, min_below: 0, cached: false });
   }
 
   const key = accessible === null ? "ALL" : [...accessible].sort().join(",");
@@ -39,7 +48,7 @@ export async function GET() {
   const whClauseS = accessible === null ? "" : "AND s.wh_code = ANY($1)";
   const args = accessible === null ? [] : [accessible];
 
-  const [deadRows, mismatchRows] = await Promise.all([
+  const [deadRows, mismatchRows, minStock] = await Promise.all([
     query<{ dead_items: string; dead_qty: string }>(
       `WITH stock AS (
          SELECT t.wh_code, t.item_code,
@@ -94,12 +103,14 @@ export async function GET() {
        SELECT count(*)::text AS mismatch FROM merged WHERE sq <> sc`,
       args,
     ),
+    minStockSummary(accessible),
   ]);
 
   const result: Health = {
     dead_items: Number.parseInt(deadRows[0]?.dead_items ?? "0", 10) || 0,
     dead_qty: Math.round((Number.parseFloat(deadRows[0]?.dead_qty ?? "0") || 0) * 100) / 100,
     sn_mismatch: Number.parseInt(mismatchRows[0]?.mismatch ?? "0", 10) || 0,
+    min_below: minStock.below,
     computed_at: now,
   };
   cacheStore.set(key, result);

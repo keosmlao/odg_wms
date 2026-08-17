@@ -24,7 +24,7 @@ export default async function SaleReturnPage() {
         title="ຮັບคืนจากลูกค้า (Sale Return)"
         description="ຮັບສິນຄ້າທີ່ລູກค้าส่งคืน ກັບເຂົ້າ stock — WMS ບັນທຶກ stock + serial ຄืน. (ໃບລดหนี้/CN ทำใน SmartBiz)"
         icon={<ArrowLeftRightIcon className="h-6 w-6" />}
-        tone="violet"
+        tone="aqua"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
       <SaleReturnClient warehouses={wh} />

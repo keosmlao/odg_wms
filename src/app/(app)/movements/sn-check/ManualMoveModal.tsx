@@ -180,7 +180,7 @@ export default function ManualMoveModal({
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
           <div className="min-w-0">
-            <div className="font-mono text-xs font-bold text-violet-600 dark:text-violet-400">{item.item_code}</div>
+            <div className="font-mono text-xs font-bold text-aqua-600 dark:text-aqua-400">{item.item_code}</div>
             <div className="truncate text-xs text-zinc-500">{item.item_name}</div>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800">
@@ -204,7 +204,7 @@ export default function ManualMoveModal({
                   onClick={() => setActive(ti)}
                   className={`rounded-lg px-2.5 py-1.5 font-mono text-[11px] font-semibold transition ${
                     isActive
-                      ? "bg-violet-600 text-white shadow"
+                      ? "bg-aqua-600 text-white shadow"
                       : done
                         ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300"
                         : "bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:text-zinc-300 dark:ring-zinc-800"
@@ -220,7 +220,7 @@ export default function ManualMoveModal({
         {/* 2. scan SN into the active location */}
         {active !== null && (
           <div className="border-b border-zinc-100 px-5 py-2.5 dark:border-zinc-800">
-            <div className="mb-1.5 text-[11px] font-semibold text-zinc-500">② ຍິງ / ພິມ SN ເຂົ້າ <span className="font-mono text-violet-600 dark:text-violet-400">{activeLabel}</span></div>
+            <div className="mb-1.5 text-[11px] font-semibold text-zinc-500">② ຍິງ / ພິມ SN ເຂົ້າ <span className="font-mono text-aqua-600 dark:text-aqua-400">{activeLabel}</span></div>
             <div className="flex items-center gap-2">
               <input
                 ref={scanRef}
@@ -229,9 +229,9 @@ export default function ManualMoveModal({
                 onChange={(e) => setScan(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onScanSubmit(); } }}
                 placeholder="ຍິງ barcode ຫຼື ພິມ ISN ແລ້ວ Enter..."
-                className="flex-1 rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:bg-zinc-950 dark:ring-zinc-800"
+                className="flex-1 rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-aqua-500 dark:bg-zinc-950 dark:ring-zinc-800"
               />
-              <button type="button" onClick={onScanSubmit} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white">ເພີ່ມ</button>
+              <button type="button" onClick={onScanSubmit} className="rounded-lg bg-aqua-600 px-4 py-2 text-sm font-semibold text-white">ເພີ່ມ</button>
             </div>
             {scanMsg && (
               <div className={`mt-1.5 text-xs font-semibold ${scanMsg.kind === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{scanMsg.text}</div>
@@ -274,7 +274,7 @@ export default function ManualMoveModal({
                     type="button"
                     onClick={() => tryAddToActive(s)}
                     disabled={active === null || assignedCount[active] >= targetNeed[active]}
-                    className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left transition hover:bg-violet-50 disabled:opacity-50 dark:hover:bg-violet-950/20"
+                    className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left transition hover:bg-aqua-50 disabled:opacity-50 dark:hover:bg-aqua-950/20"
                   >
                     <span className="truncate font-mono text-[11px] text-zinc-700 dark:text-zinc-300">{s.isn ?? s.sn}</span>
                     {elsewhere ? (
@@ -294,7 +294,7 @@ export default function ManualMoveModal({
           <span className="text-xs text-zinc-500">③ ເລືອກຍ້າຍ {chosen} / {serials.length} SN</span>
           <div className="flex items-center gap-2">
             <button type="button" onClick={onClose} className="rounded-lg bg-zinc-100 px-4 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300">ຍົກເລີກ</button>
-            <button type="button" onClick={submit} disabled={submitting || chosen === 0} className="rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 px-5 py-2 text-xs font-semibold text-white shadow-sm transition hover:shadow disabled:opacity-50">
+            <button type="button" onClick={submit} disabled={submitting || chosen === 0} className="rounded-lg bg-gradient-to-r from-aqua-600 to-brand-700 px-5 py-2 text-xs font-semibold text-white shadow-sm transition hover:shadow disabled:opacity-50">
               {submitting ? "ກຳລັງບັນທຶກ..." : `ບັນທຶກ ${chosen}`}
             </button>
           </div>

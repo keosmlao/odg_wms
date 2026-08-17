@@ -29,7 +29,7 @@ export default async function LabelsPage() {
           title="ພິມ Label / Barcode"
           description="ພິມປ້າຍ pallet ແລະ location ພ້ອມ barcode (Code 128) ໄປ scan ໃນ pallet-load / sn-check / putaway"
           icon={<PackageIcon className="h-6 w-6" />}
-          tone="violet"
+          tone="aqua"
           chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
         />
       </div>

@@ -115,10 +115,10 @@ export default async function PhDimensionsPage() {
         title="ກວດສອບ PH Dimension"
         description="ກວດ coverage ຂອງ pallet/stack master ທີ່ໃຊ້ຄຳນວນຄວາມຈຸທົ່ວລະບົບ"
         icon={<PackageIcon className="h-6 w-6" />}
-        tone="indigo"
+        tone="brand"
         chips={
           <>
-            <Chip tone="indigo">{ruleRows[0]?.total ?? 0} PH rules</Chip>
+            <Chip tone="brand">{ruleRows[0]?.total ?? 0} PH rules</Chip>
             <Chip tone={summary.unmatched_skus > 0 ? "amber" : "emerald"}>
               {summary.unmatched_skus > 0
                 ? `${summary.unmatched_skus} SKU ຍັງບໍ່ກົງ PH`
@@ -154,7 +154,7 @@ export default async function PhDimensionsPage() {
           icon={<PackageIcon className="h-4 w-4" />}
           label="ພາເລດທີ່ຄຳນວນໄດ້"
           value={fmt(summary.estimated_pallets)}
-          tone="indigo"
+          tone="brand"
           highlight
         />
       </section>

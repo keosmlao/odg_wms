@@ -150,7 +150,7 @@ export default async function SerialsPage({ searchParams }: { searchParams: Prom
     <div className="w-full space-y-4">
       <header className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         <div className="flex items-center gap-3.5">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-aqua-50 text-aqua-600 dark:bg-aqua-950/40 dark:text-aqua-400">
             <BarcodeIcon className="h-6 w-6" />
           </div>
           <div>
@@ -176,16 +176,16 @@ export default async function SerialsPage({ searchParams }: { searchParams: Prom
               name="q"
               defaultValue={q}
               placeholder={mode === "search" ? "ສະແກນ / ພິມ serial..." : "ຄົ້ນຫາ ລະຫັດ / ຊື່ສິນຄ້າ..."}
-              className="w-full rounded-lg bg-white py-2 pl-9 pr-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition focus:ring-2 focus:ring-violet-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+              className="w-full rounded-lg bg-white py-2 pl-9 pr-3 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition focus:ring-2 focus:ring-aqua-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
             />
           </div>
-          <select name="wh" defaultValue={wh} className="rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-violet-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800">
+          <select name="wh" defaultValue={wh} className="rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-aqua-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800">
             <option value="">{accessible === null ? "ທຸກສາງ" : `ສາງທີ່ຮັບຜິດຊອບ (${whInfo.length})`}</option>
             {whInfo.map((w) => (
               <option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>
             ))}
           </select>
-          <button type="submit" className="rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-violet-500/20 transition hover:shadow-lg">ກອງ</button>
+          <button type="submit" className="rounded-lg bg-gradient-to-r from-aqua-600 to-brand-700 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-aqua-500/20 transition hover:shadow-lg">ກອງ</button>
         </form>
 
         {/* Mode + status tabs */}
@@ -193,7 +193,7 @@ export default async function SerialsPage({ searchParams }: { searchParams: Prom
           <div className="flex gap-1 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800">
             {modeTabs.map((t) => (
               <Link key={t.key} href={href({ mode: t.key, page: "1" })}
-                className={`rounded-md px-3 py-1 text-xs font-semibold transition ${mode === t.key ? "bg-white text-violet-700 shadow-sm dark:bg-zinc-900 dark:text-violet-300" : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400"}`}>
+                className={`rounded-md px-3 py-1 text-xs font-semibold transition ${mode === t.key ? "bg-white text-aqua-700 shadow-sm dark:bg-zinc-900 dark:text-aqua-300" : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400"}`}>
                 {t.label}
               </Link>
             ))}
@@ -201,7 +201,7 @@ export default async function SerialsPage({ searchParams }: { searchParams: Prom
           <span className="text-zinc-300">|</span>
           {statusTabs.map((t) => (
             <Link key={t.key} href={href({ status: t.key, page: "1" })}
-              className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${status === t.key ? "bg-violet-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300"}`}>
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${status === t.key ? "bg-aqua-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300"}`}>
               {t.label}
             </Link>
           ))}
@@ -232,13 +232,13 @@ export default async function SerialsPage({ searchParams }: { searchParams: Prom
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {whRows.map((w) => (
                 <Link key={w.wh_code} href={href({ mode: "item", wh: w.wh_code, page: "1" })}
-                  className="flex items-center gap-3 px-4 py-3.5 transition hover:bg-violet-50/40 dark:hover:bg-violet-950/20">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 font-mono text-xs font-bold text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">{w.wh_code.slice(-2)}</div>
+                  className="flex items-center gap-3 px-4 py-3.5 transition hover:bg-aqua-50/40 dark:hover:bg-aqua-950/20">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-aqua-50 font-mono text-xs font-bold text-aqua-600 dark:bg-aqua-950/40 dark:text-aqua-400">{w.wh_code.slice(-2)}</div>
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-zinc-900 dark:text-zinc-50">{w.wh_code}{w.wh_name ? ` · ${w.wh_name}` : ""}</div>
                     <div className="text-xs text-zinc-500">{w.item_count.toLocaleString("en-US")} ສິນຄ້າ</div>
                   </div>
-                  <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold tabular-nums text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">{w.count.toLocaleString("en-US")} SN</span>
+                  <span className="rounded-full bg-aqua-50 px-2.5 py-1 text-xs font-bold tabular-nums text-aqua-700 dark:bg-aqua-950/40 dark:text-aqua-300">{w.count.toLocaleString("en-US")} SN</span>
                   <svg viewBox="0 0 24 24" className="h-4 w-4 text-zinc-300" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6" /></svg>
                 </Link>
               ))}
@@ -261,8 +261,8 @@ export default async function SerialsPage({ searchParams }: { searchParams: Prom
                   {searchRows.map((r) => {
                     const inStock = r.status_name === STATUS_INSTOCK;
                     return (
-                      <tr key={`${r.sn}-${r.wh_code}`} className="group transition hover:bg-violet-50/40 dark:hover:bg-violet-950/20">
-                        <td className="px-4 py-2.5"><Link href={`/serials/${encodeURIComponent(r.sn)}`} className="font-mono text-xs font-semibold text-violet-700 group-hover:underline dark:text-violet-300">{r.sn}</Link></td>
+                      <tr key={`${r.sn}-${r.wh_code}`} className="group transition hover:bg-aqua-50/40 dark:hover:bg-aqua-950/20">
+                        <td className="px-4 py-2.5"><Link href={`/serials/${encodeURIComponent(r.sn)}`} className="font-mono text-xs font-semibold text-aqua-700 group-hover:underline dark:text-aqua-300">{r.sn}</Link></td>
                         <td className="px-4 py-2.5"><div className="font-mono text-[11px] font-semibold text-zinc-900 dark:text-zinc-100">{r.item_code}</div><div className="max-w-[280px] truncate text-xs text-zinc-600 dark:text-zinc-400">{r.item_name ?? "—"}</div></td>
                         <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-400">{r.wh_code}</td>
                         <td className="px-4 py-2.5"><span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${inStock ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}><span className={`h-1.5 w-1.5 rounded-full ${inStock ? "bg-emerald-500" : "bg-zinc-400"}`} />{r.status_name ?? "—"}</span></td>

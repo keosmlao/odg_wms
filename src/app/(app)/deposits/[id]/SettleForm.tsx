@@ -129,12 +129,12 @@ export default function SettleForm({
           }
         : {
             label: `ຂັ້ນ ${calc.tier}`,
-            cls: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300",
+            cls: "bg-brand-100 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300",
           };
 
   return (
-    <div className="rounded-2xl border border-indigo-200/70 bg-indigo-50/40 p-5 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-      <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+    <div className="rounded-2xl border border-brand-200/70 bg-brand-50/40 p-5 dark:border-brand-900/40 dark:bg-brand-950/20">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300">
         ສຳເລັດຮັບຝາກ ແລະ ຮັບເງິນ
       </h2>
 
@@ -148,7 +148,7 @@ export default function SettleForm({
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             min={startDate}
-            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
         </label>
 
@@ -182,7 +182,7 @@ export default function SettleForm({
           <div className="mt-1 border-t border-zinc-100 pt-1 dark:border-zinc-800">
             <div className="flex items-baseline justify-between">
               <span className="text-xs text-zinc-500">ຄ່າຄຳນວນ</span>
-              <span className="font-mono text-lg font-bold tabular-nums text-indigo-700 dark:text-indigo-300">
+              <span className="font-mono text-lg font-bold tabular-nums text-brand-700 dark:text-brand-300">
                 {formatMoney(calc.fee, currency)}
               </span>
             </div>
@@ -205,7 +205,7 @@ export default function SettleForm({
             value={overrideFee}
             onChange={(e) => setOverrideFee(e.target.value)}
             placeholder={`default: ${calc.fee}`}
-            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm font-mono shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm font-mono shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
         </label>
 
@@ -219,7 +219,7 @@ export default function SettleForm({
               onChange={(e) =>
                 setMethod(e.target.value as "cash" | "transfer" | "other")
               }
-              className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+              className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
             >
               <option value="cash">ເງິນສົດ</option>
               <option value="transfer">ໂອນ</option>
@@ -235,7 +235,7 @@ export default function SettleForm({
               value={reference}
               onChange={(e) => setReference(e.target.value)}
               placeholder="(optional)"
-              className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+              className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
             />
           </label>
         </div>
@@ -248,7 +248,7 @@ export default function SettleForm({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={2}
-            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+            className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 px-3 text-sm shadow-sm focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
         </label>
 

@@ -3,15 +3,15 @@ import { pool } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
+import { getIsnScope } from "@/lib/isnScope";
 import { postErpPurchaseReceipt } from "@/lib/erpPost";
 
 /** WMS goods-receipt against a PO. Writes WMS tables only (path A — no ERP post). */
 const RECEIVE_TRANS_FLAG = 1; // receive (calc_flag +1)
 /**
  * ISN year-code: A = 2025, B = 2026, C = 2027, … (one letter per year).
- * Serialized items (ic_inventory.is_isn = 1) get an ISN-generation request
- * queued into import_gen_isn(_detail); the ERP's own gen process allocates the
- * actual ISN numbers (we never invent them).
+ * ສິນຄ້າທີ່ຕ້ອງເກັບ ISN (ຕາມ config ໝວດ/ຍົກເວັ້ນ — src/lib/isnScope.ts) ຈະຖືກຄິວ
+ * ຄຳຂໍ gen ISN ໃສ່ import_gen_isn(_detail); ຝັ່ງ ERP ເປັນຜູ້ອອກເລກຈິງ.
  */
 function isnYearCode(year: number): string {
   const idx = year - 2025;
@@ -210,11 +210,12 @@ export async function POST(request: Request) {
     // system, so we do NOT generate here ("ໃຊ້ຕົວທີ່ມີຢູ່"); missing serials are
     // surfaced to the operator without blocking the receipt.
     const itemCodes = lines.map((l) => l.item_code);
-    const isnRes = await client.query<{ code: string; item_category: string | null }>(
-      `SELECT code, item_category FROM public.ic_inventory WHERE code = ANY($1) AND is_isn = 1`,
-      [itemCodes],
+    const isnScope = await getIsnScope(client, itemCodes);
+    const catByCode = new Map(
+      Array.from(isnScope)
+        .filter(([, s]) => s.needs_isn)
+        .map(([code, s]) => [code, s.category]),
     );
-    const catByCode = new Map(isnRes.rows.map((r) => [r.code, (r.item_category ?? "").trim()]));
     const isnLines = lines.filter((l) => (catByCode.get(l.item_code) ?? "") !== "" && Math.round(l.qty) > 0);
     const serialItemsNoGen = docType !== "po" ? isnLines.length : 0;
     const yearCode = isnYearCode(new Date().getFullYear());

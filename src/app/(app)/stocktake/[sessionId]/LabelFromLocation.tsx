@@ -59,7 +59,7 @@ export default function LabelFromLocation({
         ສາງນີ້ຍັງບໍ່ມີ location ໃນ master —{" "}
         <a
           href="/settings/warehouses"
-          className="text-indigo-600 hover:underline"
+          className="text-brand-600 hover:underline"
         >
           ໄປຕັ້ງຄ່າ
         </a>

@@ -50,7 +50,7 @@ export default function PendingBillCard({ b, days, defaultOpen, countSheetNo = n
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">ຄ້າງຮັບ</span>
             {within7 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-950/50 dark:text-red-300">ມາໃນ {days} ມື້</span>}
             {overdue && <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">ກາຍກຳນົດ {Math.abs(days!)} ມື້</span>}
-            {countSheetNo && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">ກວດນັບແລ້ວ · {countSheetNo}</span>}
+            {countSheetNo && <span className="rounded-full bg-aqua-100 px-2 py-0.5 text-[10px] font-bold text-aqua-700 dark:bg-aqua-950/50 dark:text-aqua-300">ກວດນັບແລ້ວ · {countSheetNo}</span>}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
             {b.doc_date && <span className="inline-flex items-center gap-1"><CalendarIcon className="h-3 w-3" />ອອກເອກະສານ {b.doc_date}</span>}
@@ -64,7 +64,7 @@ export default function PendingBillCard({ b, days, defaultOpen, countSheetNo = n
             {b.creator_name && <span className="inline-flex items-center gap-1"><UsersIcon className="h-3 w-3" />ຜູ້ສ້າງ: {b.creator_name}</span>}
             {b.transport_name && <span className="inline-flex items-center gap-1"><ArrowLeftRightIcon className="h-3 w-3" />{b.transport_name}</span>}
             {palletsCeil > 0 && (
-              <span className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400" title={b.phMissing > 0 ? `${b.phMissing} ລາຍການຈັບຄູ່ PH ບໍ່ໄດ້` : undefined}>
+              <span className="inline-flex items-center gap-1 font-semibold text-brand-600 dark:text-brand-400" title={b.phMissing > 0 ? `${b.phMissing} ລາຍການຈັບຄູ່ PH ບໍ່ໄດ້` : undefined}>
                 <PackageIcon className="h-3 w-3" />ຕ້ອງໃຊ້ ~{palletsCeil} ພາເລດ{b.phMissing > 0 ? " *" : ""}
               </span>
             )}
@@ -77,7 +77,7 @@ export default function PendingBillCard({ b, days, defaultOpen, countSheetNo = n
             <div className="text-[10px] text-zinc-400">{b.lines.length} ລາຍການ</div>
           </div>
           {countSheetNo ? (
-            <Link href={`/movements/receive/count/${encodeURIComponent(countSheetNo)}`} className="rounded-lg bg-gradient-to-r from-sky-500 to-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm">ເປີດໃບກວດນັບ</Link>
+            <Link href={`/movements/receive/count/${encodeURIComponent(countSheetNo)}`} className="rounded-lg bg-gradient-to-r from-aqua-500 to-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm">ເປີດໃບກວດນັບ</Link>
           ) : (
             <Link href={`/movements/receive/count/new?po=${encodeURIComponent(b.po_no)}&wh=${encodeURIComponent(b.wh_code)}`} className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm">ສ້າງໃບກວດນັບ</Link>
           )}
@@ -102,7 +102,7 @@ export default function PendingBillCard({ b, days, defaultOpen, countSheetNo = n
                 <td className="px-4 py-2 text-right font-mono text-xs font-semibold tabular-nums text-amber-600 dark:text-amber-400">
                   {fmt(l.remaining)}<span className="ml-1 text-[10px] uppercase text-zinc-400">{l.unit_code}</span>
                 </td>
-                <td className="px-4 py-2 text-right font-mono text-xs tabular-nums text-indigo-600 dark:text-indigo-400">
+                <td className="px-4 py-2 text-right font-mono text-xs tabular-nums text-brand-600 dark:text-brand-400">
                   {l.pallets > 0 ? `~${l.pallets}` : "—"}
                 </td>
               </tr>

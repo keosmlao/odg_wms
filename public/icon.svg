@@ -1,21 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- ODIEN Mall brand gradient, Sky Blue #4BC7EF -> Navy #003260 (guideline p.17).
+       The wordmark is a placeholder: swap in the official snowflake logo SVG
+       (white version, which the guideline permits on Sky/Deep Blue/Navy) once
+       the design team supplies the vector file. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#18181b"/>
-      <stop offset="100%" stop-color="#27272a"/>
+      <stop offset="0%" stop-color="#4bc7ef"/>
+      <stop offset="55%" stop-color="#2c6fb6"/>
+      <stop offset="100%" stop-color="#003260"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="96" fill="url(#bg)"/>
-  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central"
-        font-family="system-ui, -apple-system, sans-serif"
+  <text x="50%" y="47%" text-anchor="middle" dominant-baseline="central"
+        font-family="Montserrat, system-ui, -apple-system, sans-serif"
         font-weight="800"
-        font-size="180"
-        fill="#fafafa"
+        font-size="164"
+        fill="#ffffff"
         letter-spacing="-4">ODG</text>
-  <text x="50%" y="75%" text-anchor="middle" dominant-baseline="central"
-        font-family="system-ui, -apple-system, sans-serif"
+  <text x="50%" y="72%" text-anchor="middle" dominant-baseline="central"
+        font-family="Montserrat, system-ui, -apple-system, sans-serif"
         font-weight="600"
         font-size="48"
-        fill="#a1a1aa"
-        letter-spacing="2">WMS</text>
+        fill="#ffd071"
+        letter-spacing="6">WMS</text>
 </svg>

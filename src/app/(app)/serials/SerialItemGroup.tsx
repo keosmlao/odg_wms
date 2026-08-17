@@ -57,17 +57,17 @@ export default function SerialItemGroup({
       <button
         type="button"
         onClick={toggle}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-violet-50/40 dark:hover:bg-violet-950/20"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-aqua-50/40 dark:hover:bg-aqua-950/20"
       >
         <svg viewBox="0 0 24 24" className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="m9 18 6-6-6-6" />
         </svg>
         <div className="min-w-0 flex-1">
-          <div className="font-mono text-[11px] font-semibold text-violet-700 dark:text-violet-300">{itemCode}</div>
+          <div className="font-mono text-[11px] font-semibold text-aqua-700 dark:text-aqua-300">{itemCode}</div>
           <div className="truncate text-sm text-zinc-800 dark:text-zinc-200" title={itemName ?? ""}>{itemName ?? "—"}</div>
           {itemBrand && <div className="text-[10px] text-zinc-500">{itemBrand}</div>}
         </div>
-        <span className="shrink-0 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold tabular-nums text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+        <span className="shrink-0 rounded-full bg-aqua-50 px-2.5 py-1 text-xs font-bold tabular-nums text-aqua-700 dark:bg-aqua-950/40 dark:text-aqua-300">
           {count.toLocaleString("en-US")} SN
         </span>
       </button>

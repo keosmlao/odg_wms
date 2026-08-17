@@ -11,6 +11,7 @@ import {
   PlusIcon,
   SearchIcon,
 } from "@/components/ui/Icons";
+import { WarehouseGroupHeader, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import AdjustSerialModal, { type SerialPlan } from "./AdjustSerialModal";
 
 export type WarehouseOption = { code: string; name: string | null; sn_adjust: boolean };
@@ -19,13 +20,19 @@ type RackOption = { code: string; name: string | null };
 type LocationOption = { code: string; name: string | null; rack_code: string };
 type PalletOption = { code: string; name: string | null; location: string | null; rack: string | null };
 
+/** A storage node in the warehouse that currently holds stock of an item. */
+type StockNode = { rack: string; location: string; pallet: string; qty: string };
+
 type ItemHit = {
+  /** ສາງທີ່ພົບ — ຕິດປ້າຍຢູ່ client ຕອນຄົ້ນຫາຫຼາຍສາງ. */
+  wh_code?: string;
   item_code: string;
   item_name: string | null;
   unit_code: string | null;
   balance_qty: string | null; // balance at the queried node
   wh_balance: string | null; // total balance in the warehouse
   is_isn: number | null;
+  locations?: StockNode[]; // where the item sits now (product-first search only)
 };
 
 /** The fields every counted line shares — enough to compute a delta. */
@@ -134,7 +141,7 @@ function ModeToggle({ mode, onChange }: { mode: "product" | "location"; onChange
             onClick={() => onChange(o.key)}
             className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
               active
-                ? "bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/20"
+                ? "bg-gradient-to-r from-brand-500 to-aqua-600 text-white shadow-md shadow-brand-500/20"
                 : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
             }`}
           >
@@ -152,10 +159,10 @@ function ModeToggle({ mode, onChange }: { mode: "product" | "location"; onChange
 // Shared UI atoms
 // ---------------------------------------------------------------------------
 const inputCls =
-  "w-full rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+  "w-full rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 const labelCls = "mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300";
 const primaryBtn =
-  "inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-500 to-violet-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:shadow-lg disabled:opacity-50";
+  "inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg disabled:opacity-50";
 const ghostBtn =
   "inline-flex items-center justify-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800";
 
@@ -200,7 +207,7 @@ function Stepper({
                 <span
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition ${
                     active
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30"
+                      ? "bg-brand-600 text-white shadow-md shadow-brand-500/30"
                       : done
                         ? "bg-emerald-500 text-white"
                         : "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500"
@@ -242,6 +249,7 @@ type PWorking = CountLine & {
   location: string;
   pallet: string;
   balLoading: boolean; // fetching before_qty for the current node
+  locations: StockNode[]; // where the item sits now, biggest holding first
 };
 
 function pNodeKey(i: { item_code: string; rack: string; location: string; pallet: string }) {
@@ -251,6 +259,140 @@ function pNodePath(i: { rack: string; location: string; pallet: string }) {
   const parts = [i.rack, i.location].filter(Boolean);
   if (i.pallet) parts.push(`pallet:${i.pallet}`);
   return parts.length ? parts.join(" / ") : "ບໍ່ລະບຸ (ສາງລວມ)";
+}
+/** Same node? — compares only the three storage fields. */
+function sameNode(a: { rack: string; location: string; pallet: string }, b: { rack: string; location: string; pallet: string }) {
+  return a.rack === b.rack && a.location === b.location && a.pallet === b.pallet;
+}
+/**
+ * Balance the "ຢູ່ປະຈຸບັນ" chips already report for a node — lets the line's
+ * ຍອດບ່ອນນີ້ follow a chip click instantly, before the server confirms it.
+ * null = this node is not one of the item's known holdings.
+ */
+function knownNodeQty(nodes: StockNode[], node: { rack: string; location: string; pallet: string }) {
+  const hit = nodes.find((n) => sameNode(n, node));
+  return hit ? Number.parseFloat(hit.qty) || 0 : null;
+}
+
+/**
+ * ຜົນກະທົບຕໍ່ **ຍອດທັງສາງ** ຂອງສິນຄ້າໜຶ່ງ — ລວມ delta ຂອງທຸກແຖວທີ່ເປັນລະຫັດນີ້.
+ * ນັບຄົບທຸກບ່ອນຈັດເກັບແລ້ວ ຍອດໃໝ່ທັງສາງຈະເທົ່າກັບຜົນລວມທີ່ປ້ອນເຂົ້າພໍດີ;
+ * `uncounted` ບອກວ່າຍັງເຫຼືອບ່ອນທີ່ມີເຄື່ອງຢູ່ແຕ່ຍັງບໍ່ໄດ້ໃສ່ຈຳນວນຈັກບ່ອນ.
+ */
+function whProjection(rows: PWorking[], itemCode: string, snOn: boolean) {
+  const mine = rows.filter((r) => r.item_code === itemCode);
+  const base = mine[0]?.wh_balance ?? null;
+  let delta = 0;
+  let entered = 0;
+  const covered = new Set<string>();
+  for (const r of mine) {
+    const d = deltaOf(r, snOn);
+    if (d === null) continue;
+    delta += d;
+    entered += 1;
+    covered.add(pNodeKey(r));
+  }
+  const nodes = mine[0]?.locations ?? [];
+  const uncounted = nodes.filter((n) => !covered.has(pNodeKey({ item_code: itemCode, ...n }))).length;
+  // /api/movements/items/search ຄືນ location ໃຫ້ສູງສຸດ 8 ບ່ອນຕໍ່ສິນຄ້າ. ຖ້າຜົນລວມ
+  // ຂອງບ່ອນທີ່ຮູ້ບໍ່ເທົ່າຍອດທັງສາງ ແປວ່າຍັງມີບ່ອນອື່ນທີ່ບໍ່ໄດ້ສະແດງ — ຫ້າມບອກວ່າ "ນັບຄົບ".
+  const sumNodes = nodes.reduce((s, n) => s + (Number.parseFloat(n.qty) || 0), 0);
+  const partial = base !== null && Math.abs(base - sumNodes) > 1e-6;
+  return {
+    newTotal: base === null || entered === 0 ? null : Math.round((base + delta) * 1e6) / 1e6,
+    uncounted,
+    partial,
+  };
+}
+
+/** ບ່ອນຈັດເກັບທີ່ຍັງຖືເຄື່ອງຢູ່ ແຕ່ຜູ້ໃຊ້ບໍ່ໄດ້ນັບ — ຕົວທີ່ເຮັດໃຫ້ຍອດທັງສາງບໍ່ເທົ່າຜົນລວມທີ່ນັບ. */
+export type FillGap = {
+  item_code: string;
+  item_name: string | null;
+  unit_code: string | null;
+  /** ຜົນລວມຈຳນວນທີ່ຜູ້ໃຊ້ປ້ອນເຂົ້າ. */
+  countedSum: number;
+  /** ຍອດທັງສາງທີ່ຈະໄດ້ ຖ້າບັນທຶກຕາມທີ່ປ້ອນ (ບ່ອນທີ່ບໍ່ນັບຍັງຄືເກົ່າ). */
+  projected: number;
+  /** ບ່ອນທີ່ຕ້ອງປັບເປັນ 0 ຖ້າຢືນຢັນໃຫ້ຍອດເທົ່າກັບຜົນລວມທີ່ນັບ. */
+  bins: { rack: string; location: string; pallet: string; qty: number }[];
+  /** ຍັງມີບ່ອນເກັບທີ່ API ບໍ່ໄດ້ສົ່ງມາ (ເກີນ 8 ບ່ອນ) → ປັບໃຫ້ຄົບບໍ່ໄດ້. */
+  partial: boolean;
+};
+
+/**
+ * ນັບແຕ່ບາງບ່ອນ → ຍອດທັງສາງໃໝ່ຈະບໍ່ເທົ່າກັບຜົນລວມທີ່ນັບໄດ້ ເພາະບ່ອນທີ່ບໍ່ໄດ້ນັບຍັງຖືເຄື່ອງຢູ່.
+ * ຕົວຢ່າງ: ທັງສາງ 100 (lo1 60 · lo2 30 · lo3 10) ນັບ lo1=20, lo2=30 → ຜົນລວມ 50
+ * ແຕ່ຍອດທັງສາງຈະເປັນ 60 ເພາະ lo3 ຍັງມີ 10. ຄືນລາຍການເຫຼົ່ານີ້ໃຫ້ຖາມຜູ້ໃຊ້ຕອນບັນທຶກ.
+ *
+ * ຂ້າມລາຍການທີ່ນັບດ້ວຍ serial — ຈຳນວນມາຈາກການສະແກນ ບໍ່ແມ່ນການພິມ.
+ */
+function computeFillGaps(rows: PWorking[], snOn: boolean): FillGap[] {
+  const byItem = new Map<string, PWorking[]>();
+  for (const r of rows) {
+    const list = byItem.get(r.item_code);
+    if (list) list.push(r);
+    else byItem.set(r.item_code, [r]);
+  }
+  const out: FillGap[] = [];
+  for (const [code, mine] of byItem) {
+    if (mine.some((r) => bySerial(r, snOn))) continue;
+    const counted = mine.filter((r) => parsedCount(r.counted) !== null);
+    if (counted.length === 0) continue;
+    const base = mine[0].wh_balance;
+    if (base === null) continue;
+
+    const countedSum = counted.reduce((s, r) => s + (parsedCount(r.counted) ?? 0), 0);
+    const delta = counted.reduce((s, r) => s + (deltaOf(r, snOn) ?? 0), 0);
+    const projected = Math.round((base + delta) * 1e6) / 1e6;
+    if (Math.abs(projected - countedSum) < 1e-6) continue; // ຕົງກັນຢູ່ແລ້ວ
+
+    const coveredKeys = new Set(counted.map((r) => pNodeKey(r)));
+    const nodes = mine[0].locations ?? [];
+    const bins = nodes
+      .filter((n) => !coveredKeys.has(pNodeKey({ item_code: code, ...n })))
+      .map((n) => ({ rack: n.rack, location: n.location, pallet: n.pallet, qty: Number.parseFloat(n.qty) || 0 }))
+      .filter((n) => n.qty !== 0);
+    const sumNodes = nodes.reduce((s, n) => s + (Number.parseFloat(n.qty) || 0), 0);
+    out.push({
+      item_code: code,
+      item_name: mine[0].item_name,
+      unit_code: mine[0].unit_code,
+      countedSum,
+      projected,
+      bins,
+      partial: Math.abs(base - sumNodes) > 1e-6,
+    });
+  }
+  return out;
+}
+
+/** Read-only "where it sits now" summary, shown on each search result. */
+function NodeSummary({ nodes, unit }: { nodes: StockNode[]; unit: string | null }) {
+  if (nodes.length === 0) {
+    return <span className="text-[10px] text-zinc-400">ຍັງບໍ່ມີໃນສາງນີ້</span>;
+  }
+  const shown = nodes.slice(0, 3);
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      <MapPinIcon className="h-3 w-3 shrink-0 text-brand-400" />
+      {shown.map((n) => (
+        <span
+          key={pNodePath(n)}
+          className="rounded bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] text-brand-700 dark:bg-brand-950/40 dark:text-brand-300"
+        >
+          {pNodePath(n)}
+          <span className="ml-1 tabular-nums opacity-70">
+            {formatQty(n.qty)}
+            {unit ? ` ${unit}` : ""}
+          </span>
+        </span>
+      ))}
+      {nodes.length > shown.length && (
+        <span className="text-[10px] text-zinc-400">+{nodes.length - shown.length}</span>
+      )}
+    </span>
+  );
 }
 
 function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
@@ -312,39 +454,55 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   }, [whCode]);
 
   const whName = useMemo(() => warehouses.find((w) => w.code === whCode)?.name ?? null, [warehouses, whCode]);
+  const hitGroups = useMemo(() => groupByWarehouse(hits, (h) => h.wh_code ?? "—", warehouses), [hits, warehouses]);
   const snOn = useMemo(() => warehouses.find((w) => w.code === whCode)?.sn_adjust ?? true, [warehouses, whCode]);
   const locationsForRack = (rack: string) => (rack ? locations.filter((l) => l.rack_code === rack) : locations);
 
-  // Debounced item search (warehouse-wide — location is chosen per line later).
+  // Debounced item search. ບໍ່ມີການເລືອກສາງແລ້ວ — ຄົ້ນຫາທຸກສາງທີ່ມີສິດ ແລ້ວແຍກ
+  // ຜົນລັບເປັນກຸ່ມຕາມສາງ; ພໍເລືອກແຖວແລ້ວ ໃບປັບປຸງນີ້ຜູກກັບສາງນັ້ນ (1 ໃບ = 1 ສາງ).
   useEffect(() => {
     if (search.trim().length === 0) {
       setHits([]);
       return;
     }
-    if (!whCode) return;
+    const scope = whCode ? warehouses.filter((w) => w.code === whCode) : warehouses;
     const t = setTimeout(async () => {
       setSearching(true);
       try {
-        const params = new URLSearchParams({ warehouse: whCode, q: search.trim() });
-        const res = await fetch(`/api/movements/items/search?${params}`);
-        const data = (await res.json()) as { items?: ItemHit[] };
-        setHits(data.items ?? []);
+        // locations=1 → each hit also reports where it currently sits, so the
+        // user can see the item's node before committing to one.
+        const all = await Promise.all(
+          scope.map(async (w) => {
+            const params = new URLSearchParams({ warehouse: w.code, q: search.trim(), locations: "1" });
+            const res = await fetch(`/api/movements/items/search?${params}`);
+            const data = (await res.json()) as { items?: ItemHit[] };
+            return (data.items ?? []).map((it) => ({ ...it, wh_code: w.code }));
+          }),
+        );
+        setHits(all.flat());
       } finally {
         setSearching(false);
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [search, whCode]);
+  }, [search, whCode, warehouses]);
 
   /**
    * Fetch the system balance of an item AT a given node and store it as the
    * line's before_qty. Node + item passed explicitly (not read from `items`)
    * so callers can fire this right after a state update. Race-guarded.
    */
-  async function loadBalance(lineId: string, node: { rack: string; location: string; pallet: string }, itemCode: string) {
+  async function loadBalance(
+    lineId: string,
+    node: { rack: string; location: string; pallet: string },
+    itemCode: string,
+    // quiet = the chips already gave us this node's balance, so keep showing it
+    // and let the server value replace it silently instead of flashing "…".
+    quiet = false,
+  ) {
     if (!whCode) return;
     const reqKey = pNodeKey({ item_code: itemCode, ...node });
-    setItems((prev) => prev.map((i) => (i.id === lineId ? { ...i, balLoading: true } : i)));
+    if (!quiet) setItems((prev) => prev.map((i) => (i.id === lineId ? { ...i, balLoading: true } : i)));
     try {
       const params = new URLSearchParams({
         warehouse: whCode,
@@ -373,55 +531,119 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   function addHit(hit: ItemHit) {
     setHits([]);
     setSearch("");
+    // ສາງມາຈາກແຖວທີ່ເລືອກ — ໃບປັບປຸງໜຶ່ງໃບຜູກກັບສາງດຽວ.
+    if (hit.wh_code) setWhCode(hit.wh_code);
     const whBal = hit.wh_balance === null ? null : Number.parseFloat(hit.wh_balance) || 0;
-    const id = newLineId();
-    setItems((prev) => [
-      {
-        id,
-        item_code: hit.item_code,
-        item_name: hit.item_name,
-        unit_code: hit.unit_code,
-        wh_balance: whBal,
-        rack: "",
-        location: "",
-        pallet: "",
-        before_qty: 0,
-        balLoading: false,
-        counted: "",
-        serialized: (hit.is_isn ?? 0) === 1,
-        serialsRemove: [],
-        serialsAdd: [],
-        serialsGenerate: 0,
-      },
-      ...prev,
-    ]);
-    void loadBalance(id, { rack: "", location: "", pallet: "" }, hit.item_code);
+    const nodes = hit.locations ?? [];
+
+    // ໜຶ່ງແຖວຕໍ່ໜຶ່ງບ່ອນຈັດເກັບ: ສິນຄ້າທີ່ຢູ່ຫຼາຍບ່ອນຕ້ອງປ້ອນຈຳນວນໃໝ່ໄດ້ທຸກບ່ອນ
+    // ໃນເທື່ອດຽວ — ບໍ່ຕ້ອງກົດ "+ ບ່ອນຈັດເກັບ" ແລ້ວເລືອກ location ຄືນເອງ.
+    // ບໍ່ມີໃນສາງເລີຍ → ແຖວຫວ່າງ 1 ແຖວໃຫ້ເລືອກບ່ອນເອງ.
+    const already = new Set(items.filter((i) => i.item_code === hit.item_code).map((i) => pNodeKey(i)));
+    const targets = (nodes.length > 0
+      ? nodes.map((n) => ({ rack: n.rack, location: n.location, pallet: n.pallet }))
+      : [{ rack: "", location: "", pallet: "" }]
+    ).filter((n) => !already.has(pNodeKey({ item_code: hit.item_code, ...n })));
+
+    if (targets.length === 0) {
+      showToast("err", `${hit.item_code} ເພີ່ມຄົບທຸກບ່ອນຈັດເກັບແລ້ວ`);
+      setTimeout(() => searchRef.current?.focus(), 50);
+      return;
+    }
+
+    const rows: PWorking[] = targets.map((node) => ({
+      id: newLineId(),
+      item_code: hit.item_code,
+      item_name: hit.item_name,
+      unit_code: hit.unit_code,
+      wh_balance: whBal,
+      ...node,
+      before_qty: knownNodeQty(nodes, node) ?? 0,
+      balLoading: knownNodeQty(nodes, node) === null,
+      locations: nodes,
+      counted: "",
+      serialized: (hit.is_isn ?? 0) === 1,
+      serialsRemove: [],
+      serialsAdd: [],
+      serialsGenerate: 0,
+    }));
+
+    setItems((prev) => [...rows, ...prev]);
+    for (const r of rows) {
+      const node = { rack: r.rack, location: r.location, pallet: r.pallet };
+      void loadBalance(r.id, node, hit.item_code, knownNodeQty(nodes, node) !== null);
+    }
     setTimeout(() => searchRef.current?.focus(), 50);
+  }
+
+  /** ໄປທີ່ແຖວທີ່ນັບບ່ອນຈັດເກັບນີ້ຢູ່ແລ້ວ ແລ້ວ focus ຊ່ອງຈຳນວນ. */
+  function focusNodeRow(itemCode: string, node: { rack: string; location: string; pallet: string }) {
+    const row = items.find((i) => i.item_code === itemCode && sameNode(i, node));
+    if (!row) return;
+    const el = document.getElementById(`padj-qty-${row.id}`);
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    (el as HTMLInputElement | null)?.focus();
   }
 
   function updateLine(lineId: string, patch: Partial<PWorking>) {
     setItems((prev) => prev.map((i) => (i.id === lineId ? { ...i, ...patch } : i)));
   }
 
+  /**
+   * Count the same item at a second (third, …) node: clone the line's identity
+   * into a fresh row right below it, preselected to the item's next-biggest node
+   * that no other row of this item has taken yet.
+   */
+  function addNodeRow(lineId: string) {
+    const src = items.find((i) => i.id === lineId);
+    if (!src) return;
+    const taken = new Set(items.filter((i) => i.item_code === src.item_code).map((i) => pNodeKey(i)));
+    const free = src.locations.find((n) => !taken.has(pNodeKey({ item_code: src.item_code, ...n })));
+    const node = { rack: free?.rack ?? "", location: free?.location ?? "", pallet: free?.pallet ?? "" };
+    const known = knownNodeQty(src.locations, node);
+    const id = newLineId();
+    setItems((prev) => {
+      const idx = prev.findIndex((i) => i.id === lineId);
+      if (idx < 0) return prev;
+      const row: PWorking = {
+        ...src,
+        id,
+        ...node,
+        before_qty: known ?? 0,
+        balLoading: known === null,
+        counted: "",
+        serialsRemove: [],
+        serialsAdd: [],
+        serialsGenerate: 0,
+      };
+      const next = [...prev];
+      next.splice(idx + 1, 0, row);
+      return next;
+    });
+    void loadBalance(id, node, src.item_code, known !== null);
+  }
+
   /** Change one node field on a line, then refresh its system balance. */
   function setLineNode(lineId: string, patch: Partial<Pick<PWorking, "rack" | "location" | "pallet">>) {
-    let nextNode: { rack: string; location: string; pallet: string } | null = null;
-    let itemCode = "";
+    const line = items.find((i) => i.id === lineId);
+    if (!line) return;
+    const nextNode = { rack: line.rack, location: line.location, pallet: line.pallet, ...patch };
+    // The chips carry each node's balance already — move ຍອດບ່ອນນີ້ in the same
+    // paint as the node itself; the fetch below only confirms it.
+    const known = knownNodeQty(line.locations, nextNode);
     setItems((prev) =>
       prev.map((i) => {
         if (i.id !== lineId) return i;
-        const next = { ...i, ...patch };
+        const next = { ...i, ...nextNode, before_qty: known ?? 0, balLoading: known === null };
         if (bySerial(i, snOn)) {
           next.serialsRemove = [];
           next.serialsAdd = [];
           next.serialsGenerate = 0;
         }
-        nextNode = { rack: next.rack, location: next.location, pallet: next.pallet };
-        itemCode = next.item_code;
         return next;
       }),
     );
-    if (nextNode) void loadBalance(lineId, nextNode, itemCode);
+    void loadBalance(lineId, nextNode, line.item_code, known !== null);
   }
 
   function setCounted(lineId: string, value: string) {
@@ -452,6 +674,13 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     [items, snOn],
   );
 
+  /** Every (item, node) a row already occupies — used to grey out taken chips. */
+  const takenNodes = useMemo(() => new Set(items.map((i) => pNodeKey(i))), [items]);
+
+  /** ລາຍການທີ່ນັບບໍ່ຄົບທຸກບ່ອນ → ຖາມຕອນບັນທຶກ. */
+  const fillGaps = useMemo(() => computeFillGaps(items, snOn), [items, snOn]);
+  const [askFill, setAskFill] = useState(false);
+
   const duplicateNode = useMemo(() => {
     const seen = new Set<string>();
     for (const i of changedItems) {
@@ -474,7 +703,11 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     setStep(2);
   }
 
-  async function submit() {
+  /**
+   * ບັນທຶກ. ຖ້ານັບບໍ່ຄົບທຸກບ່ອນ ຍອດທັງສາງຈະບໍ່ເທົ່າຜົນລວມທີ່ນັບ — ຖາມກ່ອນ ແທນທີ່ຈະ
+   * ຕັດສິນໃຈໃຫ້ເອງ (ບ່ອນທີ່ບໍ່ໄດ້ນັບອາດຈະຖືກຕ້ອງຢູ່ແລ້ວ).
+   */
+  function submit() {
     if (changedItems.length === 0) {
       showToast("err", "ບໍ່ມີການປ່ຽນແປງໃຫ້ບັນທຶກ");
       return;
@@ -483,6 +716,16 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
       showToast("err", `ສິນຄ້າ ${duplicateNode.item_code} ຊ້ຳຢູ່ບ່ອນຈັດເກັບດຽວກັນ`);
       return;
     }
+    if (fillGaps.length > 0) {
+      setAskFill(true);
+      return;
+    }
+    void doSubmit(false);
+  }
+
+  /** `zeroRest` = ປັບບ່ອນທີ່ບໍ່ໄດ້ນັບໃຫ້ເປັນ 0 ເພື່ອໃຫ້ຍອດທັງສາງ = ຜົນລວມທີ່ນັບໄດ້. */
+  async function doSubmit(zeroRest: boolean) {
+    setAskFill(false);
     setSubmitting(true);
     try {
       const res = await fetch(`/api/movements/adjust`, {
@@ -514,6 +757,21 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   pallet: i.pallet,
                   counted_qty: parsedCount(i.counted),
                 },
+          ).concat(
+            // ບ່ອນທີ່ບໍ່ໄດ້ນັບ → ປັບເປັນ 0 ເພື່ອໃຫ້ຍອດທັງສາງເທົ່າກັບຜົນລວມທີ່ນັບໄດ້
+            zeroRest
+              ? fillGaps.flatMap((g) =>
+                  g.bins.map((b) => ({
+                    item_code: g.item_code,
+                    item_name: g.item_name,
+                    unit_code: g.unit_code,
+                    rack: b.rack,
+                    location: b.location,
+                    pallet: b.pallet,
+                    counted_qty: 0,
+                  })),
+                )
+              : [],
           ),
         }),
       });
@@ -538,7 +796,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
 
   const fieldLabel = "mb-1 block text-[10px] font-semibold uppercase tracking-wide text-zinc-400";
   const smallSelect =
-    "w-full rounded-lg bg-white px-2 py-1.5 text-xs text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+    "w-full rounded-lg bg-white px-2 py-1.5 text-xs text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 disabled:opacity-50 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
   return (
     <div className="space-y-5">
@@ -549,16 +807,23 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
           {/* Warehouse + search */}
           <div className="mb-4 grid gap-4 sm:grid-cols-[240px_1fr]">
             <div>
-              <label className={labelCls}>ສາງ *</label>
-              <select value={whCode} onChange={(e) => setWhCode(e.target.value)} className={inputCls}>
-                <option value="">— ເລືອກສາງ —</option>
-                {warehouses.map((w) => (
-                  <option key={w.code} value={w.code}>
-                    {w.code}
-                    {w.name ? ` · ${w.name}` : ""}
-                  </option>
-                ))}
-              </select>
+              <label className={labelCls}>ສາງ</label>
+              <div className={`${inputCls} flex items-center gap-2 font-bold`}>
+                {whCode ? (
+                  <>
+                    <span className="rounded bg-brand-50 px-2 py-0.5 font-mono text-xs font-black text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">{whCode}</span>
+                    <span className="truncate">{whName ?? ""}</span>
+                    {items.length === 0 && (
+                      <button type="button" onClick={() => setWhCode("")} className="ml-auto rounded p-1 text-zinc-300 hover:text-rose-500" title="ຄົ້ນຫາທຸກສາງອີກຄັ້ງ">✕</button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    ທຸກສາງ
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+                  </>
+                )}
+              </div>
             </div>
             <div>
               <label className={labelCls}>
@@ -576,30 +841,43 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  disabled={!whCode}
-                  placeholder={whCode ? "ສະແກນ / ພິມ ລະຫັດ ຫຼື ຊື່ ເພື່ອເພີ່ມສິນຄ້າ..." : "ເລືອກສາງກ່ອນ"}
+                  placeholder="ສະແກນ / ພິມ ລະຫັດ ຫຼື ຊື່ ເພື່ອເພີ່ມສິນຄ້າ (ທຸກສາງ)..."
                   className={`${inputCls} pl-9`}
                 />
                 {(hits.length > 0 || searching) && (
                   <div className="absolute inset-x-0 top-[calc(100%+0.3rem)] z-30 max-h-72 overflow-auto rounded-xl bg-white p-1 shadow-2xl ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
                     {searching && <div className="p-3 text-center text-xs text-zinc-400">ກຳລັງຄົ້ນຫາ...</div>}
-                    {hits.map((h) => (
+                    {hitGroups.map((g) => (
+                      <div key={g.code}>
+                        <WarehouseGroupHeader
+                          code={g.code}
+                          name={warehouses.find((w) => w.code === g.code)?.name}
+                          count={g.rows.length}
+                          countLabel="ລາຍການ"
+                          tone="brand"
+                        />
+                    {g.rows.map((h) => (
                       <button
-                        key={h.item_code}
+                        key={`${h.wh_code}-${h.item_code}`}
                         type="button"
                         onClick={() => addHit(h)}
                         className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-800/70"
                       >
-                        <PlusIcon className="h-4 w-4 shrink-0 text-indigo-500" />
+                        <PlusIcon className="h-4 w-4 shrink-0 text-brand-500" />
                         <div className="min-w-0 flex-1">
-                          <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{h.item_code}</div>
+                          <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{h.item_code}</div>
                           <div className="truncate text-xs">{h.item_name}</div>
+                          <div className="mt-1">
+                            <NodeSummary nodes={h.locations ?? []} unit={h.unit_code} />
+                          </div>
                         </div>
                         <div className="shrink-0 text-right text-[10px]">
                           <div className="font-mono font-bold tabular-nums text-zinc-700 dark:text-zinc-200">ສາງ {formatQty(h.wh_balance)}</div>
                           <div className="text-zinc-400">{h.unit_code}</div>
                         </div>
                       </button>
+                    ))}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -611,7 +889,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
             <div className="rounded-xl border border-dashed border-zinc-200 py-10 text-center dark:border-zinc-800">
               <PackageIcon className="mx-auto h-7 w-7 text-zinc-300 dark:text-zinc-600" />
               <p className="mt-2 text-xs font-semibold text-zinc-500">
-                {whCode ? "ຄົ້ນຫາ ແລະ ເພີ່ມສິນຄ້າ → ໃສ່ຈຳນວນ → ເລືອກ location/pallet" : "ເລືອກສາງເພື່ອເລີ່ມ"}
+                ຄົ້ນຫາ ແລະ ເພີ່ມສິນຄ້າ (ທຸກສາງ) → ໃສ່ຈຳນວນ → ເລືອກ location/pallet
               </p>
             </div>
           ) : (
@@ -621,6 +899,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                 const dColor =
                   d === null || d === 0 ? "text-zinc-400" : d > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
                 const dup = duplicateNode?.id === i.id;
+                const proj = whProjection(items, i.item_code, snOn);
                 return (
                   <div
                     key={i.id}
@@ -628,7 +907,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   >
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{i.item_code}</div>
+                        <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{i.item_code}</div>
                         <div className="max-w-md truncate text-sm text-zinc-800 dark:text-zinc-200" title={i.item_name ?? ""}>
                           {i.item_name ?? "—"}
                         </div>
@@ -637,9 +916,27 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                         <div className="text-right">
                           <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-400">ຍອດທັງສາງ</div>
                           <div className="font-mono text-sm font-bold tabular-nums text-zinc-700 dark:text-zinc-200">
-                            {formatQty(i.wh_balance)}
+                            {proj.newTotal !== null && (
+                              <span className="mr-1 font-normal text-zinc-400 line-through">{formatQty(i.wh_balance)}</span>
+                            )}
+                            {proj.newTotal !== null ? formatQty(proj.newTotal) : formatQty(i.wh_balance)}
                             <span className="ml-1 text-[10px] uppercase text-zinc-400">{i.unit_code}</span>
                           </div>
+                          {/* ນັບຄົບທຸກບ່ອນ = ຍອດທັງສາງໃໝ່ເທົ່າກັບຜົນລວມທີ່ປ້ອນ */}
+                          {proj.newTotal !== null &&
+                            (proj.uncounted > 0 ? (
+                              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                ຍັງບໍ່ນັບ {proj.uncounted} ບ່ອນ
+                              </div>
+                            ) : proj.partial ? (
+                              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                ຍັງມີບ່ອນເກັບອື່ນທີ່ບໍ່ໄດ້ສະແດງ
+                              </div>
+                            ) : (
+                              <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                ນັບຄົບທຸກບ່ອນ
+                              </div>
+                            ))}
                         </div>
                         <button
                           type="button"
@@ -652,6 +949,59 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                           </svg>
                         </button>
                       </div>
+                    </div>
+
+                    {/* Where the item sits today — one click moves the line to that node. */}
+                    <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                        <MapPinIcon className="h-3 w-3" />
+                        ຢູ່ປະຈຸບັນ
+                      </span>
+                      {i.locations.length === 0 ? (
+                        <span className="text-[11px] text-zinc-400">ຍັງບໍ່ມີສິນຄ້ານີ້ໃນສາງ — ເລືອກບ່ອນຈັດເກັບເອງ</span>
+                      ) : (
+                        i.locations.map((n) => {
+                          const active = sameNode(i, n);
+                          // Already counted on another row of this item — clicking would
+                          // just make a duplicate, so point the user at that row instead.
+                          const taken = !active && takenNodes.has(pNodeKey({ item_code: i.item_code, ...n }));
+                          return (
+                            <button
+                              key={pNodePath(n)}
+                              type="button"
+                              // ບ່ອນທີ່ມີແຖວຂອງມັນຢູ່ແລ້ວ → ກະໂດດໄປແຖວນັ້ນ (ບໍ່ແມ່ນປິດປຸ່ມ),
+                              // ເພາະດຽວນີ້ທຸກບ່ອນຈັດເກັບຂອງສິນຄ້າມີແຖວປ້ອນຈຳນວນຂອງໃຜລາວ.
+                              onClick={() =>
+                                taken
+                                  ? focusNodeRow(i.item_code, { rack: n.rack, location: n.location, pallet: n.pallet })
+                                  : setLineNode(i.id, { rack: n.rack, location: n.location, pallet: n.pallet })
+                              }
+                              title={taken ? "ໄປທີ່ແຖວຂອງບ່ອນນີ້" : "ໃຊ້ບ່ອນຈັດເກັບນີ້"}
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] transition ${
+                                active
+                                  ? "bg-brand-600 text-white shadow-sm"
+                                  : taken
+                                    ? "bg-zinc-100 text-zinc-500 ring-1 ring-zinc-200 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"
+                                    : "bg-brand-50 text-brand-700 ring-1 ring-brand-100 hover:bg-brand-100 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50 dark:hover:bg-brand-900/40"
+                              }`}
+                            >
+                              {pNodePath(n)}
+                              <span className={`tabular-nums ${active ? "text-white/80" : taken ? "" : "text-brand-500/80 dark:text-brand-400/80"}`}>
+                                {formatQty(n.qty)}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => addNodeRow(i.id)}
+                        title="ນັບສິນຄ້ານີ້ຢູ່ອີກບ່ອນຈັດເກັບໜຶ່ງ"
+                        className="inline-flex items-center gap-1 rounded-full border border-dashed border-zinc-300 px-2 py-0.5 text-[11px] font-semibold text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                      >
+                        <PlusIcon className="h-3 w-3" />
+                        ບ່ອນຈັດເກັບ
+                      </button>
                     </div>
 
                     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)_auto]">
@@ -670,7 +1020,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             <button
                               type="button"
                               onClick={() => setSerialLine(i.id)}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900/50"
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-aqua-50 px-3 py-1.5 text-xs font-semibold text-aqua-700 ring-1 ring-aqua-200 transition hover:bg-aqua-100 dark:bg-aqua-950/40 dark:text-aqua-300 dark:ring-aqua-900/50"
                             >
                               <LayersIcon className="h-3.5 w-3.5" />
                               {serialActivity(i) > 0 ? `ອອກ ${i.serialsRemove.length} · ເພີ່ມ ${i.serialsAdd.length + i.serialsGenerate}` : "ຈັດການ SN"}
@@ -687,12 +1037,13 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                               −
                             </button>
                             <input
+                              id={`padj-qty-${i.id}`}
                               type="number"
                               inputMode="decimal"
                               value={i.counted}
                               onChange={(e) => setCounted(i.id, e.target.value)}
                               placeholder="0"
-                              className="w-full min-w-0 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold tabular-nums ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:ring-zinc-800"
+                              className="w-full min-w-0 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold tabular-nums ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:ring-zinc-800"
                             />
                             <button
                               type="button"
@@ -711,6 +1062,8 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                           <span className={fieldLabel}>Rack</span>
                           <select value={i.rack} onChange={(e) => setLineNode(i.id, { rack: e.target.value, location: "" })} className={smallSelect}>
                             <option value="">— ທຸກ rack —</option>
+                            {/* A node picked from the chips may name a rack the master list has dropped. */}
+                            {i.rack && !racks.some((r) => r.code === i.rack) && <option value={i.rack}>{i.rack}</option>}
                             {racks.map((r) => (
                               <option key={r.code} value={r.code}>
                                 {r.code}
@@ -720,8 +1073,11 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                         </div>
                         <div>
                           <span className={fieldLabel}>Location</span>
-                          <select value={i.location} onChange={(e) => setLineNode(i.id, { location: e.target.value })} disabled={!i.rack} className={smallSelect}>
+                          <select value={i.location} onChange={(e) => setLineNode(i.id, { location: e.target.value })} disabled={!i.rack && !i.location} className={smallSelect}>
                             <option value="">{i.rack ? "— ທຸກ location —" : "ເລືອກ rack"}</option>
+                            {i.location && !locationsForRack(i.rack).some((l) => l.code === i.location) && (
+                              <option value={i.location}>{i.location}</option>
+                            )}
                             {locationsForRack(i.rack).map((l) => (
                               <option key={l.code} value={l.code}>
                                 {l.code}
@@ -745,6 +1101,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             className={smallSelect}
                           >
                             <option value="">— ບໍ່ມີ —</option>
+                            {i.pallet && !pallets.some((p) => p.code === i.pallet) && <option value={i.pallet}>{i.pallet}</option>}
                             {pallets.map((p) => (
                               <option key={p.code} value={p.code}>
                                 {p.code}
@@ -825,12 +1182,12 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                       return (
                         <tr key={i.id}>
                           <td className="px-3 py-2">
-                            <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{i.item_code}</div>
+                            <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{i.item_code}</div>
                             <div className="max-w-xs truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div>
                           </td>
                           <td className="px-3 py-2">
                             <span className="inline-flex items-center gap-1 font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
-                              <MapPinIcon className="h-3 w-3 text-indigo-400" />
+                              <MapPinIcon className="h-3 w-3 text-brand-400" />
                               {pNodePath(i)}
                             </span>
                           </td>
@@ -878,6 +1235,67 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
         </section>
       )}
 
+      {askFill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl dark:bg-zinc-900">
+            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-50">
+              ຕ້ອງການໃຫ້ຍອດຄົງເຫຼືອເທົ່າກັບຈຳນວນທີ່ນັບໄດ້ບໍ?
+            </h3>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              ຍັງມີບ່ອນຈັດເກັບທີ່ບໍ່ໄດ້ນັບ ແລະ ຍັງຖືເຄື່ອງຢູ່ — ຖ້າຢືນຢັນ ຈະປັບບ່ອນເຫຼົ່ານັ້ນໃຫ້ເປັນ <b>0</b>
+              ເພື່ອໃຫ້ຍອດທັງສາງເທົ່າກັບຜົນລວມທີ່ນັບໄດ້.
+            </p>
+
+            <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+              {fillGaps.map((g) => (
+                <div key={g.item_code} className="rounded-xl bg-zinc-50 p-3 text-xs dark:bg-zinc-800/50">
+                  <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{g.item_code}</div>
+                  <div className="truncate text-zinc-700 dark:text-zinc-300">{g.item_name ?? "—"}</div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono tabular-nums">
+                    <span className="text-zinc-500">ນັບໄດ້ <b className="text-zinc-900 dark:text-zinc-100">{formatQty(g.countedSum)}</b></span>
+                    <span className="text-zinc-500">ຖ້າບໍ່ປັບ <b className="text-amber-600 dark:text-amber-400">{formatQty(g.projected)}</b></span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {g.bins.map((b) => (
+                      <span key={pNodePath(b)} className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                        {pNodePath(b)} <span className="tabular-nums">{formatQty(b.qty)} → 0</span>
+                      </span>
+                    ))}
+                  </div>
+                  {g.partial && (
+                    <div className="mt-1.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                      ⚠ ສິນຄ້ານີ້ຢູ່ຫຼາຍກວ່າ 8 ບ່ອນ — ປັບໄດ້ສະເພາະບ່ອນທີ່ສະແດງ ຍອດອາດຍັງບໍ່ຕົງ
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button type="button" onClick={() => setAskFill(false)} className={ghostBtn}>
+                ຍົກເລີກ
+              </button>
+              <button
+                type="button"
+                onClick={() => void doSubmit(false)}
+                disabled={submitting}
+                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                ບໍ່ — ບັນທຶກສະເພາະທີ່ນັບ
+              </button>
+              <button
+                type="button"
+                onClick={() => void doSubmit(true)}
+                disabled={submitting}
+                className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50"
+              >
+                ແມ່ນ — ປັບໃຫ້ເທົ່າ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {serialLine && (() => {
         const it = items.find((x) => x.id === serialLine);
         if (!it) return null;
@@ -918,10 +1336,12 @@ type LWorking = CountLine & {
 function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
-  const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
-  const [racks, setRacks] = useState<RackOption[]>([]);
-  const [locations, setLocations] = useState<LocationOption[]>([]);
-  const [pallets, setPallets] = useState<PalletOption[]>([]);
+  // ບໍ່ມີ dropdown ເລືອກສາງແລ້ວ — ຕົວເລືອກ Rack ລວມທຸກສາງທີ່ມີສິດ ແລ້ວແຍກກຸ່ມ
+  // ຕາມສາງ; ສາງ (`whCode`) ມາຈາກ rack ທີ່ເລືອກ.
+  const [whCode, setWhCode] = useState("");
+  const [racks, setRacks] = useState<(RackOption & { wh_code: string })[]>([]);
+  const [locations, setLocations] = useState<(LocationOption & { wh_code: string })[]>([]);
+  const [pallets, setPallets] = useState<(PalletOption & { wh_code: string })[]>([]);
   const [rackCode, setRackCode] = useState("");
   const [locationCode, setLocationCode] = useState("");
   const [palletCode, setPalletCode] = useState("");
@@ -948,25 +1368,26 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     setTimeout(() => setToast(null), 3000);
   }
 
+  // ໂຫຼດ rack/location/pallet ຂອງທຸກສາງທີ່ມີສິດ (ເທື່ອດຽວ) ພ້ອມປ້າຍສາງ.
   useEffect(() => {
-    setRacks([]);
-    setLocations([]);
-    setPallets([]);
-    setRackCode("");
-    setLocationCode("");
-    setPalletCode("");
-    setItems([]);
-    setLoaded(false);
-    if (!whCode) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(whCode)}`);
-        const data = (await res.json()) as { racks?: RackOption[]; locations?: LocationOption[]; pallets?: PalletOption[] };
+        const all = await Promise.all(
+          warehouses.map(async (w) => {
+            const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(w.code)}`);
+            const data = (await res.json()) as { racks?: RackOption[]; locations?: LocationOption[]; pallets?: PalletOption[] };
+            return {
+              racks: (data.racks ?? []).map((r) => ({ ...r, wh_code: w.code })),
+              locations: (data.locations ?? []).map((l) => ({ ...l, wh_code: w.code })),
+              pallets: (data.pallets ?? []).map((pl) => ({ ...pl, wh_code: w.code })),
+            };
+          }),
+        );
         if (cancelled) return;
-        setRacks(data.racks ?? []);
-        setLocations(data.locations ?? []);
-        setPallets(data.pallets ?? []);
+        setRacks(all.flatMap((a) => a.racks));
+        setLocations(all.flatMap((a) => a.locations));
+        setPallets(all.flatMap((a) => a.pallets));
       } catch {
         if (!cancelled) showToast("err", "ບໍ່ສາມາດໂຫຼດພື້ນທີ່ຈັດເກັບ");
       }
@@ -974,12 +1395,14 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     return () => {
       cancelled = true;
     };
-  }, [whCode]);
+  }, [warehouses]);
 
+  const rackGroups = useMemo(() => groupByWarehouse(racks, (r) => r.wh_code, warehouses), [racks, warehouses]);
   const availableLocations = useMemo(
-    () => (rackCode ? locations.filter((l) => l.rack_code === rackCode) : locations),
-    [locations, rackCode],
+    () => locations.filter((l) => l.wh_code === whCode && (!rackCode || l.rack_code === rackCode)),
+    [locations, whCode, rackCode],
   );
+  const availablePallets = useMemo(() => pallets.filter((p) => p.wh_code === whCode), [pallets, whCode]);
 
   useEffect(() => {
     if (locationCode && rackCode && !availableLocations.find((l) => l.code === locationCode)) {
@@ -1204,31 +1627,54 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
       {step === 1 && (
         <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-            <MapPinIcon className="h-4 w-4 text-indigo-500" />
+            <MapPinIcon className="h-4 w-4 text-brand-500" />
             ເລືອກບ່ອນຈັດເກັບທີ່ຈະປັບປຸງ
           </h3>
           <div className="grid grid-cols-4 gap-4">
             <div>
-              <label className={labelCls}>ສາງ *</label>
-              <select value={whCode} onChange={(e) => setWhCode(e.target.value)} className={inputCls}>
-                <option value="">— ເລືອກສາງ —</option>
-                {warehouses.map((w) => (
-                  <option key={w.code} value={w.code}>
-                    {w.code}
-                    {w.name ? ` · ${w.name}` : ""}
-                  </option>
-                ))}
-              </select>
+              <label className={labelCls}>ສາງ</label>
+              <div className={`${inputCls} flex items-center gap-2 font-bold`}>
+                {whCode ? (
+                  <>
+                    <span className="rounded bg-brand-50 px-2 py-0.5 font-mono text-xs font-black text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">{whCode}</span>
+                    <span className="truncate">{whName ?? ""}</span>
+                    {items.length === 0 && (
+                      <button type="button" onClick={() => setWhCode("")} className="ml-auto rounded p-1 text-zinc-300 hover:text-rose-500" title="ຄົ້ນຫາທຸກສາງອີກຄັ້ງ">✕</button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    ທຸກສາງ
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+                  </>
+                )}
+              </div>
             </div>
             <div>
-              <label className={labelCls}>Rack (ຊັ້ນວາງ)</label>
-              <select value={rackCode} onChange={(e) => setRackCode(e.target.value)} disabled={!whCode} className={inputCls}>
-                <option value="">— ທຸກ rack —</option>
-                {racks.map((r) => (
-                  <option key={r.code} value={r.code}>
-                    {r.code}
-                    {r.name ? ` · ${r.name}` : ""}
-                  </option>
+              <label className={labelCls}>Rack (ຊັ້ນວາງ) *</label>
+              <select
+                value={whCode && rackCode ? `${whCode}|${rackCode}` : ""}
+                onChange={(e) => {
+                  const [w, code] = e.target.value.split("|");
+                  setWhCode(w ?? "");
+                  setRackCode(code ?? "");
+                  setLocationCode("");
+                  setPalletCode("");
+                  setItems([]);
+                  setLoaded(false);
+                }}
+                className={inputCls}
+              >
+                <option value="">— ເລືອກ rack (ທຸກສາງ) —</option>
+                {rackGroups.map((g) => (
+                  <optgroup key={g.code} label={`${g.code}${warehouses.find((w) => w.code === g.code)?.name ? ` · ${warehouses.find((w) => w.code === g.code)?.name}` : ""} (${g.rows.length})`}>
+                    {g.rows.map((r) => (
+                      <option key={`${r.wh_code}|${r.code}`} value={`${r.wh_code}|${r.code}`}>
+                        {r.code}
+                        {r.name ? ` · ${r.name}` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -1243,8 +1689,8 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   </option>
                 ))}
               </select>
-              {locationCode && pallets.some((p) => p.location === locationCode) && (
-                <p className="mt-1 text-[10px] text-zinc-400">📦 pallet ຢູ່ບ່ອນນີ້: {pallets.filter((p) => p.location === locationCode).map((p) => p.code).join(", ")}</p>
+              {locationCode && availablePallets.some((p) => p.location === locationCode) && (
+                <p className="mt-1 text-[10px] text-zinc-400">📦 pallet ຢູ່ບ່ອນນີ້: {availablePallets.filter((p) => p.location === locationCode).map((p) => p.code).join(", ")}</p>
               )}
             </div>
             <div>
@@ -1254,7 +1700,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                 onChange={(e) => {
                   const code = e.target.value;
                   setPalletCode(code);
-                  const p = pallets.find((x) => x.code === code);
+                  const p = availablePallets.find((x) => x.code === code);
                   if (p) {
                     if (p.rack) setRackCode(p.rack);
                     if (p.location) setLocationCode(p.location);
@@ -1264,7 +1710,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                 className={inputCls}
               >
                 <option value="">— ບໍ່ມີ pallet —</option>
-                {pallets.map((p) => (
+                {availablePallets.map((p) => (
                   <option key={p.code} value={p.code}>
                     {p.code}
                     {p.location ? ` → ${p.location}` : ""}
@@ -1291,7 +1737,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
         <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-800/40">
             <div className="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-300">
-              <MapPinIcon className="h-3.5 w-3.5 text-indigo-500" />
+              <MapPinIcon className="h-3.5 w-3.5 text-brand-500" />
               <span className="font-mono">{nodeLabel}</span>
               {whName && <span className="text-zinc-400">· {whName}</span>}
               {!snOn && (
@@ -1304,7 +1750,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
               type="button"
               onClick={() => loadItems()}
               disabled={loading}
-              className="text-xs font-semibold text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400"
+              className="text-xs font-semibold text-brand-600 hover:underline disabled:opacity-50 dark:text-brand-400"
             >
               {loading ? "ກຳລັງໂຫຼດ..." : "↻ ໂຫຼດຄືນ"}
             </button>
@@ -1330,9 +1776,9 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                     onClick={() => addHit(h)}
                     className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-800/70"
                   >
-                    <PlusIcon className="h-4 w-4 shrink-0 text-indigo-500" />
+                    <PlusIcon className="h-4 w-4 shrink-0 text-brand-500" />
                     <div className="min-w-0 flex-1">
-                      <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{h.item_code}</div>
+                      <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{h.item_code}</div>
                       <div className="truncate text-xs">{h.item_name}</div>
                     </div>
                     <div className="shrink-0 text-right text-[10px]">
@@ -1372,7 +1818,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                     return (
                       <tr key={i.item_code} className="align-middle transition hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30">
                         <td className="px-4 py-2.5">
-                          <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{i.item_code}</div>
+                          <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{i.item_code}</div>
                           <div className="max-w-md truncate text-sm text-zinc-800 dark:text-zinc-200" title={i.item_name ?? ""}>
                             {i.item_name ?? "—"}
                           </div>
@@ -1395,7 +1841,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                               <button
                                 type="button"
                                 onClick={() => setSerialItem(i.item_code)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900/50"
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-aqua-50 px-3 py-1.5 text-xs font-semibold text-aqua-700 ring-1 ring-aqua-200 transition hover:bg-aqua-100 dark:bg-aqua-950/40 dark:text-aqua-300 dark:ring-aqua-900/50"
                               >
                                 <LayersIcon className="h-3.5 w-3.5" />
                                 {serialActivity(i) > 0 ? `ອອກ ${i.serialsRemove.length} · ເພີ່ມ ${i.serialsAdd.length + i.serialsGenerate}` : "ຈັດການ SN"}
@@ -1416,7 +1862,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                                 inputMode="decimal"
                                 value={i.counted}
                                 onChange={(e) => setCounted(i.item_code, e.target.value)}
-                                className="w-24 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold tabular-nums ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:ring-zinc-800"
+                                className="w-24 rounded-lg bg-white px-2 py-1.5 text-center font-mono text-sm font-semibold tabular-nums ring-1 ring-zinc-200 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:ring-zinc-800"
                               />
                               <button
                                 type="button"
@@ -1504,7 +1950,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                     return (
                       <tr key={i.item_code}>
                         <td className="px-3 py-2">
-                          <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{i.item_code}</div>
+                          <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{i.item_code}</div>
                           <div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div>
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-xs tabular-nums text-zinc-500">{formatQty(i.before_qty)}</td>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertIcon, CheckIcon, LayersIcon, PackageIcon } from "@/components/ui/Icons";
+import { groupByWarehouse } from "@/components/ui/WarehouseGroup";
 
 export type WarehouseOption = { code: string; name: string | null };
 type RackOption = { code: string; name: string | null };
@@ -20,8 +21,10 @@ function loc(rack: string | null, location: string | null) {
 }
 
 export default function PalletMoveClient({ warehouses }: { warehouses: WarehouseOption[] }) {
-  const [whCode, setWhCode] = useState(warehouses.length === 1 ? warehouses[0].code : "");
-  const [pallets, setPallets] = useState<PalletOption[]>([]);
+  // ບໍ່ມີ dropdown ເລືອກສາງຕົ້ນທາງແລ້ວ — ລາຍການ pallet ມາທຸກສາງທີ່ມີສິດ ແຍກກຸ່ມ
+  // ຕາມສາງ; ສາງຕົ້ນທາງ (`whCode`) ມາຈາກ pallet ທີ່ເລືອກ.
+  const [whCode, setWhCode] = useState("");
+  const [pallets, setPallets] = useState<(PalletOption & { wh_code: string })[]>([]);
   const [palletCode, setPalletCode] = useState("");
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -40,23 +43,25 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
     setTimeout(() => setToast(null), 3500);
   }
 
-  // Source warehouse → load its pallets; default destination = same warehouse.
+  // ໂຫຼດ pallet ຂອງທຸກສາງທີ່ມີສິດ (ເທື່ອດຽວ) — ຕິດປ້າຍສາງໃສ່ແຕ່ລະ pallet.
   useEffect(() => {
-    setPallets([]); setPalletCode(""); setDetail(null);
-    setToWh(whCode); setToRack(""); setToLoc("");
-    if (!whCode) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(whCode)}`);
-        const data = (await res.json()) as { pallets?: PalletOption[] };
-        if (!cancelled) setPallets(data.pallets ?? []);
+        const all = await Promise.all(
+          warehouses.map(async (w) => {
+            const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(w.code)}`);
+            const data = (await res.json()) as { pallets?: PalletOption[] };
+            return (data.pallets ?? []).map((p) => ({ ...p, wh_code: w.code }));
+          }),
+        );
+        if (!cancelled) setPallets(all.flat());
       } catch {
         if (!cancelled) showToast("err", "ໂຫຼດຂໍ້ມູນບໍ່ສຳເລັດ");
       }
     })();
     return () => { cancelled = true; };
-  }, [whCode]);
+  }, [warehouses]);
 
   // Destination warehouse → load its racks/locations.
   useEffect(() => {
@@ -77,14 +82,17 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
     return () => { cancelled = true; };
   }, [toWh]);
 
-  async function loadDetail(code: string) {
+  /** `wh` ຮັບເຂົ້າມາ ເພາະສາງມາຈາກ pallet ທີ່ເລືອກ (state ຍັງບໍ່ທັນອັບເດດ). */
+  async function loadDetail(code: string, wh = whCode) {
     setPalletCode(code);
+    setWhCode(wh);
     setDetail(null);
     setToRack(""); setToLoc("");
     if (!code) return;
+    setToWh(wh); // ຄ່າເລີ່ມຕົ້ນຂອງປາຍທາງ = ສາງເດີມ
     setLoadingDetail(true);
     try {
-      const res = await fetch(`/api/movements/pallet-move?wh=${encodeURIComponent(whCode)}&pallet=${encodeURIComponent(code)}`);
+      const res = await fetch(`/api/movements/pallet-move?wh=${encodeURIComponent(wh)}&pallet=${encodeURIComponent(code)}`);
       const data = (await res.json()) as Detail & { error?: string };
       if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       setDetail(data);
@@ -95,6 +103,7 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
     }
   }
 
+  const palletGroups = useMemo(() => groupByWarehouse(pallets, (p) => p.wh_code, warehouses), [pallets, warehouses]);
   const availableLocations = useMemo(() => (toRack ? locations.filter((l) => l.rack_code === toRack) : locations), [locations, toRack]);
   const totalQty = useMemo(() => (detail?.items ?? []).reduce((n, i) => n + (Number.parseFloat(i.qty) || 0), 0), [detail]);
 
@@ -120,7 +129,7 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
     }
   }
 
-  const inputCls = "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+  const inputCls = "rounded-lg bg-white px-3 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
   const labelCls = "mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300";
 
   return (
@@ -129,17 +138,41 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
       <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className={labelCls}>ສາງ *</label>
-            <select value={whCode} onChange={(e) => setWhCode(e.target.value)} className={`${inputCls} w-full`}>
-              <option value="">— ເລືອກສາງ —</option>
-              {warehouses.map((w) => (<option key={w.code} value={w.code}>{w.code}{w.name ? ` · ${w.name}` : ""}</option>))}
-            </select>
+            <label className={labelCls}>ສາງ</label>
+            <div className={`${inputCls} flex w-full items-center gap-2 font-bold`}>
+              {whCode ? (
+                <>
+                  <span className="rounded bg-brand-50 px-2 py-0.5 font-mono text-xs font-black text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">{whCode}</span>
+                  <span className="truncate">{warehouses.find((w) => w.code === whCode)?.name ?? ""}</span>
+                </>
+              ) : (
+                <>
+                  ທຸກສາງ
+                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{warehouses.length}</span>
+                </>
+              )}
+            </div>
           </div>
           <div>
-            <label className={labelCls}>Pallet *</label>
-            <select value={palletCode} onChange={(e) => loadDetail(e.target.value)} disabled={!whCode} className={`${inputCls} w-full`}>
+            <label className={labelCls}>Pallet * <span className="font-normal text-zinc-400">(ທຸກສາງ · ແຍກກຸ່ມຕາມສາງ)</span></label>
+            <select
+              value={whCode && palletCode ? `${whCode}|${palletCode}` : ""}
+              onChange={(e) => {
+                const [w, code] = e.target.value.split("|");
+                void loadDetail(code ?? "", w ?? "");
+              }}
+              className={`${inputCls} w-full`}
+            >
               <option value="">— ເລືອກ pallet —</option>
-              {pallets.map((p) => (<option key={p.code} value={p.code}>{p.code}{p.location ? ` @ ${p.location}` : ""}</option>))}
+              {palletGroups.map((g) => (
+                <optgroup key={g.code} label={`${g.code}${warehouses.find((w) => w.code === g.code)?.name ? ` · ${warehouses.find((w) => w.code === g.code)?.name}` : ""} (${g.rows.length})`}>
+                  {g.rows.map((p) => (
+                    <option key={`${p.wh_code}|${p.code}`} value={`${p.wh_code}|${p.code}`}>
+                      {p.code}{p.location ? ` @ ${p.location}` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
         </div>
@@ -153,16 +186,16 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
           <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"><LayersIcon className="h-5 w-5" /></span>
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/40 dark:text-brand-400"><LayersIcon className="h-5 w-5" /></span>
                 <div>
                   <div className="font-mono text-sm font-bold text-zinc-900 dark:text-zinc-50">📦 {detail.pallet.code}</div>
-                  <div className="text-xs text-zinc-500">ຢູ່ປັດຈຸບัน: <span className="font-mono text-blue-600 dark:text-blue-400">{loc(detail.pallet.rack, detail.pallet.location)}</span>{!detail.found && <span className="ml-1 text-rose-500">· ບໍ່ມີໃນ pallet master</span>}</div>
+                  <div className="text-xs text-zinc-500">ຢູ່ປັດຈຸບัน: <span className="font-mono text-brand-600 dark:text-brand-400">{loc(detail.pallet.rack, detail.pallet.location)}</span>{!detail.found && <span className="ml-1 text-rose-500">· ບໍ່ມີໃນ pallet master</span>}</div>
                 </div>
               </div>
               <div className="flex items-center gap-4 text-right">
                 <div><div className="text-[10px] uppercase text-zinc-400">ສິນຄ້າ</div><div className="font-mono text-xl font-bold tabular-nums text-zinc-900 dark:text-zinc-50">{detail.items.length}</div></div>
                 <div><div className="text-[10px] uppercase text-zinc-400">ຈຳນວນ</div><div className="font-mono text-xl font-bold tabular-nums text-zinc-900 dark:text-zinc-50">{fmt(totalQty)}</div></div>
-                <div><div className="text-[10px] uppercase text-zinc-400">SN</div><div className="font-mono text-xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{detail.serial_count}</div></div>
+                <div><div className="text-[10px] uppercase text-zinc-400">SN</div><div className="font-mono text-xl font-bold tabular-nums text-aqua-600 dark:text-aqua-400">{detail.serial_count}</div></div>
               </div>
             </div>
 
@@ -175,7 +208,7 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                     {detail.items.map((i, idx) => (
                       <tr key={`${i.item_code}-${idx}`}>
-                        <td className="px-4 py-2"><div className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">{i.item_code}</div><div className="max-w-md truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div></td>
+                        <td className="px-4 py-2"><div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{i.item_code}</div><div className="max-w-md truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div></td>
                         <td className="px-4 py-2 font-mono text-[11px] text-zinc-500">{loc(i.rack, i.location)}</td>
                         <td className="px-4 py-2 text-right font-mono text-sm tabular-nums text-zinc-700 dark:text-zinc-200">{fmt(i.qty)}<span className="ml-1 text-[10px] uppercase text-zinc-400">{i.unit_code}</span></td>
                       </tr>
@@ -214,8 +247,8 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <span className="text-xs text-zinc-500">{whCode} · {loc(detail.pallet.rack, detail.pallet.location)} → <b className="font-mono text-blue-600 dark:text-blue-400">{toWh}{toRack || toLoc ? ` · ${loc(toRack, toLoc)}` : " (ສາງ)"}</b>{toWh !== whCode && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">ຂ້າມສາງ</span>}</span>
-                <button type="button" onClick={submit} disabled={submitting || (toWh === whCode && !toRack && !toLoc)} className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:shadow-lg disabled:opacity-50">
+                <span className="text-xs text-zinc-500">{whCode} · {loc(detail.pallet.rack, detail.pallet.location)} → <b className="font-mono text-brand-600 dark:text-brand-400">{toWh}{toRack || toLoc ? ` · ${loc(toRack, toLoc)}` : " (ສາງ)"}</b>{toWh !== whCode && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">ຂ້າມສາງ</span>}</span>
+                <button type="button" onClick={submit} disabled={submitting || (toWh === whCode && !toRack && !toLoc)} className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg disabled:opacity-50">
                   <LayersIcon className="h-4 w-4" />
                   {submitting ? "ກຳລັງຍ້າຍ..." : "ຍ້າຍ Pallet"}
                 </button>

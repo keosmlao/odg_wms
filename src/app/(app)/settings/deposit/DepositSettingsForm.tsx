@@ -183,15 +183,15 @@ export default function DepositSettingsForm({
               value={s.currency}
               onChange={(e) => update("currency", e.target.value.toUpperCase())}
               maxLength={8}
-              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-mono uppercase shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-mono uppercase shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
             />
           </label>
         </div>
       </section>
 
       {/* Live preview */}
-      <section className="rounded-2xl border border-indigo-200/70 bg-indigo-50/40 p-5 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+      <section className="rounded-2xl border border-brand-200/70 bg-brand-50/40 p-5 dark:border-brand-900/40 dark:bg-brand-950/20">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300">
           ຕົວຢ່າງ
         </h2>
         <div className="mt-2 flex items-center gap-2 text-sm">
@@ -205,7 +205,7 @@ export default function DepositSettingsForm({
             onChange={(e) =>
               setPreviewValue(Number.parseFloat(e.target.value) || 0)
             }
-            className="w-40 rounded-lg border border-zinc-200 bg-white px-3 py-1 text-sm font-mono shadow-sm focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+            className="w-40 rounded-lg border border-zinc-200 bg-white px-3 py-1 text-sm font-mono shadow-sm focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
           />
           <span className="text-xs text-zinc-500">{s.currency}</span>
         </div>
@@ -241,7 +241,7 @@ export default function DepositSettingsForm({
                     <td className="px-3 py-1.5 text-right font-mono tabular-nums">
                       {formatPct(calc.applied_pct)}
                     </td>
-                    <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums text-indigo-700 dark:text-indigo-300">
+                    <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums text-brand-700 dark:text-brand-300">
                       {formatMoney(calc.fee, s.currency)}
                     </td>
                   </tr>
@@ -272,7 +272,7 @@ export default function DepositSettingsForm({
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-60"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-500 disabled:opacity-60"
         >
           {saving ? "ກຳລັງບັນທຶກ..." : "ບັນທຶກ"}
         </button>
@@ -333,7 +333,7 @@ function NumberCell({
         min="0"
         value={value}
         onChange={(e) => onChange(Number.parseFloat(e.target.value) || 0)}
-        className={`w-24 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-right text-sm font-mono tabular-nums shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white ${suffix ? "pr-6" : ""}`}
+        className={`w-24 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-right text-sm font-mono tabular-nums shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white ${suffix ? "pr-6" : ""}`}
       />
       {suffix && (
         <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-zinc-400">
@@ -371,7 +371,7 @@ function Field({
           min="0"
           value={value}
           onChange={(e) => onChange(Number.parseFloat(e.target.value) || 0)}
-          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 pr-12 text-sm font-mono tabular-nums shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 pr-12 text-sm font-mono tabular-nums shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
         />
         {unit && (
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-zinc-400">

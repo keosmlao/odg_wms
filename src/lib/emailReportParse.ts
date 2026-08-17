@@ -27,7 +27,7 @@ export function parseReportInput(body: unknown): ParseResult {
   const s = (b.sections ?? {}) as Record<string, unknown>;
   const sections = {
     receive: bool(s.receive), issue: bool(s.issue), pending: bool(s.pending), health: bool(s.health),
-    movers: bool(s.movers), issue_pending: bool(s.issue_pending),
+    movers: bool(s.movers), issue_pending: bool(s.issue_pending), min_stock: bool(s.min_stock),
   };
   if (!Object.values(sections).some(Boolean)) {
     return { ok: false, error: "ເລືອກເນື້ອໃນລາຍງານຢ່າງໜ້ອຍ 1 ຢ່າງ" };

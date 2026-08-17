@@ -212,7 +212,7 @@ export default async function UnitMismatchPage({
             </div>
             <Link
               href={`/stocktake/${sid}/report?scope=counted&filter=variance`}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-indigo-500/20 transition hover:bg-indigo-700"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-brand-500/20 transition hover:bg-brand-700"
             >
               ສົມທຽບໃໝ່
               <ChevronRightIcon className="h-3.5 w-3.5" />

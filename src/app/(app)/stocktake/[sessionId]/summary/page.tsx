@@ -469,11 +469,11 @@ export default async function SessionSummaryPage({
           : evalScore >= 60
             ? "D"
             : "E";
-  const gradeTone: "emerald" | "indigo" | "amber" | "red" =
+  const gradeTone: "emerald" | "brand" | "amber" | "red" =
     grade === "A"
       ? "emerald"
       : grade === "B"
-        ? "indigo"
+        ? "brand"
         : grade === "C"
           ? "amber"
           : "red";
@@ -740,7 +740,7 @@ export default async function SessionSummaryPage({
             <Stat
               label="ນັບໄດ້ລວມ"
               value={formatQty(countedTotal)}
-              accent="indigo"
+              accent="brand"
             />
             <Stat label="SML" value={formatQty(smlTotal)} />
             <Stat
@@ -867,7 +867,7 @@ export default async function SessionSummaryPage({
             <Stat
               label="ນັບໄດ້ລວມ"
               value={formatQty(countedOnlyQty)}
-              accent="indigo"
+              accent="brand"
             />
             <Stat
               label="ຍອດອ້າງອີງ"
@@ -1059,7 +1059,7 @@ export default async function SessionSummaryPage({
                       <td className="px-3 py-1.5">
                         <Link
                           href={`/stocktake/${sid}/count/${l.label_id}`}
-                          className="font-mono font-bold text-indigo-600 hover:underline dark:text-indigo-400"
+                          className="font-mono font-bold text-brand-600 hover:underline dark:text-brand-400"
                         >
                           {l.label_code}
                         </Link>
@@ -1210,7 +1210,7 @@ export default async function SessionSummaryPage({
                 — ເບິ່ງທັງໝົດທີ່{" "}
                 <Link
                   href={`/stocktake/${sid}/report?filter=variance`}
-                  className="text-indigo-600 hover:underline dark:text-indigo-400"
+                  className="text-brand-600 hover:underline dark:text-brand-400"
                 >
                   ໜ້າປຽບທຽບ
                 </Link>
@@ -1464,11 +1464,11 @@ function Stat({
   label: string;
   value: string;
   sub?: string;
-  accent?: "neutral" | "indigo" | "emerald" | "red" | "amber";
+  accent?: "neutral" | "brand" | "emerald" | "red" | "amber";
 }) {
   const colorMap: Record<string, string> = {
     neutral: "text-zinc-900 dark:text-zinc-50",
-    indigo: "text-indigo-600 dark:text-indigo-400",
+    brand: "text-brand-600 dark:text-brand-400",
     emerald: "text-emerald-600 dark:text-emerald-400",
     red: "text-red-600 dark:text-red-400",
     amber: "text-amber-600 dark:text-amber-400",
@@ -1524,14 +1524,14 @@ function GradeBadge({
   label,
 }: {
   grade: string;
-  tone: "emerald" | "indigo" | "amber" | "red";
+  tone: "emerald" | "brand" | "amber" | "red";
   score: number;
   label: string;
 }) {
   const toneMap: Record<typeof tone, string> = {
     emerald:
       "from-emerald-500 to-emerald-600 ring-emerald-200 dark:ring-emerald-800",
-    indigo: "from-indigo-500 to-indigo-600 ring-indigo-200 dark:ring-indigo-800",
+    brand: "from-brand-500 to-brand-600 ring-brand-200 dark:ring-brand-800",
     amber: "from-amber-500 to-amber-600 ring-amber-200 dark:ring-amber-800",
     red: "from-red-500 to-red-600 ring-red-200 dark:ring-red-800",
   };

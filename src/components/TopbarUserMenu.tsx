@@ -8,22 +8,22 @@ import { ChevronRightIcon, LogOutIcon } from "@/components/ui/Icons";
 
 const roleColorMap: Record<WmsRole, string> = {
   manager:
-    "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+    "bg-aqua-100 text-aqua-700 dark:bg-aqua-900/40 dark:text-aqua-300",
   supervisor:
-    "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+    "bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300",
   keeper:
     "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
 };
 
 const roleRingMap: Record<WmsRole, string> = {
-  manager: "ring-2 ring-violet-500/60 ring-offset-2 dark:ring-offset-zinc-950",
-  supervisor: "ring-2 ring-blue-500/60 ring-offset-2 dark:ring-offset-zinc-950",
+  manager: "ring-2 ring-aqua-500/60 ring-offset-2 dark:ring-offset-zinc-950",
+  supervisor: "ring-2 ring-brand-500/60 ring-offset-2 dark:ring-offset-zinc-950",
   keeper: "ring-2 ring-emerald-500/60 ring-offset-2 dark:ring-offset-zinc-950",
 };
 
 const roleGradientMap: Record<WmsRole, string> = {
-  manager: "bg-gradient-to-tr from-violet-600 via-indigo-600 to-purple-600 text-white",
-  supervisor: "bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-500 text-white",
+  manager: "bg-gradient-to-tr from-aqua-500 via-brand-600 to-brand-900 text-white",
+  supervisor: "bg-gradient-to-tr from-brand-600 via-brand-500 to-aqua-500 text-white",
   keeper: "bg-gradient-to-tr from-emerald-600 via-teal-500 to-emerald-500 text-white",
 };
 

@@ -15,9 +15,9 @@ const ROLE_OPTIONS: { value: WmsRole | ""; label: string }[] = [
 
 function roleBadgeClass(role: WmsRole | null) {
   if (role === "manager")
-    return "bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300";
+    return "bg-aqua-50 text-aqua-700 dark:bg-aqua-950 dark:text-aqua-300";
   if (role === "supervisor")
-    return "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
+    return "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300";
   if (role === "keeper")
     return "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
   return "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400";
@@ -35,7 +35,21 @@ export default function AccessClient({
   const [employees, setEmployees] = useState(initialEmployees);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | WmsRole | "none">("all");
+  const [deptFilter, setDeptFilter] = useState<string>("all");
   const [editing, setEditing] = useState<EmployeeRow | null>(null);
+
+  // ພະນັກງານມາທຸກພະແນກແລ້ວ ຈຶ່ງຕ້ອງມີຕົວກອງພະແນກເພື່ອໃຫ້ຫາຄົນໄດ້ໄວ.
+  const departments = useMemo(() => {
+    const m = new Map<string, { key: string; label: string; count: number }>();
+    for (const e of employees) {
+      const key = e.department_code ?? "";
+      const label = e.department_name ?? e.department_code ?? "ບໍ່ລະບຸພະແນກ";
+      const hit = m.get(key);
+      if (hit) hit.count++;
+      else m.set(key, { key, label, count: 1 });
+    }
+    return Array.from(m.values()).sort((a, b) => b.count - a.count);
+  }, [employees]);
 
   const warehouseNameByCode = useMemo(() => {
     const m = new Map<string, string>();
@@ -49,6 +63,8 @@ export default function AccessClient({
       if (roleFilter === "none" && e.role !== null) return false;
       if (roleFilter !== "all" && roleFilter !== "none" && e.role !== roleFilter)
         return false;
+      if (deptFilter !== "all" && (e.department_code ?? "") !== deptFilter)
+        return false;
       if (!q) return true;
       return (
         e.employee_code.toLowerCase().includes(q) ||
@@ -56,7 +72,7 @@ export default function AccessClient({
         (e.nickname ?? "").toLowerCase().includes(q)
       );
     });
-  }, [employees, search, roleFilter]);
+  }, [employees, search, roleFilter, deptFilter]);
 
   const counts = useMemo(() => {
     const c = { manager: 0, supervisor: 0, keeper: 0, none: 0 };
@@ -103,6 +119,18 @@ export default function AccessClient({
           </option>
           <option value="none">ຍັງບໍ່ມີສິດ ({counts.none})</option>
         </select>
+        <select
+          value={deptFilter}
+          onChange={(e) => setDeptFilter(e.target.value)}
+          className="max-w-[14rem] rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        >
+          <option value="all">ທຸກພະແນກ ({employees.length})</option>
+          {departments.map((d) => (
+            <option key={d.key} value={d.key}>
+              {d.label} ({d.count})
+            </option>
+          ))}
+        </select>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
           ສະແດງ {filtered.length} / {employees.length}
         </span>
@@ -115,6 +143,7 @@ export default function AccessClient({
               <tr className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400">
                 <th className="px-4 py-2 font-medium">ລະຫັດ</th>
                 <th className="px-4 py-2 font-medium">ຊື່</th>
+                <th className="px-4 py-2 font-medium">ພະແນກ</th>
                 <th className="px-4 py-2 font-medium">Role</th>
                 <th className="px-4 py-2 font-medium">ສາງທີ່ຮັບຜິດຊອບ</th>
                 <th className="px-4 py-2 text-right font-medium" />
@@ -124,7 +153,7 @@ export default function AccessClient({
               {filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-4 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400"
                   >
                     ບໍ່ພົບພະນັກງານ
@@ -151,6 +180,28 @@ export default function AccessClient({
                     {e.nickname && (
                       <div className="text-xs text-zinc-500 dark:text-zinc-400">
                         {e.nickname}
+                      </div>
+                    )}
+                    {/* ມອບສິດແລ້ວແຕ່ບໍ່ມີລະຫັດຜ່ານ = ເຮັດວຽກຕາມສິດບໍ່ໄດ້ຈິງ. */}
+                    {e.role && !e.can_login && (
+                      <div
+                        className="mt-0.5 text-[10px] font-semibold text-rose-600 dark:text-rose-400"
+                        title="ບໍ່ມີລະຫັດຜ່ານໃນລະບົບພະນັກງານ — ເຂົ້າສູ່ລະບົບ WMS ບໍ່ໄດ້"
+                      >
+                        ⚠ ເຂົ້າລະບົບບໍ່ໄດ້ (ບໍ່ມີລະຫັດຜ່ານ)
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                      {e.department_name ?? e.department_code ?? "—"}
+                    </span>
+                    {e.out_of_scope && (
+                      <div
+                        className="mt-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+                        title="ຖືສິດ WMS ຢູ່ ແຕ່ບໍ່ໄດ້ຢູ່ພະແນກສາງ/ໄອທີ — ຄວນທົບທວນ"
+                      >
+                        ⚠ ນອກພະແນກ
                       </div>
                     )}
                   </td>
@@ -188,7 +239,7 @@ export default function AccessClient({
                     )}
                     {/* Void grants — worth seeing at a glance from the list. */}
                     {e.role === "manager" ? (
-                      <div className="mt-1 text-[10px] font-medium text-violet-600 dark:text-violet-400">🗑 ລົບໄດ້ທຸກຢ່າງ</div>
+                      <div className="mt-1 text-[10px] font-medium text-aqua-600 dark:text-aqua-400">🗑 ລົບໄດ້ທຸກຢ່າງ</div>
                     ) : e.permissions.length > 0 ? (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {e.permissions.map((p) => (
@@ -361,10 +412,16 @@ function EditDrawer({
                 ທ່ານກຳລັງແກ້ໄຂບັນຊີຂອງຕົນເອງ — ບໍ່ສາມາດຫຼຸດສິດ manager ຂອງຕົນເອງ.
               </p>
             )}
+            {role !== "" && !employee.can_login && (
+              <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                ພະນັກງານຄົນນີ້ <strong>ບໍ່ມີລະຫັດຜ່ານ</strong> ໃນລະບົບພະນັກງານ ຈຶ່ງເຂົ້າສູ່ລະບົບ WMS
+                ບໍ່ໄດ້. ສິດຈະບັນທຶກໄວ້ ແຕ່ຕ້ອງຕັ້ງລະຫັດຜ່ານໃຫ້ລາວກ່ອນ ຈຶ່ງຈະໃຊ້ວຽກໄດ້.
+              </p>
+            )}
           </div>
 
           {role === "manager" && (
-            <p className="mb-3 rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:bg-violet-950 dark:text-violet-300">
+            <p className="mb-3 rounded-lg bg-aqua-50 px-3 py-2 text-xs text-aqua-800 dark:bg-aqua-950 dark:text-aqua-300">
               ຜູ້ຈັດການ: ປ່ອຍວ່າງ = ເຫັນ <strong>ທຸກສາງ</strong>. ເລືອກສະເພາະ = ຈຳກັດໃຫ້ເຫັນສະເພາະສາງທີ່ເລືອກເທົ່ານັ້ນ.
             </p>
           )}
@@ -377,7 +434,7 @@ function EditDrawer({
                 ສິດພິເສດ (ລົບເອກະສານ)
               </label>
               {role === "manager" ? (
-                <p className="rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:bg-violet-950 dark:text-violet-300">
+                <p className="rounded-lg bg-aqua-50 px-3 py-2 text-xs text-aqua-800 dark:bg-aqua-950 dark:text-aqua-300">
                   ຜູ້ຈັດການມີ <strong>ທຸກສິດ</strong> ໂດຍປະລິຍາຍ — ບໍ່ຕ້ອງເລືອກ.
                 </p>
               ) : (

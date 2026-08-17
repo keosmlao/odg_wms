@@ -43,9 +43,9 @@ export default function LoginPage() {
   return (
     <div className="grid flex-1 lg:grid-cols-2">
       {/* Brand panel (desktop) */}
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 p-12 text-white lg:flex">
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-brand-900 via-brand-600 to-aqua-500 p-12 text-white lg:flex">
         <div aria-hidden className="pointer-events-none absolute -top-32 -right-24 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -bottom-40 -left-24 h-[28rem] w-[28rem] rounded-full bg-fuchsia-400/20 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-40 -left-24 h-[28rem] w-[28rem] rounded-full bg-sunset-400/20 blur-3xl" />
         <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(white_1px,transparent_1px),linear-gradient(90deg,white_1px,transparent_1px)] [background-size:40px_40px]" />
 
         <div className="relative flex items-center gap-3">
@@ -59,7 +59,7 @@ export default function LoginPage() {
           <h2 className="max-w-md text-4xl font-bold leading-tight tracking-tight">
             ຄຸ້ມຄອງຄັງສິນຄ້າ<br />ຢ່າງມືອາຊີບ
           </h2>
-          <p className="mt-4 max-w-md text-sm leading-relaxed text-indigo-100">
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-brand-100">
             ຕິດຕາມຄົງເຫຼືອ, ປັບປຸງສະຕ໋ອກ ແລະ ບໍລິຫານ serial number — ທຸກຢ່າງໃນລະບົບດຽວ.
           </p>
           <ul className="mt-8 space-y-3 text-sm">
@@ -78,7 +78,7 @@ export default function LoginPage() {
           </ul>
         </div>
 
-        <div className="relative text-xs text-indigo-200/80">
+        <div className="relative text-xs text-brand-200/80">
           © {new Date().getFullYear()} ODG WMS · ສະຫງວນລິຂະສິດ
         </div>
       </div>
@@ -88,7 +88,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           {/* mobile brand */}
           <div className="mb-8 text-center lg:text-left">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/30 lg:hidden">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-900 via-brand-500 to-aqua-400 text-sm font-bold text-white shadow-lg shadow-brand-500/30 lg:hidden">
               ODG
             </div>
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">ເຂົ້າສູ່ລະບົບ</h1>
@@ -111,7 +111,7 @@ export default function LoginPage() {
                   autoFocus
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full rounded-xl bg-white py-3 pl-9 pr-3 text-sm text-zinc-900 shadow-sm ring-1 ring-zinc-200 outline-none transition placeholder:text-zinc-400 hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-800 dark:focus:ring-indigo-400"
+                  className="w-full rounded-xl bg-white py-3 pl-9 pr-3 text-sm text-zinc-900 shadow-sm ring-1 ring-zinc-200 outline-none transition placeholder:text-zinc-400 hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-800 dark:focus:ring-brand-400"
                   placeholder="ປ້ອນລະຫັດພະນັກງານ"
                 />
               </div>
@@ -131,7 +131,7 @@ export default function LoginPage() {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-xl bg-white py-3 pl-9 pr-10 text-sm text-zinc-900 shadow-sm ring-1 ring-zinc-200 outline-none transition placeholder:text-zinc-400 hover:ring-zinc-300 focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-800 dark:focus:ring-indigo-400"
+                  className="w-full rounded-xl bg-white py-3 pl-9 pr-10 text-sm text-zinc-900 shadow-sm ring-1 ring-zinc-200 outline-none transition placeholder:text-zinc-400 hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-800 dark:focus:ring-brand-400"
                   placeholder="••••••••"
                 />
                 <button
@@ -147,7 +147,7 @@ export default function LoginPage() {
 
             <div className="flex items-center justify-between text-xs">
               <label className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
-                <input type="checkbox" className="h-3.5 w-3.5 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-700" />
+                <input type="checkbox" className="h-3.5 w-3.5 rounded border-zinc-300 text-brand-600 focus:ring-brand-500 dark:border-zinc-700" />
                 ຈື່ຂ້ອຍໄວ້
               </label>
             </div>
@@ -162,7 +162,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:shadow-xl hover:shadow-indigo-500/40 active:scale-[0.99] disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-900 via-brand-500 to-aqua-400 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/30 transition hover:shadow-xl hover:shadow-brand-500/40 active:scale-[0.99] disabled:opacity-60"
             >
               {submitting && (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />

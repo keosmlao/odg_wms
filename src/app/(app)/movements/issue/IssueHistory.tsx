@@ -30,6 +30,10 @@ type DocRow = {
   creator_name: string | null;
   line_count: number;
   out_qty: string;
+  /** ໃບຈັດຖ້ຽວທີ່ DP ນີ້ອອກມາຈາກ (ຖ້າຈ່າຍຜ່ານແທັບ "ໃບຈັດຖ້ຽວ"). */
+  trip_doc_no: string | null;
+  trip_car: string | null;
+  trip_car_name: string | null;
 };
 
 type LineRow = {
@@ -146,6 +150,11 @@ export default async function IssueHistory({
     where.push(
       `(h.doc_no ILIKE $${i} OR h.doc_ref ILIKE $${i} OR h.user_created ILIKE $${i}
         OR EXISTS (
+          SELECT 1 FROM public.wms_pick_trip_issue ti
+          LEFT JOIN public.odg_tms_car tc ON tc.code = (SELECT car FROM public.wms_pick_trip pt WHERE pt.trip_doc_no = ti.trip_doc_no LIMIT 1)
+          WHERE ti.issue_doc = h.doc_no AND (ti.trip_doc_no ILIKE $${i} OR tc.name_1 ILIKE $${i})
+        )
+        OR EXISTS (
           SELECT 1 FROM public.odg_wms_trans_detail x
           WHERE x.doc_no = h.doc_no AND (x.item_code ILIKE $${i} OR x.item_name ILIKE $${i})
         ))`,
@@ -169,10 +178,16 @@ export default async function IssueHistory({
          h.user_created AS creator_code,
          e.fullname_lo AS creator_name,
          COALESCE(agg.line_count, 0) AS line_count,
-         COALESCE(agg.out_qty, 0)::text AS out_qty
+         COALESCE(agg.out_qty, 0)::text AS out_qty,
+         ti.trip_doc_no,
+         pt.car AS trip_car,
+         tc.name_1 AS trip_car_name
        FROM public.odg_wms_trans h
        LEFT JOIN public.ic_warehouse w ON w.code = h.wh_code
        LEFT JOIN public.odg_employee e ON e.employee_code = h.user_created
+       LEFT JOIN public.wms_pick_trip_issue ti ON ti.issue_doc = h.doc_no
+       LEFT JOIN public.wms_pick_trip pt ON pt.doc_no = ti.pick_doc
+       LEFT JOIN public.odg_tms_car tc ON tc.code = pt.car
        LEFT JOIN (
          SELECT doc_no, count(*)::int AS line_count, SUM(qty) AS out_qty
          FROM public.odg_wms_trans_detail
@@ -410,6 +425,9 @@ export default async function IssueHistory({
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{d.doc_no}</span>
                       {d.doc_ref && <Chip tone="red">ref: {d.doc_ref}</Chip>}
+                      {d.trip_doc_no && (
+                        <Chip tone="brand">🚚 ຖ້ຽວ {d.trip_doc_no}{d.trip_car_name || d.trip_car ? ` · ${d.trip_car_name ?? d.trip_car}` : ""}</Chip>
+                      )}
                       {d.wh_code && (
                         <span className="inline-flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                           <BuildingIcon className="h-3 w-3" />
@@ -436,7 +454,7 @@ export default async function IssueHistory({
                     <div className="text-[10px] text-zinc-400">{d.line_count} ລາຍການ</div>
                   </div>
                   <a href={`/print/wms/${encodeURIComponent(d.doc_no)}`} target="_blank" rel="noopener"
-                    title="ເບິ່ງລາຍລະອຽດ SN / ISN + ບ່ອນຈ່າຍອອກ" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-blue-50 hover:text-blue-600 dark:ring-zinc-800">👁</a>
+                    title="ເບິ່ງລາຍລະອຽດ SN / ISN + ບ່ອນຈ່າຍອອກ" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-brand-50 hover:text-brand-600 dark:ring-zinc-800">👁</a>
                   <a href={`/print/wms/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener"
                     title="ພິມໃບຈ່າຍ / ໃບໂອນ (ມີ SN + ບ່ອນເກັບ)" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-slate-50 hover:text-slate-700 dark:ring-zinc-800">🖨</a>
                   <a href={`/print/wms/${encodeURIComponent(d.doc_no)}/bill?auto=1`} target="_blank" rel="noopener"
@@ -500,11 +518,11 @@ export default async function IssueHistory({
                     <span className="font-bold text-zinc-500 dark:text-zinc-400">ເອກະສານກ່ຽວຂ້ອງ:</span>
                     <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-red-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-red-400 dark:ring-zinc-800" title="WMS ໃບຈ່າຍ">DP · {d.doc_no}</span>
                     {d.doc_ref && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-blue-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-blue-400 dark:ring-zinc-800" title="ໃບຂໍ (ຕົ້ນທາງ)">ໃບຂໍ · {d.doc_ref}</span>
+                      <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-brand-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-brand-400 dark:ring-zinc-800" title="ໃບຂໍ (ຕົ້ນທາງ)">ໃບຂໍ · {d.doc_ref}</span>
                     )}
                     {(erpByDoc.get(d.doc_no) ?? []).map((e) => (
                       <span key={e.doc_no + e.label}
-                        className={`inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800 ${e.label === "ໃບໂອນເຂົ້າ" ? "text-violet-700 dark:text-violet-400" : "text-emerald-700 dark:text-emerald-400"}`}
+                        className={`inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800 ${e.label === "ໃບໂອນເຂົ້າ" ? "text-aqua-700 dark:text-aqua-400" : "text-emerald-700 dark:text-emerald-400"}`}
                         title={e.label === "ໃບໂອນເຂົ້າ" ? "ຮັບໂອນເຂົ້າສາງປາຍທາງ (ERP)" : "ERP"}>
                         {e.label} · {e.doc_no}
                       </span>

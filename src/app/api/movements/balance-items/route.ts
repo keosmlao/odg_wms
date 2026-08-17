@@ -3,6 +3,8 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { phDimensionLateralJoin } from "@/lib/ph-dimension";
+import { needsIsnSql } from "@/lib/isnScope";
+import { minStockLevels } from "@/lib/minStock";
 
 export type BalanceItemRow = {
   ic_code: string | null;
@@ -14,6 +16,15 @@ export type BalanceItemRow = {
   units_per_pallet: string | null;
   stack: string | null;
   total_count: number;
+};
+
+/** min/max ຕໍ່ສາງ — ຕິດມາສະເພາະສາງທີ່ເປີດຄຸມ ແລະ ສິນຄ້າທີ່ຕັ້ງຄ່າໄວ້. */
+export type BalanceItemMinStock = {
+  min_qty: number;
+  max_qty: number | null;
+  /** ຄົງເຫຼືອ**ລວມທັງສາງ** — ຄ່າທີ່ຖືກເອົາໄປທຽບ min/max (ບໍ່ແມ່ນຍອດຂອງ bin ນີ້). */
+  wh_qty: number;
+  status: "below" | "above" | "ok";
 };
 
 function clampLimit(value: string | null) {
@@ -112,7 +123,7 @@ export async function GET(request: Request) {
        agg.item_name AS ic_name,
        agg.unit_code AS ic_unit_code,
        agg.balance_qty::text AS balance_qty,
-       inv.is_isn,
+       (CASE WHEN ${needsIsnSql("inv")} THEN 1 ELSE 0 END) AS is_isn,
        CASE WHEN ph.pallet > 0 AND agg.balance_qty > 0
             THEN round((agg.balance_qty / ph.pallet)::numeric, 3)::text
             ELSE NULL END AS pallet_positions,
@@ -127,8 +138,26 @@ export async function GET(request: Request) {
     queryArgs,
   );
 
+  // stock ຂັ້ນຕ່ຳ/ຂັ້ນສູງ ຂອງລາຍການໜ້ານີ້ (ຫວ່າງ ຖ້າສາງບໍ່ໄດ້ເປີດຄຸມ).
+  const levels = await minStockLevels(
+    warehouse,
+    rows.map((r) => r.ic_code).filter((c): c is string => !!c),
+  );
+
   return NextResponse.json({
-    items: rows.map(({ total_count: _t, ...row }) => row),
+    items: rows.map(({ total_count: _t, ...row }) => {
+      const lv = row.ic_code ? levels.get(row.ic_code) : undefined;
+      if (!lv) return row;
+      const below = lv.on_hand < lv.min_qty - 1e-9;
+      const above = lv.max_qty !== null && lv.on_hand > lv.max_qty + 1e-9;
+      const min_stock: BalanceItemMinStock = {
+        min_qty: lv.min_qty,
+        max_qty: lv.max_qty,
+        wh_qty: lv.on_hand,
+        status: below ? "below" : above ? "above" : "ok",
+      };
+      return { ...row, min_stock };
+    }),
     total: rows[0]?.total_count ?? 0,
   });
 }

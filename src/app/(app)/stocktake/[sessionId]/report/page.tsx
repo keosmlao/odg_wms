@@ -337,7 +337,7 @@ export default async function ReportPage({
           <div className="min-w-0">
             <Link
               href={`/stocktake/${sid}`}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
             >
               ← {info.session_code}
             </Link>
@@ -378,7 +378,7 @@ export default async function ReportPage({
                 label="ນັບໄດ້ລວມ"
                 value={formatQty(totals.counted)}
                 sub={`ອ້າງອີງ ${formatQty(totals.reference)}`}
-                tone="indigo"
+                tone="brand"
               />
               <MetricCard
                 label="ສ່ວນຕ່າງ net"
@@ -452,7 +452,7 @@ export default async function ReportPage({
             name="q"
             defaultValue={q}
             placeholder="ຄົ້ນຫາລະຫັດ ຫຼື ຊື່ສິນຄ້າ..."
-            className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+            className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
           />
           <button
             type="submit"
@@ -472,7 +472,7 @@ export default async function ReportPage({
                 href={filterHref(f.value)}
                 className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
                   active
-                    ? "bg-indigo-600 text-white ring-indigo-600"
+                    ? "bg-brand-600 text-white ring-brand-600"
                     : "bg-white text-zinc-600 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800"
                 }`}
               >
@@ -649,7 +649,7 @@ function MetricCard({
   label: string;
   value: string;
   sub: string;
-  tone?: "zinc" | "emerald" | "red" | "amber" | "indigo";
+  tone?: "zinc" | "emerald" | "red" | "amber" | "brand";
 }) {
   const toneMap = {
     zinc: "border-zinc-200 bg-zinc-50/80 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950/30 dark:text-zinc-100",
@@ -658,8 +658,8 @@ function MetricCard({
     red: "border-red-200 bg-red-50/70 text-red-800 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-200",
     amber:
       "border-amber-200 bg-amber-50/70 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200",
-    indigo:
-      "border-indigo-200 bg-indigo-50/70 text-indigo-800 dark:border-indigo-900/50 dark:bg-indigo-950/20 dark:text-indigo-200",
+    brand:
+      "border-brand-200 bg-brand-50/70 text-brand-800 dark:border-brand-900/50 dark:bg-brand-950/20 dark:text-brand-200",
   } as const;
   return (
     <div className={`rounded-xl border px-3 py-3 ${toneMap[tone]}`}>

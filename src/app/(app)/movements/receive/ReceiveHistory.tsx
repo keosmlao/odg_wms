@@ -209,11 +209,11 @@ export default async function ReceiveHistory({
                             </tr>
                             {sns.length > 0 && (
                               <tr>
-                                <td colSpan={3} className="bg-violet-50/40 px-4 py-2 dark:bg-violet-950/10">
-                                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">Serial ({sns.length})</div>
+                                <td colSpan={3} className="bg-aqua-50/40 px-4 py-2 dark:bg-aqua-950/10">
+                                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-aqua-700 dark:text-aqua-300">Serial ({sns.length})</div>
                                   <div className="flex flex-wrap gap-1">
                                     {sns.map((sn) => (
-                                      <Link key={sn} href={`/serials/${encodeURIComponent(sn)}`} className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] font-semibold text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100 dark:bg-zinc-900 dark:text-violet-300 dark:ring-violet-900/50">
+                                      <Link key={sn} href={`/serials/${encodeURIComponent(sn)}`} className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] font-semibold text-aqua-700 ring-1 ring-aqua-200 hover:bg-aqua-100 dark:bg-zinc-900 dark:text-aqua-300 dark:ring-aqua-900/50">
                                         {sn}
                                       </Link>
                                     ))}

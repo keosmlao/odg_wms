@@ -29,7 +29,7 @@ export default async function TransferRequestPage() {
         title="ອອກໃບຂໍໂອນ (ໃບຂໍ)"
         description="ສ້າງໃບຂໍໂອນສິນຄ້າຈາກສາງอื่น — ສາງปลายทาง(ຜູ້ຂໍ) ຂໍສິນຄ້າຈາກສາງຕົ້ນທາງ. ສาง source ຈ່າຍອອກภายหลัง"
         icon={<ArrowLeftRightIcon className="h-6 w-6" />}
-        tone="blue"
+        tone="navy"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
       <TransferRequestClient

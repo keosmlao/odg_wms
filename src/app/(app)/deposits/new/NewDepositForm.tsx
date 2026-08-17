@@ -289,7 +289,7 @@ export default function NewDepositForm({
               <select
                 value={whCode}
                 onChange={(e) => setWhCode(e.target.value)}
-                className="w-full rounded-lg border border-zinc-200 bg-white py-2 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+                className="w-full rounded-lg border border-zinc-200 bg-white py-2 px-3 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
               >
                 {warehouses.map((w) => (
                   <option key={w.code} value={w.code}>
@@ -307,7 +307,7 @@ export default function NewDepositForm({
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full rounded-lg border border-zinc-200 bg-white py-2 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+                className="w-full rounded-lg border border-zinc-200 bg-white py-2 px-3 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
               />
             </label>
             <ReadOnlyField
@@ -338,15 +338,15 @@ export default function NewDepositForm({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
-                className="w-full rounded-lg border border-zinc-200 bg-white py-2 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+                className="w-full rounded-lg border border-zinc-200 bg-white py-2 px-3 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
               />
             </label>
           </div>
         </section>
 
         {/* Preview totals */}
-        <section className="rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50/90 to-violet-50/60 p-4 shadow-sm sm:p-5 dark:border-indigo-900/40 dark:from-indigo-950/30 dark:to-violet-950/10">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+        <section className="rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50/90 to-aqua-50/60 p-4 shadow-sm sm:p-5 dark:border-brand-900/40 dark:from-brand-950/30 dark:to-aqua-950/10">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300">
             ສະຫຼຸບ
           </h2>
           <dl className="mt-2 space-y-1.5 text-sm">
@@ -378,7 +378,7 @@ export default function NewDepositForm({
                     ([cur, val]) => (
                       <span
                         key={cur}
-                        className="font-mono font-bold tabular-nums text-indigo-700 dark:text-indigo-300"
+                        className="font-mono font-bold tabular-nums text-brand-700 dark:text-brand-300"
                       >
                         {formatMoney(val, cur)}
                       </span>
@@ -418,7 +418,7 @@ export default function NewDepositForm({
                           <span className="font-mono tabular-nums">
                             {formatPct(t.pct)}
                           </span>
-                          <span className="font-mono font-semibold tabular-nums text-indigo-700 dark:text-indigo-300">
+                          <span className="font-mono font-semibold tabular-nums text-brand-700 dark:text-brand-300">
                             {formatMoney(f, cur)}
                           </span>
                         </li>
@@ -439,7 +439,7 @@ export default function NewDepositForm({
             type="button"
             onClick={submit}
             disabled={saving || selected.size === 0 || !whCode}
-            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-50"
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-500 disabled:opacity-50"
           >
             {saving ? "ກຳລັງບັນທຶກ..." : "ບັນທຶກຮັບຝາກ"}
             <ChevronRightIcon className="h-4 w-4" />
@@ -493,7 +493,7 @@ export default function NewDepositForm({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="ຄົ້ນຫາ doc_no, ລູກຄ້າ..."
-              className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-8 pr-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+              className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-8 pr-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
             />
           </div>
           <input
@@ -528,7 +528,7 @@ export default function NewDepositForm({
                 setHideShipped(e.target.checked);
                 loadBills({ hideShipped: e.target.checked });
               }}
-              className="h-3.5 w-3.5 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-3.5 w-3.5 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
             />
             ບໍ່ສະແດງບິນທີ່ສົ່ງແລ້ວ
           </label>
@@ -540,7 +540,7 @@ export default function NewDepositForm({
                 setHideInDeposit(e.target.checked);
                 loadBills({ hideInDeposit: e.target.checked });
               }}
-              className="h-3.5 w-3.5 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-3.5 w-3.5 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
             />
             ບໍ່ສະແດງບິນທີ່ຝາກຢູ່ແລ້ວ
           </label>
@@ -568,7 +568,7 @@ export default function NewDepositForm({
                     <div
                       className={`px-4 py-2 transition ${
                         isOn
-                          ? "bg-indigo-50/70 dark:bg-indigo-950/30"
+                          ? "bg-brand-50/70 dark:bg-brand-950/30"
                           : "hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
                       }`}
                     >
@@ -578,7 +578,7 @@ export default function NewDepositForm({
                           onClick={() => toggle(b)}
                           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition ${
                             isOn
-                              ? "border-indigo-600 bg-indigo-600 text-white"
+                              ? "border-brand-600 bg-brand-600 text-white"
                               : "border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-900"
                           }`}
                           aria-label={isOn ? "uncheck" : "check"}
@@ -612,7 +612,7 @@ export default function NewDepositForm({
                               </span>
                             )}
                             {b.in_active_deposit && (
-                              <span className="rounded bg-violet-100 px-1.5 py-0 text-[9px] font-bold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                              <span className="rounded bg-aqua-100 px-1.5 py-0 text-[9px] font-bold text-aqua-700 dark:bg-aqua-950/40 dark:text-aqua-300">
                                 ຝາກຢູ່ແລ້ວ
                               </span>
                             )}
@@ -644,7 +644,7 @@ export default function NewDepositForm({
                           </div>
                         </div>
                         <div className="shrink-0 text-right text-[11px] text-zinc-500 dark:text-zinc-400">
-                          <div className="font-mono font-semibold tabular-nums text-indigo-700 dark:text-indigo-300">
+                          <div className="font-mono font-semibold tabular-nums text-brand-700 dark:text-brand-300">
                             {formatMoney(
                               b.value_sum ?? 0,
                               b.currency_code ?? initialSettings.currency,
@@ -659,7 +659,7 @@ export default function NewDepositForm({
                               e.preventDefault();
                               toggleExpand(b);
                             }}
-                            className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                            className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
                           >
                             {b.items} ສິນຄ້າ · {b.lines} ລາຍ
                             <span
@@ -708,7 +708,7 @@ export default function NewDepositForm({
                                       </span>
                                     )}
                                   </span>
-                                  <span className="shrink-0 w-24 text-right font-mono font-semibold tabular-nums text-indigo-700 dark:text-indigo-300">
+                                  <span className="shrink-0 w-24 text-right font-mono font-semibold tabular-nums text-brand-700 dark:text-brand-300">
                                     {formatMoney(
                                       it.sum_amount ?? 0,
                                       b.currency_code ??

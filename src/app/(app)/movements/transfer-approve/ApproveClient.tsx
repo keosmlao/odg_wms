@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 
 type DocRow = {
   doc_no: string; doc_date: string | null; doc_time: string | null; wh_from: string | null; wh_to: string | null;
@@ -72,7 +73,17 @@ export default function ApproveClient() {
         <div className="py-12 text-center text-sm text-slate-400">ກຳລັງໂຫລດ…</div>
       ) : docs.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">ບໍ່ມີໃບຂໍໂອນ ລໍຖ້າອະນຸມັດ</div>
-      ) : docs.map((d) => {
+      ) : groupByWarehouse(docs, (d) => d.wh_from ?? "—").map((g) => (
+        <WarehouseGroup
+          key={g.code}
+          code={g.code}
+          name={docs.find((d) => d.wh_from === g.code)?.wh_from_name ?? null}
+          count={g.rows.length}
+          countLabel="ໃບ"
+          tone="amber"
+        >
+        <div className="space-y-3">
+        {g.rows.map((d) => {
         const open = expanded === d.doc_no;
         const overdue = !!d.want_date && d.want_date < new Date().toISOString().slice(0, 10);
         return (
@@ -81,7 +92,7 @@ export default function ApproveClient() {
               <span className={`text-slate-400 transition-transform ${open ? "rotate-90" : ""}`}>›</span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-sm font-bold text-blue-600">{d.doc_no}</span>
+                  <span className="font-mono text-sm font-bold text-brand-600">{d.doc_no}</span>
                   <span className="text-[11px] text-slate-400">{d.doc_date} {d.doc_time}</span>
                   <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">ລໍຖ້າອະນຸມັດ</span>
                   {overdue && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">ຕ້ອງการ {d.want_date}</span>}
@@ -105,7 +116,7 @@ export default function ApproveClient() {
                         const ok = av + 1e-6 >= req;
                         return (
                           <tr key={ln.item_code}>
-                            <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-blue-600">{ln.item_code}</span><div className="max-w-md truncate text-[13px] text-slate-700">{ln.item_name}</div></td>
+                            <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-brand-600">{ln.item_code}</span><div className="max-w-md truncate text-[13px] text-slate-700">{ln.item_name}</div></td>
                             <td className="px-4 py-2 text-right font-mono">{req} <span className="text-[10px] text-slate-400">{ln.unit_code}</span></td>
                             <td className={`px-4 py-2 text-right font-mono ${ok ? "text-slate-600" : "text-rose-600 font-bold"}`}>{av}</td>
                             <td className="px-4 py-2 text-right">{ok ? <span className="text-emerald-600">✓</span> : <span className="text-rose-500 text-[11px] font-bold">ບໍ່ພໍ</span>}</td>
@@ -127,7 +138,10 @@ export default function ApproveClient() {
             )}
           </div>
         );
-      })}
+        })}
+        </div>
+        </WarehouseGroup>
+      ))}
     </div>
   );
 }

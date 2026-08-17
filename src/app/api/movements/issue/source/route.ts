@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
+import { minStockLevels } from "@/lib/minStock";
 
 /**
  * One source document's issuable lines, read from `ic_trans_detail` (header in
@@ -13,6 +14,8 @@ import { accessibleWarehouses } from "@/lib/session-shared";
  *     the UI can explain WHY the default allocation is smaller than the ordered
  *     qty (an open pick slip silently eating the balance is otherwise invisible).
  *   - is_isn (serialized?)
+ *   - min_stock = ຂັ້ນຕ່ຳ/ຂັ້ນສູງ + ຄົງເຫຼືອລວມທັງສາງ (null ເມື່ອສາງບໍ່ໄດ້ເປີດຄຸມ ຫຼື
+ *     ສິນຄ້າບໍ່ໄດ້ຕັ້ງຄ່າ) — ໃຫ້ UI ເຕືອນເມື່ອຈຳນວນທີ່ຈະຈ່າຍພາຍອດລົງຕ່ຳກວ່າຂັ້ນຕ່ຳ
  *   - locations: the WMS (rack, location, pallet) nodes in this warehouse that
  *     currently hold the item, with their balance — where the operator picks
  *     what to deduct.
@@ -94,11 +97,13 @@ export async function GET(request: Request) {
        GROUP BY w.item_code
      ),
      -- ໃບສັ່ງຈ່າຍ (pick) ທີ່ສ້າງແລ້ວ ລໍຖ້າຢືນຢັນ (status 0) — ຫักออกจากค้าง
+     -- ໃບຖ້ຽວ (1 ໃບ ຫຼາຍບິນ) ເກັບບິນຕົ້ນທາງໄວ້ລະດັບແຖວ → ໃຊ້ d.ref_doc_no ກ່ອນ.
      pending AS (
        SELECT d.item_code, SUM(d.qty) AS pend_qty
        FROM public.wms_product_out o
        JOIN public.wms_product_out_detail d ON d.doc_no = o.doc_no
-       WHERE COALESCE(o.status, 0) = 0 AND o.ref_doc_no = $1
+       WHERE COALESCE(o.status, 0) = 0
+         AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) = $1
        GROUP BY d.item_code
      )
      SELECT s.item_code, s.item_name, s.unit_code,
@@ -212,23 +217,33 @@ export async function GET(request: Request) {
             MAX(o.remark) AS remark
      FROM public.wms_product_out o
      JOIN public.wms_product_out_detail d ON d.doc_no = o.doc_no
-     WHERE COALESCE(o.status, 0) = 0 AND o.ref_doc_no = $1
+     WHERE COALESCE(o.status, 0) = 0
+       AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) = $1
      GROUP BY o.doc_no
      ORDER BY o.doc_no`,
     [doc],
   );
 
-  const lines = lineRows.map((l) => ({
-    item_code: l.item_code,
-    item_name: l.item_name,
-    unit_code: l.unit_code,
-    is_isn: l.is_isn,
-    src_qty: l.src_qty,
-    issued_qty: l.issued_qty,
-    pending_qty: l.pending_qty,
-    remaining: l.remaining,
-    locations: locByItem.get(l.item_code) ?? [],
-  }));
+  // stock ຂັ້ນຕ່ຳ/ຂັ້ນສູງ ຂອງສາງນີ້ — ໃຫ້ໜ້າຈ່າຍເຕືອນກ່ອນຈ່າຍລົງຕ່ຳກວ່າຂັ້ນຕ່ຳ.
+  // Map ຫວ່າງ ເມື່ອສາງບໍ່ໄດ້ເປີດຄຸມ (ບໍ່ມີການເຕືອນ).
+  const levels = await minStockLevels(wh, itemCodes);
+
+  const lines = lineRows.map((l) => {
+    const lv = levels.get(l.item_code);
+    return {
+      item_code: l.item_code,
+      item_name: l.item_name,
+      unit_code: l.unit_code,
+      is_isn: l.is_isn,
+      src_qty: l.src_qty,
+      issued_qty: l.issued_qty,
+      pending_qty: l.pending_qty,
+      remaining: l.remaining,
+      locations: locByItem.get(l.item_code) ?? [],
+      // wh_qty = ຄົງເຫຼືອລວມທັງສາງ (ບໍ່ແມ່ນຂອງ bin ໃດ bin ໜຶ່ງ)
+      min_stock: lv ? { min_qty: lv.min_qty, max_qty: lv.max_qty, wh_qty: lv.on_hand } : null,
+    };
+  });
 
   return NextResponse.json({ doc: headerRows[0], pending_docs: pendingDocs, lines });
 }

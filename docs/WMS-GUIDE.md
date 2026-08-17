@@ -1,6 +1,10 @@
 # ຄູ່ມື WMS — ODIEN GROUP (ບໍລິຫານສາງສິນຄ້າ)
 
 ເອກະສານນີ້ສະຫຼຸບ feature ທັງໝົດ, ຂະບວນການເຮັດວຽກ (workflow), ແລະ **checklist ສຳລັບ test**.
+
+> 📘 **ຄູ່ມືສຳລັບພະນັກງານຢູ່ໃນລະບົບ**: ເມນູ **ຄູ່ມືການເຮັດວຽກ** (`/manual`) —
+> ຂະບວນການ (WF) · SOP · ວິທີເຮັດ (WI) · ແບບຟອມ (F) · ໜ້າທີ່ແຕ່ລະຄົນ + RACI.
+> ເນື້ອໃນຢູ່ `src/lib/manual/` (workflows · sops · wi · forms · roles) — ແກ້ໄຂທີ່ນັ້ນ ບໍ່ຕ້ອງແຕະໜ້າຈໍ.
 ກ່ອນ test: **restart dev server** (`npm run dev`) ເພື່ອໃຫ້ໂຄ້ດໃໝ່ມີຜົນ.
 
 > ໝາຍເຫດ: ວັນທີ່ສະແດງເປັນ `dd-MM-yyyy`. ທຸກ feature scope ຕາມ **ສິດສາງ** ຂອງຜູ້ໃຊ້ (null=ທຸກສาง). ນາຍສาง ສາງດຽວ → auto-load.
@@ -25,6 +29,7 @@
 | ຄວາມຖືກຕ້ອງ stock | `/movements/accuracy` | WMS ທຽບ SML/ERP — % ແມ່ນຍຳ (cached) |
 | ສິນຄ້າເຄື່ອນໄຫວ | `/movements/movers` | fast movers + ແນວໂນ້ມ ເຂົ້າ/ອອກ |
 | ສິນຄ້າຄ້າງ (Aging) | `/movements/aging` | dead stock idle > 90 ມື້ |
+| stock ຂັ້ນຕ່ຳ/ຂັ້ນສູງ | `/movements/min-stock` | ຕ່ຳກວ່າຂັ້ນຕ່ຳ = ຕ້ອງເຕີມ · ເກີນຂັ້ນສູງ = ຄ້າງ (ຕັ້ງຄ່າທີ່ `/settings/min-stock`) |
 | ບ່ອນວ່າງ (Putaway) | `/movements/putaway` | ຫາ location ວ່າງ ໃສ່ສິນຄ້າ |
 | ປະຫວັດ (Audit) | `/movements/ledger` | ບັນທຶກລວມທຸກ doc + CSV/Print |
 | ພິມ Label/Barcode | `/movements/labels` | ປ້າຍ pallet/location (Code 128) |
@@ -42,8 +47,15 @@
 1. `sn-check` → ເລືອກສາງ → ເຫັນ location ທີ່ SN ≠ stock.
 2. ປັບອັດຕະໂນມັດ ຫຼື manual (ສະແກນ SN ໃສ່ location).
 
+**ຕັ້ງ stock ຂັ້ນຕ່ຳ/ຂັ້ນສູງ (ຜູ້ຈັດການ):**
+1. `/settings/min-stock` → ແທັບ “ສາງທີ່ຄຸມ” → ຕິກເປີດສາງ (ຄ່າເລີ່ມຕົ້ນປິດໝົດ).
+2. ແທັບ “ຄ່າ min/max” → ຄົ້ນສິນຄ້າ → ໃສ່ຂັ້ນຕ່ຳ/ຂັ້ນສູງ → ບັນທຶກ. ຫຼື ແທັບ “ນຳເຂົ້າ Excel”
+   (ດາວໂຫຼດ template ທີ່ມີຄ່າປັດຈຸບັນ → ແກ້ → ອັບກັບ; ຕິກ “ແທນທີ່ທັງໝົດ” ໄດ້).
+3. ຜົນ: badge ໜ້າຫຼັກ, ລາຍງານ `/movements/min-stock`, ປ້າຍໃນໜ້າຄົງເຫຼືອ,
+   ຄຳເຕືອນຕອນຈ່າຍອອກ (ເຕືອນເທົ່ານັ້ນ ບໍ່ກີດ), ແລະ section ໃນລາຍງານທາງເມວ.
+
 **ກວດສຸຂະພາບປະຈຳວັນ (ນາຍສาง):**
-1. ໜ້າຫຼັກ → badge ສຸຂະພາບ (ສິນຄ້າຄ້າງ / SN ບໍ່ຕົງ).
+1. ໜ້າຫຼັກ → badge ສຸຂະພາບ (ຕ່ຳກວ່າ stock ຂັ້ນຕ່ຳ / ສິນຄ້າຄ້າງ / SN ບໍ່ຕົງ).
 2. `accuracy` → % ແມ່ນຍຳ · `aging` → ສິນຄ້າຄ້າງ · `movers` → fast movers.
 3. `ledger` → export CSV ລາຍງານ.
 

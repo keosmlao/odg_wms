@@ -8,7 +8,7 @@ export default function PageLoading({
     <div className="w-full space-y-5">
       {/* Hero skeleton with subtle gradient blob */}
       <div className="shadow-card relative overflow-hidden rounded-2xl bg-white p-7 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-        <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 animate-pulse rounded-full bg-gradient-to-br from-indigo-500/10 via-violet-500/5 to-transparent blur-3xl dark:from-indigo-500/15" />
+        <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 animate-pulse rounded-full bg-gradient-to-br from-brand-500/10 via-aqua-500/5 to-transparent blur-3xl dark:from-brand-500/15" />
         <div className="relative flex flex-wrap items-start justify-between gap-6">
           <div className="flex items-center gap-3.5">
             <div className="h-12 w-12 shrink-0 animate-pulse rounded-xl bg-zinc-100 dark:bg-zinc-800" />
@@ -82,7 +82,7 @@ function Spinner() {
   return (
     <svg
       viewBox="0 0 24 24"
-      className="h-3.5 w-3.5 animate-spin text-indigo-500"
+      className="h-3.5 w-3.5 animate-spin text-brand-500"
       fill="none"
     >
       <circle

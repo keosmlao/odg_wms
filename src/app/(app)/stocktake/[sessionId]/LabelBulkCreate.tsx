@@ -69,7 +69,7 @@ export default function LabelBulkCreate({ sessionId }: { sessionId: number }) {
           value={prefix}
           onChange={(e) => setPrefix(e.target.value)}
           maxLength={20}
-          className="w-full rounded-lg bg-white px-3 py-2 text-sm font-mono text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+          className="w-full rounded-lg bg-white px-3 py-2 text-sm font-mono text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
         />
       </Field>
       <Field label="ຈາກ">
@@ -78,7 +78,7 @@ export default function LabelBulkCreate({ sessionId }: { sessionId: number }) {
           value={start}
           min={0}
           onChange={(e) => setStart(Number.parseInt(e.target.value, 10) || 0)}
-          className="w-full rounded-lg bg-white px-3 py-2 text-sm font-mono text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+          className="w-full rounded-lg bg-white px-3 py-2 text-sm font-mono text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
         />
       </Field>
       <Field label="ຫາ">
@@ -87,7 +87,7 @@ export default function LabelBulkCreate({ sessionId }: { sessionId: number }) {
           value={end}
           min={0}
           onChange={(e) => setEnd(Number.parseInt(e.target.value, 10) || 0)}
-          className="w-full rounded-lg bg-white px-3 py-2 text-sm font-mono text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+          className="w-full rounded-lg bg-white px-3 py-2 text-sm font-mono text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
         />
       </Field>
       <Field label="ຫຼັກເລກ">
@@ -97,14 +97,14 @@ export default function LabelBulkCreate({ sessionId }: { sessionId: number }) {
           min={1}
           max={6}
           onChange={(e) => setPadding(Number.parseInt(e.target.value, 10) || 2)}
-          className="w-full rounded-lg bg-white px-3 py-2 text-sm font-mono text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+          className="w-full rounded-lg bg-white px-3 py-2 text-sm font-mono text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
         />
       </Field>
       <div className="flex items-end">
         <button
           type="submit"
           disabled={busy}
-          className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:shadow-lg disabled:opacity-60"
+          className="w-full rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition hover:shadow-lg disabled:opacity-60"
         >
           {busy ? "ກຳລັງສ້າງ..." : `ສ້າງ ${Math.max(0, end - start + 1)} ປ້າຍ`}
         </button>

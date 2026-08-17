@@ -28,7 +28,7 @@ export default async function PalletMovePage() {
         title="ຍ້າຍ Pallet"
         description="ຍ້າຍ pallet ໄປ location ໃໝ່ — ສິນຄ້າ ແລະ serial ເທິງ pallet ຍ້າຍຕາມ ພ້ອມບັນທຶກການເຄື່ອນຍ້າຍ"
         icon={<LayersIcon className="h-6 w-6" />}
-        tone="blue"
+        tone="navy"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
       <PalletMoveClient warehouses={warehouses} />

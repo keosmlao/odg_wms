@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Noto_Sans_Lao } from "next/font/google";
+import { Geist_Mono, Montserrat, Noto_Sans_Lao } from "next/font/google";
 import PWARegister from "@/components/PWARegister";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Brand typeface per the ODIEN Mall guideline (p.6). The Lao counterpart in the
+// guideline is BoonHome, which is not on Google Fonts — until the licensed
+// woff2 lands in public/fonts, Lao text falls back to Noto Sans Lao.
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
   subsets: ["latin"],
+  weight: ["200", "400", "500", "700", "900"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
@@ -41,8 +46,8 @@ export const metadata: Metadata = {
 
 export const viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#2c6fb6" },
+    { media: "(prefers-color-scheme: dark)", color: "#003260" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -59,7 +64,7 @@ export default function RootLayout({
   return (
     <html
       lang="lo"
-      className={`${geistSans.variable} ${geistMono.variable} ${notoSansLao.variable} h-full antialiased`}
+      className={`${montserrat.variable} ${geistMono.variable} ${notoSansLao.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col overflow-x-hidden" suppressHydrationWarning>

@@ -142,7 +142,7 @@ export default async function MissingSamsungSerialsPage({
         <KpiCard icon={<AlertIcon />} label="SN ທີ່ຂາດ" value={summary.total} tone="red" highlight />
         <KpiCard icon={<PackageIcon />} label="ຍັງຢູ່ໃນສາງ" value={summary.in_stock} tone="emerald" />
         <KpiCard icon={<PackageIcon />} label="ຂາຍອອກໄປ" value={summary.other_status} tone="amber" />
-        <KpiCard icon={<PackageIcon />} label="ລະຫັດສິນຄ້າ" value={summary.item_count} tone="indigo" />
+        <KpiCard icon={<PackageIcon />} label="ລະຫັດສິນຄ້າ" value={summary.item_count} tone="brand" />
       </div>
 
       <Card>
@@ -190,7 +190,7 @@ export default async function MissingSamsungSerialsPage({
                   <td className="whitespace-nowrap px-4 py-3 font-mono font-semibold text-red-600 dark:text-red-400">{row.sn}</td>
                   <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">{row.item_code || "—"}</td>
                   <td className="max-w-lg px-4 py-3">{row.item_name || "—"}</td>
-                  <td className="px-4 py-3 text-xs font-bold text-blue-700 dark:text-blue-300">{row.item_brand || "—"}</td>
+                  <td className="px-4 py-3 text-xs font-bold text-brand-700 dark:text-brand-300">{row.item_brand || "—"}</td>
                   <td className="px-4 py-3 font-mono">{row.wh_code || "—"}</td>
                   <td className="px-4 py-3">{row.unit_code || "—"}</td>
                   <td className="px-4 py-3">

@@ -155,10 +155,10 @@ export default async function SamsungSummaryPage({
                   name="q"
                   defaultValue={q}
                   placeholder="ຄົ້ນຫາລະຫັດ ຫຼື ຊື່ສິນຄ້າ..."
-                  className="w-64 rounded-xl bg-white py-2 pl-9 pr-3 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:ring-zinc-700"
+                  className="w-64 rounded-xl bg-white py-2 pl-9 pr-3 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:ring-zinc-700"
                 />
               </div>
-              <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+              <button className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
                 ຄົ້ນຫາ
               </button>
               {q && (
@@ -186,7 +186,7 @@ export default async function SamsungSummaryPage({
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                 {models.map((m) => (
-                  <tr key={m.item_code ?? "—"} className="transition hover:bg-blue-50/40 dark:hover:bg-blue-950/10">
+                  <tr key={m.item_code ?? "—"} className="transition hover:bg-brand-50/40 dark:hover:bg-brand-950/10">
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                       {m.item_code || "—"}
                     </td>
@@ -202,7 +202,7 @@ export default async function SamsungSummaryPage({
                     </td>
                     <td className="px-4 py-3 text-right font-mono tabular-nums">
                       {m.claimed > 0 ? (
-                        <span className="inline-flex rounded-lg bg-violet-50 px-2 py-0.5 font-semibold text-violet-700 ring-1 ring-inset ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900/60">
+                        <span className="inline-flex rounded-lg bg-aqua-50 px-2 py-0.5 font-semibold text-aqua-700 ring-1 ring-inset ring-aqua-200 dark:bg-aqua-950/40 dark:text-aqua-300 dark:ring-aqua-900/60">
                           {m.claimed.toLocaleString("en-US")}
                         </span>
                       ) : (
@@ -225,7 +225,7 @@ export default async function SamsungSummaryPage({
                     <td className="px-4 py-3 text-right font-mono tabular-nums text-amber-700 dark:text-amber-400">
                       {models.reduce((a, m) => a + m.sold, 0).toLocaleString("en-US")}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums text-violet-700 dark:text-violet-400">
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-aqua-700 dark:text-aqua-400">
                       {models.reduce((a, m) => a + m.claimed, 0).toLocaleString("en-US")}
                     </td>
                   </tr>
@@ -317,10 +317,10 @@ export default async function SamsungSummaryPage({
                 name="q"
                 defaultValue={q}
                 placeholder="ຄົ້ນຫາ SN, ລະຫັດ, ຊື່..."
-                className="w-64 rounded-xl bg-white py-2 pl-9 pr-3 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-950 dark:ring-zinc-700"
+                className="w-64 rounded-xl bg-white py-2 pl-9 pr-3 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:ring-zinc-700"
               />
             </div>
-            <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+            <button className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
               ຄົ້ນຫາ
             </button>
             <Link
@@ -349,8 +349,8 @@ export default async function SamsungSummaryPage({
               {rows.map((row) => {
                 const inStock = Number(row.status ?? 0) === 0;
                 return (
-                  <tr key={row.sn} className="align-top transition hover:bg-blue-50/40 dark:hover:bg-blue-950/10">
-                    <td className="whitespace-nowrap px-4 py-3 font-mono font-semibold text-blue-700 dark:text-blue-300">
+                  <tr key={row.sn} className="align-top transition hover:bg-brand-50/40 dark:hover:bg-brand-950/10">
+                    <td className="whitespace-nowrap px-4 py-3 font-mono font-semibold text-brand-700 dark:text-brand-300">
                       {row.sn}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
@@ -385,7 +385,7 @@ export default async function SamsungSummaryPage({
                     </td>
                     <td className="max-w-sm px-4 py-3">
                       {row.claim_text ? (
-                        <span className="inline-flex rounded-lg bg-violet-50 px-2 py-1 text-xs text-violet-800 ring-1 ring-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:ring-violet-900/50">
+                        <span className="inline-flex rounded-lg bg-aqua-50 px-2 py-1 text-xs text-aqua-800 ring-1 ring-aqua-200 dark:bg-aqua-950/30 dark:text-aqua-300 dark:ring-aqua-900/50">
                           {row.claim_text}
                         </span>
                       ) : (
@@ -432,7 +432,7 @@ function SummaryHeader() {
       title="ສະຫຼຸບ SN Samsung"
       description="ນັບຈາກສາງຈິງ (sn_inventory · brand SAMSUNG) — ກົດທີ່ການ໌ດ ເພື່ອເບິ່ງລາຍລະອຽດ SN"
       icon={<TrendIcon className="h-6 w-6" />}
-      tone="blue"
+      tone="navy"
       right={
         <Link
           href="/samsung-serials"
@@ -447,10 +447,10 @@ function SummaryHeader() {
 
 function KpiGrid({ s, active }: { s: SummaryRow; active?: string }) {
   const cards = [
-    { view: "total", icon: <ListIcon />, label: "ທັງໝົດ", value: s.total, sub: `${s.item_count.toLocaleString("en-US")} ລຸ້ນ`, tone: "blue" as const },
+    { view: "total", icon: <ListIcon />, label: "ທັງໝົດ", value: s.total, sub: `${s.item_count.toLocaleString("en-US")} ລຸ້ນ`, tone: "navy" as const },
     { view: "in-stock", icon: <PackageIcon />, label: "ຍັງຄົງເຫຼືອ", value: s.in_stock, sub: "status 0", tone: "emerald" as const },
     { view: "sold", icon: <CheckIcon />, label: "ຂາຍ / ຈ່າຍອອກແລ້ວ", value: s.sold, sub: "status ≠ 0", tone: "amber" as const },
-    { view: "claimed", icon: <TrendIcon />, label: "ເຄມແລ້ວ", value: s.claimed, sub: "ມີ note / claim_note", tone: "violet" as const },
+    { view: "claimed", icon: <TrendIcon />, label: "ເຄມແລ້ວ", value: s.claimed, sub: "ມີ note / claim_note", tone: "aqua" as const },
     { view: "claimed-in-stock", icon: <AlertIcon />, label: "ເຄມແລ້ວ ແຕ່ຍັງຢູ່ສາງ", value: s.claimed_in_stock, sub: "ຄວນກວດ", tone: "red" as const },
   ];
   return (
@@ -459,7 +459,7 @@ function KpiGrid({ s, active }: { s: SummaryRow; active?: string }) {
         <Link
           key={c.view}
           href={`/samsung-serials/summary?view=${c.view}`}
-          className={`rounded-2xl transition ${active === c.view ? "ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-zinc-950" : ""}`}
+          className={`rounded-2xl transition ${active === c.view ? "ring-2 ring-brand-500 ring-offset-2 dark:ring-offset-zinc-950" : ""}`}
         >
           <KpiCard icon={c.icon} label={c.label} value={c.value} sub={c.sub} tone={c.tone} highlight />
         </Link>

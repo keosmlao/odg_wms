@@ -277,7 +277,9 @@ export async function pendingIssues(scope: Scope, limit = 25): Promise<PendingIs
      LEFT JOIN pend pd ON pd.doc_no = s.doc_no
      LEFT JOIN public.ar_customer cu ON cu.code = h.cust_code
      WHERE COALESCE(h.is_cancel, 0) = 0
-       AND (h.trans_flag <> 124 OR h.status = 1)
+       -- ໃບຂໍໂອນ (124) ຈ່າຍໄດ້ໂດຍບໍ່ຕ້ອງອະນຸມັດ (ກັນສະເພາະທີ່ຖືກປฏิเสธ)
+       -- — ໃຫ້ຕົງກັບ /api/movements/issue/pending
+       AND (h.trans_flag <> 124 OR COALESCE(h.status, 0) <> 2)
        AND (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0)) > 0.0001
      ORDER BY h.doc_date ASC NULLS LAST
      LIMIT $1`,

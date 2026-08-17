@@ -160,7 +160,7 @@ export default async function SnMoveHistory({ session, params }: { session: Sess
     return `${BASE}?${sp.toString()}`;
   }
 
-  const inputCls = "w-full rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-violet-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+  const inputCls = "w-full rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition hover:ring-zinc-300 focus:ring-2 focus:ring-aqua-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
   const labelCls = "mb-1.5 block text-xs font-semibold text-zinc-700 dark:text-zinc-300";
 
   return (
@@ -202,7 +202,7 @@ export default async function SnMoveHistory({ session, params }: { session: Sess
             <Link href={`${BASE}?tab=history`} className="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800">ມື້ນີ້</Link>
             <Link href={`${BASE}?tab=history&all=1`} className="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800">ທຸກວັນ</Link>
           </div>
-          <button type="submit" className="rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-violet-500/20 transition hover:shadow-lg">ກອງ</button>
+          <button type="submit" className="rounded-lg bg-gradient-to-r from-aqua-600 to-brand-700 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-aqua-500/20 transition hover:shadow-lg">ກອງ</button>
         </div>
       </form>
 
@@ -217,13 +217,13 @@ export default async function SnMoveHistory({ session, params }: { session: Sess
             return (
               <details key={d.doc_no} open={pageDocs.length <= 5} className="group shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
                 <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-5 py-3.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 font-mono text-[10px] font-bold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-aqua-50 font-mono text-[10px] font-bold text-aqua-700 dark:bg-aqua-950/40 dark:text-aqua-300">
                     {(d.wh_code ?? "?").slice(-2)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{d.doc_no}</span>
-                      <Chip tone="violet">ຍ້າຍ SN</Chip>
+                      <Chip tone="aqua">ຍ້າຍ SN</Chip>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
                       <span className="inline-flex items-center gap-1"><CalendarIcon className="h-3 w-3" />{fmtDate(d.doc_date)}</span>
@@ -234,7 +234,7 @@ export default async function SnMoveHistory({ session, params }: { session: Sess
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
                     <div className="text-right">
-                      <div className="font-mono text-base font-bold tabular-nums text-violet-600 dark:text-violet-400">{d.sn_count}</div>
+                      <div className="font-mono text-base font-bold tabular-nums text-aqua-600 dark:text-aqua-400">{d.sn_count}</div>
                       <div className="text-[10px] text-zinc-400">SN ຍ້າຍ</div>
                     </div>
                     <DeleteSnMoveButton docNo={d.doc_no} snCount={d.sn_count} />
@@ -253,7 +253,7 @@ export default async function SnMoveHistory({ session, params }: { session: Sess
                       {dests.map((dg, idx) => (
                         <tr key={`${d.doc_no}-${dg.item_code}-${idx}`}>
                           <td className="px-4 py-2 align-top">
-                            <div className="font-mono text-[11px] font-bold text-violet-600 dark:text-violet-400">{dg.item_code}</div>
+                            <div className="font-mono text-[11px] font-bold text-aqua-600 dark:text-aqua-400">{dg.item_code}</div>
                             <div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={dg.item_name ?? ""}>{dg.item_name ?? "—"}</div>
                           </td>
                           <td className="px-4 py-2 align-top font-mono text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">

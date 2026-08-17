@@ -191,7 +191,7 @@ function RackTowers({
               e.stopPropagation();
               onSelectRack(rack.code);
             }}
-            className="pointer-events-auto cursor-pointer select-none whitespace-nowrap rounded px-1.5 py-0.5 font-mono text-[8px] font-bold text-slate-400 transition hover:text-sky-600"
+            className="pointer-events-auto cursor-pointer select-none whitespace-nowrap rounded px-1.5 py-0.5 font-mono text-[8px] font-bold text-slate-400 transition hover:text-aqua-600"
           >
             {label}
           </button>
@@ -437,10 +437,10 @@ function RackTowers({
                         }}
                         className={`pointer-events-auto cursor-pointer select-none whitespace-nowrap rounded px-1.5 py-0.5 font-mono text-[8px] font-bold shadow-lg transition ${
                           isMatch
-                            ? "bg-fuchsia-600 text-white ring-1 ring-fuchsia-300"
+                            ? "bg-sunset-700 text-white ring-1 ring-sunset-300"
                             : isSel
-                              ? "bg-sky-600 text-white ring-1 ring-sky-300"
-                              : "bg-slate-950/85 text-white hover:bg-sky-600"
+                              ? "bg-aqua-600 text-white ring-1 ring-aqua-300"
+                              : "bg-slate-950/85 text-white hover:bg-aqua-600"
                         }`}
                       >
                         {shortCode(cell.code)}
@@ -464,10 +464,10 @@ function RackTowers({
           }}
           className={`pointer-events-auto cursor-pointer select-none whitespace-nowrap rounded-lg px-2 py-1 font-mono text-[10px] font-bold shadow-lg ring-1 backdrop-blur transition ${
             selected
-              ? "bg-sky-600 text-white ring-sky-400"
+              ? "bg-aqua-600 text-white ring-aqua-400"
               : rackDimmed
                 ? "bg-white/60 text-slate-400 ring-slate-200 hover:bg-white/90 hover:text-slate-700"
-                : "bg-white/95 text-slate-700 ring-slate-200 hover:bg-sky-50 hover:text-sky-700"
+                : "bg-white/95 text-slate-700 ring-slate-200 hover:bg-aqua-50 hover:text-aqua-700"
           }`}
         >
           {label}
@@ -627,7 +627,7 @@ export default function Warehouse3D({
   const crumb = (activeCrumb: boolean) =>
     `rounded-full px-2.5 py-1 text-xs font-bold transition ${
       activeCrumb
-        ? "bg-sky-600 text-white shadow"
+        ? "bg-aqua-600 text-white shadow"
         : "text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-white"
     }`;
 
@@ -784,10 +784,10 @@ export default function Warehouse3D({
             pointerEvents="none"
           >
             <div className="flex select-none flex-col items-center">
-              <div className="whitespace-nowrap rounded-md bg-sky-600 px-2 py-0.5 text-[10px] font-bold text-white shadow">
+              <div className="whitespace-nowrap rounded-md bg-aqua-600 px-2 py-0.5 text-[10px] font-bold text-white shadow">
                 🚪 {d.label}
               </div>
-              <div className="h-3 w-px bg-sky-500/60" />
+              <div className="h-3 w-px bg-aqua-500/60" />
             </div>
           </Html>
         ))}

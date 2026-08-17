@@ -5,26 +5,58 @@
   --foreground: #18181b;
   --surface: #ffffff;
   --border: #e4e4e7;
-  --brand-50: #eef2ff;
-  --brand-100: #e0e7ff;
-  --brand-200: #c7d2fe;
-  --brand-500: #6366f1;
-  --brand-600: #4f46e5;
-  --brand-700: #4338ca;
-  --brand-900: #312e81;
 }
 
+/* ODIEN Mall brand palette (Brand Guideline p.16–17).
+   Three scales, each anchored on an official hex:
+     brand  — Deep Blue  #2C6FB6 (500)  →  Navy #003260 (900)   : primary UI
+     aqua   — Sky Blue   #4BC7EF (400)                          : secondary / highlight
+     sunset — Orange     #F6921E (500), Warm Yellow #FFD071 (300): accent only
+   Intermediate steps are interpolated; do not substitute colours outside these
+   scales for brand surfaces. Semantic status colours (emerald/red/amber for
+   ok/error/warning) stay on the Tailwind defaults — they carry meaning, not brand. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-brand-50: var(--brand-50);
-  --color-brand-100: var(--brand-100);
-  --color-brand-200: var(--brand-200);
-  --color-brand-500: var(--brand-500);
-  --color-brand-600: var(--brand-600);
-  --color-brand-700: var(--brand-700);
-  --color-brand-900: var(--brand-900);
-  --font-sans: var(--font-geist-sans), var(--font-noto-lao);
+
+  --color-brand-50: #eff6fd;
+  --color-brand-100: #dcebfa;
+  --color-brand-200: #bcd8f4;
+  --color-brand-300: #8fbdea;
+  --color-brand-400: #5b9ad9;
+  --color-brand-500: #2c6fb6;
+  --color-brand-600: #245c99;
+  --color-brand-700: #1d4a7c;
+  --color-brand-800: #143a63;
+  --color-brand-900: #003260;
+  --color-brand-950: #00203d;
+
+  --color-aqua-50: #edfafe;
+  --color-aqua-100: #d3f2fd;
+  --color-aqua-200: #ace6fa;
+  --color-aqua-300: #79d6f5;
+  --color-aqua-400: #4bc7ef;
+  --color-aqua-500: #21aedd;
+  --color-aqua-600: #128bba;
+  --color-aqua-700: #126f96;
+  --color-aqua-800: #155c7b;
+  --color-aqua-900: #164c67;
+  --color-aqua-950: #0b3145;
+
+  --color-sunset-50: #fff9ed;
+  --color-sunset-100: #fff0d0;
+  --color-sunset-200: #ffe0a3;
+  --color-sunset-300: #ffd071;
+  --color-sunset-400: #fcae3c;
+  --color-sunset-500: #f6921e;
+  --color-sunset-600: #da7211;
+  --color-sunset-700: #b45410;
+  --color-sunset-800: #924314;
+  --color-sunset-900: #783813;
+  --color-sunset-950: #451b06;
+
+  --font-sans: var(--font-montserrat), var(--font-noto-lao);
+  --font-display: var(--font-montserrat), var(--font-noto-lao);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -47,7 +79,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family:
-    var(--font-geist-sans),
+    var(--font-montserrat),
     var(--font-noto-lao),
     -apple-system,
     BlinkMacSystemFont,
@@ -59,19 +91,20 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Brand mesh: Deep Blue → Sky Blue → Orange, the guideline's gradient trio (p.17). */
 @utility bg-mesh {
   background-image:
-    radial-gradient(at 0% 0%, rgb(99 102 241 / 0.05) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgb(236 72 153 / 0.04) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgb(16 185 129 / 0.04) 0px, transparent 50%);
+    radial-gradient(at 0% 0%, rgb(44 111 182 / 0.06) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgb(75 199 239 / 0.07) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgb(246 146 30 / 0.05) 0px, transparent 50%);
 }
 
 @media (prefers-color-scheme: dark) {
   .bg-mesh {
     background-image:
-      radial-gradient(at 0% 0%, rgb(99 102 241 / 0.12) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgb(236 72 153 / 0.08) 0px, transparent 50%),
-      radial-gradient(at 50% 100%, rgb(16 185 129 / 0.08) 0px, transparent 50%);
+      radial-gradient(at 0% 0%, rgb(44 111 182 / 0.16) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgb(75 199 239 / 0.1) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, rgb(246 146 30 / 0.07) 0px, transparent 50%);
   }
 }
 

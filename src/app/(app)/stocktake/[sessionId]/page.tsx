@@ -350,7 +350,7 @@ export default async function SessionDetailPage({
               <p className={stEyebrow}>ຮອບກວດນັບ</p>
               <StatusBadge status={detail.status} />
               {detail.blind && (
-                <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+                <span className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">
                   Blind
                 </span>
               )}
@@ -397,7 +397,7 @@ export default async function SessionDetailPage({
                     ? "emerald"
                     : itemProgress >= 50
                       ? "amber"
-                      : "indigo"
+                      : "brand"
                 }
               />
               <HeroMetric
@@ -475,7 +475,7 @@ export default async function SessionDetailPage({
                     ? `${detail.counted_items.toLocaleString("en-US")}/${detail.snapshot_items.toLocaleString("en-US")} ລະຫັດ`
                     : `${summary.counted}/${summary.labels} ປ້າຍ`
                 }
-                tone="indigo"
+                tone="brand"
               />
               <ProgressLine
                 label="ປ້າຍກວດນັບ"
@@ -488,7 +488,7 @@ export default async function SessionDetailPage({
                   label="qty ທຽບ SML"
                   value={qtyProgress}
                   detail={`${formatQty(summary.qty)}/${formatQty(snapshotQty)}`}
-                  tone="violet"
+                  tone="aqua"
                 />
               )}
             </div>
@@ -660,7 +660,7 @@ export default async function SessionDetailPage({
               className={`${stPanel} group overflow-hidden`}
               open={summary.labels === 0}
             >
-              <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3.5 text-sm font-medium text-zinc-700 transition hover:text-indigo-600 dark:text-zinc-300 dark:hover:text-indigo-400">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3.5 text-sm font-medium text-zinc-700 transition hover:text-brand-600 dark:text-zinc-300 dark:hover:text-brand-400">
                 <svg
                   viewBox="0 0 24 24"
                   className="h-4 w-4"
@@ -687,7 +687,7 @@ export default async function SessionDetailPage({
               className={`${stPanel} group overflow-hidden`}
               open={summary.labels === 0}
             >
-              <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3.5 text-sm font-medium text-zinc-700 transition hover:text-indigo-600 dark:text-zinc-300 dark:hover:text-indigo-400">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3.5 text-sm font-medium text-zinc-700 transition hover:text-brand-600 dark:text-zinc-300 dark:hover:text-brand-400">
                 <PlusIcon className="h-4 w-4" />
                 ສ້າງປ້າຍກວດນັບ
                 {locationCount > 0 && (
@@ -743,7 +743,7 @@ export default async function SessionDetailPage({
                 <h3 className={stEyebrow}>ຜົນການກວດນັບ</h3>
                 <Link
                   href={`/stocktake/${detail.session_id}/summary`}
-                  className="text-[10px] font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                  className="text-[10px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
                 >
                   ສະຫຼຸບເຕັມ →
                 </Link>
@@ -861,7 +861,7 @@ export default async function SessionDetailPage({
                         <li key={r.item_code}>
                           <Link
                             href={`/stocktake/${detail.session_id}/report?q=${encodeURIComponent(r.item_code)}`}
-                            className="flex items-center justify-between gap-2 rounded-md bg-zinc-50 px-2 py-1 text-[11px] transition hover:bg-indigo-50 hover:ring-1 hover:ring-indigo-200 dark:bg-zinc-800/40 dark:hover:bg-indigo-950/30 dark:hover:ring-indigo-800/60"
+                            className="flex items-center justify-between gap-2 rounded-md bg-zinc-50 px-2 py-1 text-[11px] transition hover:bg-brand-50 hover:ring-1 hover:ring-brand-200 dark:bg-zinc-800/40 dark:hover:bg-brand-950/30 dark:hover:ring-brand-800/60"
                           >
                           <div className="min-w-0 flex-1">
                             <div className="truncate font-mono font-semibold text-zinc-900 dark:text-zinc-100">
@@ -1098,15 +1098,15 @@ function HeroMetric({
   label: string;
   value: string;
   sub: string;
-  tone: "emerald" | "amber" | "indigo" | "red" | "zinc";
+  tone: "emerald" | "amber" | "brand" | "red" | "zinc";
 }) {
   const toneMap = {
     emerald:
       "border-emerald-200 bg-emerald-50/70 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300",
     amber:
       "border-amber-200 bg-amber-50/70 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300",
-    indigo:
-      "border-indigo-200 bg-indigo-50/70 text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/20 dark:text-indigo-300",
+    brand:
+      "border-brand-200 bg-brand-50/70 text-brand-700 dark:border-brand-900/50 dark:bg-brand-950/20 dark:text-brand-300",
     red: "border-red-200 bg-red-50/70 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300",
     zinc: "border-zinc-200 bg-zinc-50/80 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950/30 dark:text-zinc-300",
   } as const;
@@ -1132,12 +1132,12 @@ function ProgressLine({
   label: string;
   value: number;
   detail: string;
-  tone: "indigo" | "emerald" | "violet";
+  tone: "brand" | "emerald" | "aqua";
 }) {
   const toneMap = {
-    indigo: "from-sky-400 to-indigo-500",
+    brand: "from-aqua-400 to-brand-500",
     emerald: "from-emerald-400 to-teal-500",
-    violet: "from-violet-400 to-fuchsia-500",
+    aqua: "from-aqua-400 to-brand-600",
   } as const;
   const width = Math.max(0, Math.min(100, value));
   return (
@@ -1191,17 +1191,17 @@ function PrimaryAction({
       return (
         <Link
           href={`/stocktake/${sessionId}/count/${nextLabelId}`}
-          className="group flex items-center justify-between gap-3 rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50 to-white px-5 py-4 transition hover:border-indigo-300 hover:shadow-md dark:border-indigo-900/50 dark:from-indigo-950/40 dark:to-zinc-900/40 dark:hover:border-indigo-800"
+          className="group flex items-center justify-between gap-3 rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 to-white px-5 py-4 transition hover:border-brand-300 hover:shadow-md dark:border-brand-900/50 dark:from-brand-950/40 dark:to-zinc-900/40 dark:hover:border-brand-800"
         >
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-600 dark:text-brand-300">
               {countedCount === 0 ? "ເລີ່ມນັບ" : "ສືບຕໍ່ນັບ"}
             </p>
             <p className="mt-1 font-mono text-lg font-bold text-zinc-900 dark:text-white">
               {nextLabelCode}
             </p>
           </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm transition group-hover:bg-indigo-500">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-600 text-white shadow-sm transition group-hover:bg-brand-500">
             <ChevronRightIcon className="h-5 w-5" />
           </span>
         </Link>
@@ -1232,12 +1232,12 @@ function PrimaryAction({
   return (
     <Link
       href={`/stocktake/${sessionId}/summary`}
-      className="group flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 transition hover:border-indigo-200 hover:bg-indigo-50/60 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-indigo-900 dark:hover:bg-indigo-950/20"
+      className="group flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 transition hover:border-brand-200 hover:bg-brand-50/60 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-brand-900 dark:hover:bg-brand-950/20"
     >
       <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
         ເບິ່ງລາຍງານສະຫຼຸບ
       </span>
-      <ChevronRightIcon className="h-4 w-4 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-indigo-500" />
+      <ChevronRightIcon className="h-4 w-4 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-brand-500" />
     </Link>
   );
 }
@@ -1261,13 +1261,13 @@ function TabNav({
     key: TabKey;
     label: string;
     badge?: string | number;
-    tone?: "emerald" | "amber" | "indigo";
+    tone?: "emerald" | "amber" | "brand";
   }[] = [
     {
       key: "count",
       label: "ກວດນັບ",
       badge: countBadge,
-      tone: "indigo",
+      tone: "brand",
     },
     {
       key: "results",
@@ -1302,7 +1302,7 @@ function TabNav({
             aria-selected={isActive}
             className={`group relative inline-flex items-center gap-2 rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
               isActive
-                ? "text-indigo-700 dark:text-indigo-300"
+                ? "text-brand-700 dark:text-brand-300"
                 : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
             }`}
           >
@@ -1314,7 +1314,7 @@ function TabNav({
                     ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
                     : t.tone === "emerald"
                       ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-                      : "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300"
+                      : "bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300"
                 }`}
               >
                 {t.badge}
@@ -1323,7 +1323,7 @@ function TabNav({
             {isActive && (
               <span
                 aria-hidden="true"
-                className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-indigo-500"
+                className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-brand-500"
               />
             )}
           </Link>
@@ -1378,10 +1378,10 @@ function SecondaryActionLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="group flex items-center justify-between gap-2 rounded-xl border border-zinc-200/70 bg-white/80 px-3.5 py-2.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50/50 hover:text-indigo-700 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-200 dark:hover:border-indigo-900 dark:hover:bg-indigo-950/30 dark:hover:text-indigo-300"
+      className="group flex items-center justify-between gap-2 rounded-xl border border-zinc-200/70 bg-white/80 px-3.5 py-2.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-brand-200 hover:bg-brand-50/50 hover:text-brand-700 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-200 dark:hover:border-brand-900 dark:hover:bg-brand-950/30 dark:hover:text-brand-300"
     >
       <span className="truncate">{label}</span>
-      <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-indigo-500" />
+      <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-brand-500" />
     </Link>
   );
 }

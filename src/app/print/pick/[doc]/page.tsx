@@ -31,11 +31,23 @@ export default async function PrintPickPage({ params, searchParams }: { params: 
   );
   const h = head[0];
 
-  const rows = h ? await query<{ item_code: string; item_name: string | null; unit_code: string | null; qty: string; shelf_code: string | null }>(
-    `SELECT item_code, item_name, unit_code, qty::numeric::text AS qty, shelf_code
+  const rows = h ? await query<{ item_code: string; item_name: string | null; unit_code: string | null; qty: string; shelf_code: string | null; ref_doc_no: string | null }>(
+    // ref_doc_no = ບິນຂາຍຂອງແຖວ (ໃບທີ່ດຶງມາຈາກໃບຈັດຖ້ຽວ: 1 ໃບ ຫຼາຍບິນ)
+    `SELECT item_code, item_name, unit_code, qty::numeric::text AS qty, shelf_code, ref_doc_no
      FROM public.wms_product_out_detail WHERE doc_no = $1 ORDER BY shelf_code, item_code`,
     [docNo],
   ) : [];
+
+  // ໃບທີ່ອອກຈາກໃບຈັດຖ້ຽວ — ຫົວໃບຕ້ອງບອກ "ໃບຈັດຖ້ຽວ + ລົດ", ບໍ່ແມ່ນ "ບິນຂາຍ"
+  const tripRow = h ? await query<{ trip_doc_no: string; car: string | null; car_name: string | null; driver_name: string | null }>(
+    `SELECT pt.trip_doc_no, pt.car, ca.name_1 AS car_name, dv.name_1 AS driver_name
+     FROM public.wms_pick_trip pt
+     LEFT JOIN public.odg_tms_car ca ON ca.code = pt.car
+     LEFT JOIN public.odg_tms_driver dv ON dv.code = pt.driver
+     WHERE pt.doc_no = $1 LIMIT 1`,
+    [docNo],
+  ) : [];
+  const trip = tripRow[0] ?? null;
 
   const serials = h ? await query<{ item_code: string; serial_number: string }>(
     `SELECT item_code, serial_number FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1 ORDER BY serial_number`,
@@ -44,8 +56,23 @@ export default async function PrintPickPage({ params, searchParams }: { params: 
   const snByItem = new Map<string, string[]>();
   for (const s of serials) { const a = snByItem.get(s.item_code) ?? []; a.push(s.serial_number); snByItem.set(s.item_code, a); }
 
+  // ລວມແຖວ: ສິນຄ້າດຽວກັນ ບ່ອນດຽວກັນ = 1 ແຖວ (ເຖິງວ່າຈະເປັນຂອງຫຼາຍບິນ) —
+  // ຄົນເກັບຍ່າງໄປບ່ອນນັ້ນເທື່ອດຽວ ຫຍິບອອກມາລວມ, ບໍ່ຕ້ອງແຍກ.
+  type WalkRow = { loc: string; item_code: string; item_name: string | null; unit_code: string | null; qty: number; bills: string[] };
+  const walkMap = new Map<string, WalkRow>();
+  for (const r of rows) {
+    const loc = parseNode(r.shelf_code);
+    const bill = r.ref_doc_no?.trim() || h?.ref_doc_no || "";
+    const key = `${loc}|${r.item_code}`;
+    const entry = walkMap.get(key) ?? { loc, item_code: r.item_code, item_name: r.item_name, unit_code: r.unit_code, qty: 0, bills: [] };
+    entry.qty += Number.parseFloat(r.qty) || 0;
+    if (bill && !entry.bills.includes(bill)) entry.bills.push(bill);
+    walkMap.set(key, entry);
+  }
   // Walk order: sort by location label.
-  const walk = rows.map((r) => ({ ...r, loc: parseNode(r.shelf_code) })).sort((a, b) => a.loc.localeCompare(b.loc));
+  const walk = [...walkMap.values()].sort((a, b) => a.loc.localeCompare(b.loc) || a.item_code.localeCompare(b.item_code));
+  // ບິນຂາຍທັງໝົດໃນໃບນີ້ (ໃບຖ້ຽວມີຫຼາຍບິນ)
+  const bills = [...new Set(walk.flatMap((r) => r.bills))].sort();
 
   return (
     <div className="mx-auto max-w-3xl bg-white p-8 text-slate-900" style={{ fontFamily: "'Noto Sans Lao', sans-serif" }}>
@@ -62,8 +89,15 @@ export default async function PrintPickPage({ params, searchParams }: { params: 
           <div className="mb-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
             <div><b>ເລກທີ່ pick:</b> <span className="font-mono">{h.doc_no}</span></div>
             <div><b>ສາງ:</b> {h.warehouse_code} {h.wh_name ?? ""}</div>
-            <div><b>ອ້າງອີງ:</b> {SRC_LABEL[h.doc_type ?? 0] ?? ""} {h.ref_doc_no ?? "—"}</div>
+            {trip ? (
+              <div><b>ໃບຈັດຖ້ຽວ:</b> <span className="font-mono">{trip.trip_doc_no}</span>{trip.car_name || trip.car ? ` · ${trip.car_name ?? trip.car}` : ""}{trip.driver_name ? ` · ${trip.driver_name}` : ""}</div>
+            ) : (
+              <div><b>ອ້າງອີງ:</b> {SRC_LABEL[h.doc_type ?? 0] ?? ""} {h.ref_doc_no ?? "—"}</div>
+            )}
             <div><b>ຜູ້ສ້າງ:</b> {session.nickname?.trim() || session.employee_code || "—"}</div>
+            {bills.length > 0 && (
+              <div className="col-span-2"><b>ບິນຂາຍ ({bills.length}):</b> <span className="font-mono text-xs">{bills.join(", ")}</span></div>
+            )}
             {h.remark && <div className="col-span-2"><b>🚜 ມອບໝາຍ ຜູ້ເກັບ:</b> {h.remark}</div>}
           </div>
 
@@ -73,6 +107,7 @@ export default async function PrintPickPage({ params, searchParams }: { params: 
                 <th className="border border-slate-300 px-2 py-1 w-8">#</th>
                 <th className="border border-slate-300 px-2 py-1">ບ່ອນเก็บ (walk order)</th>
                 <th className="border border-slate-300 px-2 py-1">ສິນຄ້າ</th>
+                <th className="border border-slate-300 px-2 py-1 w-32">ບິນຂາຍ</th>
                 <th className="border border-slate-300 px-2 py-1 text-right w-24">ຈຳນວນ</th>
                 <th className="border border-slate-300 px-2 py-1 w-10 text-center">✓</th>
               </tr>
@@ -89,7 +124,8 @@ export default async function PrintPickPage({ params, searchParams }: { params: 
                       <div>{r.item_name}</div>
                       {sns.length > 0 && <div className="mt-0.5 text-[10px] text-slate-500">SN: {sns.join(", ")}</div>}
                     </td>
-                    <td className="border border-slate-300 px-2 py-1.5 text-right font-mono text-base font-bold">{Number.parseFloat(r.qty || "0")} {r.unit_code ?? ""}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 font-mono text-xs">{r.bills.join(", ") || "—"}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-right font-mono text-base font-bold">{r.qty} {r.unit_code ?? ""}</td>
                     <td className="border border-slate-300 px-2 py-1.5 text-center text-lg">☐</td>
                   </tr>
                 );
@@ -97,8 +133,8 @@ export default async function PrintPickPage({ params, searchParams }: { params: 
             </tbody>
           </table>
 
-          <div className="mt-12 grid grid-cols-2 gap-6 text-center text-sm">
-            {["ຜູ້ເກັບ (forklift)", "ຜູ້ກວດສອບ"].map((s) => (
+          <div className="mt-12 grid grid-cols-3 gap-6 text-center text-sm">
+            {["ຜູ້ເກັບ (forklift)", "ຜູ້ຈ່າຍເຄື່ອງອອກສາງ", "ຜູ້ກວດສອບ"].map((s) => (
               <div key={s}>
                 <div className="mb-10 border-b border-slate-400" />
                 <div>{s}</div>
