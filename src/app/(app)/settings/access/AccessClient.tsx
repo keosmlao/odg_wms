@@ -182,6 +182,15 @@ export default function AccessClient({
                         {e.nickname}
                       </div>
                     )}
+                    {/* ມອບສິດແລ້ວແຕ່ບໍ່ມີລະຫັດຜ່ານ = ເຮັດວຽກຕາມສິດບໍ່ໄດ້ຈິງ. */}
+                    {e.role && !e.can_login && (
+                      <div
+                        className="mt-0.5 text-[10px] font-semibold text-rose-600 dark:text-rose-400"
+                        title="ບໍ່ມີລະຫັດຜ່ານໃນລະບົບພະນັກງານ — ເຂົ້າສູ່ລະບົບ WMS ບໍ່ໄດ້"
+                      >
+                        ⚠ ເຂົ້າລະບົບບໍ່ໄດ້ (ບໍ່ມີລະຫັດຜ່ານ)
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-xs text-zinc-600 dark:text-zinc-400">
@@ -401,6 +410,12 @@ function EditDrawer({
             {isSelf && (
               <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
                 ທ່ານກຳລັງແກ້ໄຂບັນຊີຂອງຕົນເອງ — ບໍ່ສາມາດຫຼຸດສິດ manager ຂອງຕົນເອງ.
+              </p>
+            )}
+            {role !== "" && !employee.can_login && (
+              <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                ພະນັກງານຄົນນີ້ <strong>ບໍ່ມີລະຫັດຜ່ານ</strong> ໃນລະບົບພະນັກງານ ຈຶ່ງເຂົ້າສູ່ລະບົບ WMS
+                ບໍ່ໄດ້. ສິດຈະບັນທຶກໄວ້ ແຕ່ຕ້ອງຕັ້ງລະຫັດຜ່ານໃຫ້ລາວກ່ອນ ຈຶ່ງຈະໃຊ້ວຽກໄດ້.
               </p>
             )}
           </div>

@@ -22,6 +22,8 @@ export type EmployeeRow = {
   department_name: string | null;
   /** ຢູ່ນອກພະແນກ WMS ແຕ່ຖືສິດຢູ່ — ສະແດງໄວ້ເພື່ອໃຫ້ຖອນສິດໄດ້. */
   out_of_scope: boolean;
+  /** ມີລະຫັດຜ່ານໃນ odg_employee ບໍ່ — ບໍ່ມີ = ມອບສິດໃຫ້ກໍ່ເຂົ້າລະບົບບໍ່ໄດ້. */
+  can_login: boolean;
   role: WmsRole | null;
   warehouses: string[];
   /** Extra grants beyond the role — empty for a manager, who holds them all. */
@@ -45,6 +47,7 @@ export default async function AccessPage() {
         d.department_name_lo AS department_name,
         (r.role IS NOT NULL
           AND (e.department_code IS NULL OR NOT (e.department_code = ANY($1)))) AS out_of_scope,
+        (e.password IS NOT NULL AND e.password <> '') AS can_login,
         r.role,
         COALESCE(
           (SELECT array_agg(w.warehouse_code ORDER BY w.warehouse_code)
