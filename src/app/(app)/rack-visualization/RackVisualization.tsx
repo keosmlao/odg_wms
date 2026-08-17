@@ -3,15 +3,16 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
+  AlertIcon,
   BuildingIcon,
-  CheckIcon,
+  ChevronDownIcon,
   LayersIcon,
   ListIcon,
   MapPinIcon,
   PackageIcon,
   SearchIcon,
 } from "@/components/ui/Icons";
-import { Chip, Hero, KpiCard } from "@/components/ui/Card";
+import { Chip, EmptyState, KpiCard } from "@/components/ui/Card";
 import type { Rack3DDatum } from "./Warehouse3D";
 import type { PlanCell } from "@/lib/warehouseLayout";
 import WarehousePlan, { type PlanLocationMaster } from "./WarehousePlan";
@@ -262,100 +263,6 @@ function autoZoneFromRacks(
     side: side
       ? { label: side.name ?? "Z", rackCodes: [side.code] }
       : undefined,
-  };
-}
-
-// Calculate rack heat percentage & state
-function rackHeat(rack: RackView) {
-  const hasCapacity = rack.capacityPallets > 0;
-  const volumePct = hasCapacity
-    ? (rack.usedPallets / rack.capacityPallets) * 100
-    : null;
-  const occupancyPct =
-    rack.locations.length > 0
-      ? (rack.occupiedLocations / rack.locations.length) * 100
-      : rack.hasStock
-        ? 100
-        : 0;
-  const pct = volumePct ?? occupancyPct;
-  return {
-    negative: rack.hasNegative,
-    empty: !rack.hasStock,
-    estimated: !hasCapacity && rack.hasStock,
-    pct,
-  };
-}
-
-type HeatStyle = {
-  tile: string;
-  bar: string;
-  glow: string;
-  badge: string;
-};
-
-function heatStyle(heat: ReturnType<typeof rackHeat>): HeatStyle {
-  if (heat.negative) {
-    return {
-      tile: "bg-red-500/10 text-red-700 ring-red-500/30 hover:bg-red-500/20 dark:bg-red-950/20 dark:text-red-400 dark:ring-red-900/50",
-      bar: "bg-red-500 dark:bg-red-400",
-      glow: "shadow-[0_0_15px_rgba(239,68,68,0.15)]",
-      badge: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300",
-    };
-  }
-  if (heat.empty) {
-    return {
-      tile: "bg-zinc-50/50 text-zinc-400 ring-zinc-200/50 hover:bg-zinc-50/80 dark:bg-zinc-900/30 dark:text-zinc-500 dark:ring-zinc-800/50",
-      bar: "bg-zinc-200 dark:bg-zinc-800",
-      glow: "hover:shadow-md",
-      badge: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-400",
-    };
-  }
-  const p = heat.pct;
-  if (p > 100) {
-    return {
-      tile: "bg-rose-500/15 text-rose-700 ring-rose-500/40 hover:bg-rose-500/25 dark:bg-rose-950/30 dark:text-rose-400 dark:ring-rose-900/70",
-      bar: "bg-rose-600 dark:bg-rose-500 animate-pulse",
-      glow: "shadow-[0_0_18px_rgba(244,63,94,0.25)]",
-      badge: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
-    };
-  }
-  if (p >= 90) {
-    return {
-      tile: "bg-red-500/10 text-red-700 ring-red-400/30 hover:bg-red-500/15 dark:bg-red-950/20 dark:text-red-300 dark:ring-red-900/50",
-      bar: "bg-red-500 dark:bg-red-400",
-      glow: "shadow-[0_0_12px_rgba(239,68,68,0.15)]",
-      badge: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300",
-    };
-  }
-  if (p >= 75) {
-    return {
-      tile: "bg-orange-500/10 text-orange-700 ring-orange-400/30 hover:bg-orange-500/15 dark:bg-orange-950/20 dark:text-orange-300 dark:ring-orange-900/50",
-      bar: "bg-orange-500 dark:bg-orange-400",
-      glow: "shadow-[0_0_10px_rgba(249,115,22,0.1)]",
-      badge: "bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300",
-    };
-  }
-  if (p >= 50) {
-    return {
-      tile: "bg-amber-500/10 text-amber-700 ring-amber-400/30 hover:bg-amber-500/15 dark:bg-amber-950/20 dark:text-amber-300 dark:ring-amber-900/50",
-      bar: "bg-amber-500 dark:bg-amber-400",
-      glow: "shadow-sm",
-      badge: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
-    };
-  }
-  if (p >= 25) {
-    return {
-      tile: "bg-emerald-500/10 text-emerald-700 ring-emerald-400/30 hover:bg-emerald-500/15 dark:bg-emerald-950/20 dark:text-emerald-300 dark:ring-emerald-900/50",
-      bar: "bg-emerald-500 dark:bg-emerald-400",
-      glow: "shadow-sm",
-      badge: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
-    };
-  }
-  return {
-    tile: "bg-teal-500/10 text-teal-700 ring-teal-400/30 hover:bg-teal-500/15 dark:bg-teal-950/20 dark:text-teal-300 dark:ring-teal-900/50",
-    bar: "bg-teal-500 dark:bg-teal-400",
-    glow: "shadow-none",
-    badge: "bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300",
   };
 }
 
@@ -757,35 +664,81 @@ export default function RackVisualization({
     return { cols3D: cols, side3D: banner, zoneLabel3D: undefined };
   }, [zone, rackViews, filteredRacks]);
 
+  const utilTone =
+    summary.palletUtilization >= 100
+      ? "text-red-600 dark:text-red-400"
+      : summary.palletUtilization >= 80
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-emerald-600 dark:text-emerald-400";
+
   return (
-    <div className="w-full space-y-4">
-      <Hero
-        compact
-        title="ແຜນຜັງ Rack ແລະ Location"
-        description="ລະບົບພາບຈຳລອງຄັງສິນຄ້າແບບໂຕ້ຕອບ, ເບິ່ງພື້ນທີ່ຫວ່າງ ແລະ ການໃຊ້ບໍລິມາດຂອງຊັ້ນວາງ"
-        icon={<LayersIcon className="h-5 w-5 text-emerald-500" />}
-        tone="emerald"
-        chips={
-          <>
-            <Chip tone="emerald">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              ມີສິນຄ້າ
-            </Chip>
-            <Chip>
-              <span className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />
-              ຫວ່າງ
-            </Chip>
-            <Chip tone="amber">
-              <span className="h-2 w-2 rounded-full bg-amber-500" />
-              ໃກ້ເຕັມ
-            </Chip>
-            <Chip tone="red">
-              <span className="h-2 w-2 rounded-full bg-red-500" />
-              ຕິດລົບ / ເຕັມ
-            </Chip>
-          </>
-        }
-      />
+    <div className="w-full space-y-5">
+      {/* ── Page banner ─────────────────────────────────────────────── */}
+      <div className="shadow-card relative overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+        <div className="pointer-events-none absolute -top-28 -right-28 h-72 w-72 rounded-full bg-gradient-to-br from-emerald-500/12 via-aqua-500/8 to-transparent blur-3xl dark:from-emerald-500/18 dark:via-aqua-500/12" />
+        <div className="pointer-events-none absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-gradient-to-tr from-brand-500/8 to-transparent blur-2xl dark:from-brand-500/12" />
+        <div className="relative flex flex-wrap items-start justify-between gap-6 p-6 sm:p-7">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-inset ring-emerald-600/10 dark:bg-emerald-950/40 dark:text-emerald-400">
+                <LayersIcon className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+                  ແຜນຜັງ Rack ແລະ Location
+                </h1>
+                <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                  ພາບຈຳລອງຄັງສິນຄ້າແບບໂຕ້ຕອບ — ພື້ນທີ່ຫວ່າງ ແລະ ການໃຊ້ບໍລິມາດຂອງຊັ້ນວາງ
+                </p>
+              </div>
+            </div>
+            {/* Status legend */}
+            <div className="mt-4 flex flex-wrap items-center gap-1.5 text-xs">
+              <Chip tone="emerald">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                ມີສິນຄ້າ
+              </Chip>
+              <Chip>
+                <span className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                ຫວ່າງ
+              </Chip>
+              <Chip tone="amber">
+                <span className="h-2 w-2 rounded-full bg-amber-500" />
+                ໃກ້ເຕັມ
+              </Chip>
+              <Chip tone="red">
+                <span className="h-2 w-2 rounded-full bg-red-500" />
+                ເຕັມ / ຕິດລົບ
+              </Chip>
+            </div>
+          </div>
+
+          {/* Right: overall utilization */}
+          <div className="text-right">
+            <div className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              ອັດຕາໃຊ້ຄວາມຈຸລວມ
+            </div>
+            <div className={`mt-1 font-mono text-3xl font-bold tabular-nums ${utilTone}`}>
+              {summary.palletUtilization.toFixed(1)}%
+            </div>
+            <div className="mt-0.5 text-xs text-zinc-500">
+              {formatPallets(summary.usedPallets)} / {formatPallets(summary.capacityPallets)} ພາເລດ
+            </div>
+            <div className="mt-2 h-1.5 w-44 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${
+                  summary.palletUtilization >= 100
+                    ? "bg-gradient-to-r from-red-500 to-rose-600"
+                    : summary.palletUtilization >= 80
+                      ? "bg-gradient-to-r from-amber-400 to-orange-500"
+                      : "bg-gradient-to-r from-emerald-500 to-teal-500"
+                }`}
+                style={{ width: `${Math.min(100, summary.palletUtilization)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* KPI Section */}
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -838,20 +791,19 @@ export default function RackVisualization({
         />
       </section>
 
-      {/* Filters and Control Board */}
-      <section className="rounded-2xl border border-zinc-200 bg-white/75 p-4 shadow-sm backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-900/75">
-        <div className="flex flex-wrap items-end gap-4">
-          <label className="min-w-[220px] flex-1 sm:max-w-xs">
-            <span className="mb-2 block text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-              ເລືອກສາງສິນຄ້າ (Warehouse)
-            </span>
+      {/* ── Control toolbar ────────────────────────────────────────── */}
+      <section className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Warehouse select */}
+          <div className="relative min-w-[240px] flex-1 sm:max-w-sm">
+            <BuildingIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
             <select
               value={selectedWarehouse?.code ?? ""}
               onChange={(event) => {
                 setWarehouseCode(event.target.value);
                 setSelectedCode(null);
               }}
-              className="h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 shadow-sm outline-none transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+              className="h-10 w-full appearance-none rounded-xl border border-zinc-200 bg-white pl-9 pr-8 text-sm font-semibold text-zinc-800 shadow-sm outline-none transition-all focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
             >
               {warehouses.map((warehouse) => (
                 <option key={warehouse.code} value={warehouse.code}>
@@ -859,24 +811,32 @@ export default function RackVisualization({
                 </option>
               ))}
             </select>
-          </label>
+            <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+          </div>
 
-          <label className="min-w-[220px] flex-1 sm:max-w-xs">
-            <span className="mb-2 block text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-              ຄົ້ນຫາ Rack ຫຼື Location
-            </span>
-            <span className="relative block">
-              <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-zinc-400" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="ປ້ອນລະຫັດ/ຊື່..."
-                className="h-11 w-full rounded-xl border border-zinc-200 bg-white pl-10 pr-4 text-sm text-zinc-800 placeholder:text-zinc-400 outline-none transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-              />
-            </span>
-          </label>
+          {/* Rack/location search */}
+          <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="ຄົ້ນຫາ Rack ຫຼື Location..."
+              className="h-10 w-full rounded-xl border border-zinc-200 bg-white pl-9 pr-8 text-sm text-zinc-800 placeholder:text-zinc-400 shadow-sm outline-none transition-all focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="clear"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"
+              >
+                ✕
+              </button>
+            )}
+          </div>
 
-          <div className="flex flex-wrap gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-850">
+          {/* Status filter */}
+          <div className="ml-auto flex flex-wrap gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
             {([
               ["all", "ທັງໝົດ"],
               ["occupied", "ມີສິນຄ້າ"],
@@ -888,7 +848,7 @@ export default function RackVisualization({
                 key={value}
                 type="button"
                 onClick={() => setStatus(value)}
-                className={`rounded-lg px-4 py-2 text-xs font-semibold transition-all duration-150 ${
+                className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-150 ${
                   status === value
                     ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-white"
                     : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-white"
@@ -900,15 +860,18 @@ export default function RackVisualization({
           </div>
         </div>
 
-        {/* Global Progress Bar */}
-        <div className="mt-5 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-          <div className="mb-2 flex items-center justify-between text-xs font-semibold">
-            <span className="text-zinc-500">ອັດຕາການນຳໃຊ້ບໍລິມາດສາງ</span>
-            <span className="font-mono text-zinc-800 dark:text-zinc-200">
-              {formatPallets(summary.usedPallets)} / {formatPallets(summary.capacityPallets)} ພາເລດ ({summary.palletUtilization.toFixed(1)}%)
+        {/* Warehouse utilization strip */}
+        <div className="mt-4 border-t border-zinc-100 pt-3.5 dark:border-zinc-800">
+          <div className="mb-1.5 flex items-center justify-between text-xs">
+            <span className="font-semibold text-zinc-500 dark:text-zinc-400">
+              ການນຳໃຊ້ບໍລິມາດສາງ {selectedWarehouse?.code}
+            </span>
+            <span className="font-mono font-semibold tabular-nums text-zinc-700 dark:text-zinc-300">
+              {formatPallets(summary.usedPallets)} / {formatPallets(summary.capacityPallets)} ພາເລດ
+              <span className={`ml-1.5 ${utilTone}`}>({summary.palletUtilization.toFixed(1)}%)</span>
             </span>
           </div>
-          <div className="h-3 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800 shadow-inner">
+          <div className="h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
             <div
               className={`h-full rounded-full transition-all duration-700 ease-out ${
                 summary.palletUtilization >= 100
@@ -921,39 +884,58 @@ export default function RackVisualization({
             />
           </div>
           {summary.missingPhQty > 0 && (
-            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-              <span>⚠️ ໝາຍເຫດ:</span>
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+              <AlertIcon className="h-3.5 w-3.5 shrink-0" />
               <span>
-                ມີສິນຄ້າ {formatQty(summary.missingPhQty)} ໜ່ວຍ (ໃນ {summary.missingPhItems} SKU positions) ທີ່ຈັບຄູ່ `odg_wms_ph_dimension` ບໍ່ໄດ້; ຈຳນວນພາເລດທີ່ໃຊ້ຈິງອາດສູງກວ່ານີ້.
+                ສິນຄ້າ {formatQty(summary.missingPhQty)} ໜ່ວຍ ({summary.missingPhItems} SKU) ຈັບຄູ່ PH ບໍ່ໄດ້ — ພາເລດທີ່ໃຊ້ຈິງອາດສູງກວ່ານີ້
               </span>
             </div>
           )}
         </div>
       </section>
 
-      {/* View Toggle Bar */}
+      {/* ── View switcher ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="text-xs font-bold text-zinc-500">
-          ພົບ {filteredRacks.length} rack {status !== "all" || search ? "(ຜ່ານການກັ່ນຕອງ)" : ""}
-        </span>
-        <div className="flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-850">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-zinc-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800">
+            <LayersIcon className="h-3.5 w-3.5 text-brand-500" />
+            ພົບ{" "}
+            <b className="font-mono text-zinc-900 dark:text-zinc-50">
+              {filteredRacks.length}
+            </b>{" "}
+            rack
+          </span>
+          {(status !== "all" || search) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setStatus("all");
+              }}
+              className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700 ring-1 ring-inset ring-brand-200 transition hover:bg-brand-100 dark:bg-brand-950/50 dark:text-brand-300 dark:ring-brand-900/50 dark:hover:bg-brand-900/50"
+            >
+              ກຳລັງກັ່ນຕອງ · ລ້າງ ✕
+            </button>
+          )}
+        </div>
+        <div className="flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
           {([
-            ["grid", "ຕາຕະລາງຊັ້ນ", <BuildingIcon key="g" className="h-4 w-4" />],
-            ["3d", "3D", <LayersIcon key="d" className="h-4 w-4" />],
-            ["map", "ແຜນຜັງ 2D", <MapPinIcon key="m" className="h-4 w-4" />],
-            ["list", "ລາຍການລະອຽດ", <ListIcon key="l" className="h-4 w-4" />],
-          ] as const).map(([value, label, icon]) => (
+            ["grid", "ຕາຕະລາງຊັ້ນ", BuildingIcon, "text-brand-600 dark:text-brand-400"],
+            ["3d", "3D", LayersIcon, "text-emerald-600 dark:text-emerald-400"],
+            ["map", "ແຜນຜັງ 2D", MapPinIcon, "text-aqua-600 dark:text-aqua-400"],
+            ["list", "ລາຍການລະອຽດ", ListIcon, "text-sunset-600 dark:text-sunset-400"],
+          ] as const).map(([value, label, Icon, activeText]) => (
             <button
               key={value}
               type="button"
               onClick={() => setView(value)}
               className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold transition-all ${
                 view === value
-                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-white"
+                  ? `bg-white shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-700 ${activeText}`
                   : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-white"
               }`}
             >
-              {icon}
+              <Icon className="h-4 w-4" />
               {label}
             </button>
           ))}
@@ -961,61 +943,74 @@ export default function RackVisualization({
       </div>
 
       {filteredRacks.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-zinc-200 bg-white/50 px-6 py-16 text-center dark:border-zinc-800 dark:bg-zinc-900/50">
-          <LayersIcon className="mx-auto h-12 w-12 text-zinc-300 dark:text-zinc-700 animate-pulse" />
-          <h3 className="mt-4 text-base font-bold text-zinc-900 dark:text-zinc-100">
-            ບໍ່ພົບຂໍ້ມູນ Rack ຕາມເງື່ອນໄຂນີ້
-          </h3>
-          <p className="mt-1 text-xs text-zinc-500">
-            ກະລຸນາປ່ຽນແປງຄຳຄົ້ນຫາ, ສະຖານະ ຫຼື ເລືອກສາງສິນຄ້າອື່ນ
-          </p>
-        </div>
+        <EmptyState
+          icon={<SearchIcon className="h-6 w-6" />}
+          title="ບໍ່ພົບຂໍ້ມູນ Rack ຕາມເງື່ອນໄຂນີ້"
+          description="ກະລຸນາປ່ຽນແປງຄຳຄົ້ນຫາ, ສະຖານະ ຫຼື ເລືອກສາງສິນຄ້າອື່ນ"
+          action={
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setStatus("all");
+              }}
+              className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+            >
+              ລ້າງການກັ່ນຕອງທັງໝົດ
+            </button>
+          }
+        />
       ) : view === "grid" ? (
         <div className="space-y-6">
-          <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-6">
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-4 dark:border-zinc-800">
-              <h2 className="flex items-center gap-2 text-base font-bold text-zinc-800 dark:text-zinc-100">
-                <BuildingIcon className="h-5 w-5 text-emerald-500" />
-                ຕາຕະລາງຊັ້ນວາງ ສາງ {selectedWarehouse?.code}
-                <span className="text-xs font-medium text-zinc-400">
-                  · {summary.occupiedRacks} ມີສິນຄ້າ / {summary.emptyRacks} ຫວ່າງ
-                </span>
-              </h2>
-              <div className="flex flex-wrap items-center gap-3 text-xs font-semibold">
-                <span className="text-[10px] uppercase tracking-wider text-zinc-400">
-                  ລະດັບເຕັມ:
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-3 w-8 rounded-sm bg-gradient-to-r from-teal-400 via-amber-400 to-red-500" />
-                  <span className="text-[11px] text-zinc-500">ໜ້ອຍ → ເຕັມ</span>
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-zinc-200 dark:bg-zinc-700" />
-                  <span className="text-[11px] text-zinc-500">ຫວ່າງ</span>
-                </span>
+          <section className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-600/10 dark:bg-brand-950/40 dark:text-brand-400">
+                  <BuildingIcon className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+                    ຕາຕະລາງຊັ້ນວາງ — ສາງ {selectedWarehouse?.code}
+                  </h2>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {summary.occupiedRacks} rack ມີສິນຄ້າ · {summary.emptyRacks} ຫວ່າງ
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <Chip>
+                  <span className="h-2.5 w-6 rounded-full bg-gradient-to-r from-teal-400 via-amber-400 to-red-500" />
+                  ໜ້ອຍ → ເຕັມ
+                </Chip>
+                <Chip>
+                  <span className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                  ຫວ່າງ
+                </Chip>
               </div>
             </div>
-            {zone ? (
-              <ZonedFloorGrid
-                rackViews={rackViews}
-                zone={zone}
-                selectedCode={selectedCode}
-                onSelect={(code) =>
-                  setSelectedCode((prev) => (prev === code ? null : code))
-                }
-              />
-            ) : (
-              <WarehouseFloorGrid
-                racks={filteredRacks}
-                selectedCode={selectedCode}
-                onSelect={(code) =>
-                  setSelectedCode((prev) => (prev === code ? null : code))
-                }
-              />
-            )}
-            <p className="mt-4 text-[11px] font-medium text-zinc-400">
-              💡 ຄລິກຊ່ອງ Floor ໃດ ເພື່ອກາງเບິ່ງລາຍລະອຽດ ແລະ ສິນຄ້າຂອງ rack ນັ້ນດ້ານລຸ່ມ
-            </p>
+            <div className="p-5 sm:p-6">
+              {zone ? (
+                <ZonedFloorGrid
+                  rackViews={rackViews}
+                  zone={zone}
+                  selectedCode={selectedCode}
+                  onSelect={(code) =>
+                    setSelectedCode((prev) => (prev === code ? null : code))
+                  }
+                />
+              ) : (
+                <WarehouseFloorGrid
+                  racks={filteredRacks}
+                  selectedCode={selectedCode}
+                  onSelect={(code) =>
+                    setSelectedCode((prev) => (prev === code ? null : code))
+                  }
+                />
+              )}
+            </div>
+            <div className="border-t border-zinc-100 bg-zinc-50/60 px-5 py-3 text-[11px] font-medium text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950/30 dark:text-zinc-400 sm:px-6">
+              💡 ຄລິກຊ່ອງ Floor ໃດ ເພື່ອກາງເບິ່ງລາຍລະອຽດ ແລະ ສິນຄ້າຂອງ rack ນັ້ນດ້ານລຸ່ມ
+            </div>
           </section>
 
           {selectedRack && (
@@ -1027,36 +1022,39 @@ export default function RackVisualization({
         </div>
       ) : view === "3d" ? (
         <div className="space-y-6">
-          <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
-              <h2 className="flex items-center gap-2 text-base font-bold text-zinc-800 dark:text-zinc-100">
-                <LayersIcon className="h-5 w-5 text-emerald-500" />
-                ພາບ 3D ສາງ {selectedWarehouse?.code}
-                <span className="text-xs font-medium text-zinc-400">
-                  · {summary.occupiedRacks} ມີສິນຄ້າ / {summary.emptyRacks} ຫວ່າງ
-                </span>
-              </h2>
-              <div className="flex flex-wrap items-center gap-3 text-xs font-semibold">
-                <span className="text-[10px] uppercase tracking-wider text-zinc-400">
-                  ຄວາມສູງ = ລະດັບເຕັມ:
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-3 w-8 rounded-sm bg-gradient-to-r from-teal-400 via-amber-400 to-red-500" />
-                  <span className="text-[11px] text-zinc-500">ໜ້ອຍ → ເຕັມ</span>
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-zinc-300 dark:bg-zinc-700" />
-                  <span className="text-[11px] text-zinc-500">ຫວ່າງ</span>
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-sunset-500" />
-                  <span className="text-[11px] text-zinc-500">ສິນຄ້າທີ່ຄົ້ນຫາ</span>
-                </span>
+          <section className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-inset ring-emerald-600/10 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  <LayersIcon className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+                    ພາບ 3D — ສາງ {selectedWarehouse?.code}
+                  </h2>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {summary.occupiedRacks} rack ມີສິນຄ້າ · {summary.emptyRacks} ຫວ່າງ
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <Chip>
+                  <span className="h-2.5 w-6 rounded-full bg-gradient-to-r from-teal-400 via-amber-400 to-red-500" />
+                  ຄວາມສູງ = ລະດັບເຕັມ
+                </Chip>
+                <Chip>
+                  <span className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                  ຫວ່າງ
+                </Chip>
+                <Chip tone="amber">
+                  <span className="h-2 w-2 rounded-full bg-sunset-500" />
+                  ສິນຄ້າທີ່ຄົ້ນຫາ
+                </Chip>
               </div>
             </div>
 
             {/* Product search — "where is this item" → highlight its locations in 3D. */}
-            <div className="border-b border-zinc-100 px-5 py-3 dark:border-zinc-800">
+            <div className="border-b border-zinc-100 bg-zinc-50/50 px-5 py-3.5 dark:border-zinc-800 dark:bg-zinc-950/30 sm:px-6">
               <div className="relative max-w-md">
                 <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
                 <input
@@ -1064,7 +1062,7 @@ export default function RackVisualization({
                   value={itemQuery}
                   onChange={(e) => setItemQuery(e.target.value)}
                   placeholder="ຄົ້ນຫາສິນຄ້າ (ລະຫັດ/ຊື່) → ເບິ່ງວ່າຢູ່ location ໃດ..."
-                  className="w-full rounded-lg border border-zinc-300 bg-white py-2 pl-9 pr-8 text-sm outline-none focus:border-sunset-500 focus:ring-2 focus:ring-sunset-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                  className="h-10 w-full rounded-xl border border-zinc-200 bg-white pl-9 pr-8 text-sm text-zinc-800 placeholder:text-zinc-400 shadow-sm outline-none transition-all focus:border-sunset-500 focus:ring-2 focus:ring-sunset-500/15 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
                 />
                 {itemQuery && (
                   <button
@@ -1077,7 +1075,7 @@ export default function RackVisualization({
                   </button>
                 )}
                 {itemQuery.trim().length >= 2 && !pickedItem && (
-                  <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+                  <div className="absolute z-30 mt-1.5 max-h-64 w-full overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
                     {itemLoading && <div className="px-3 py-2 text-xs text-zinc-400">ກຳລັງຄົ້ນຫາ...</div>}
                     {!itemLoading && itemResults.length === 0 && (
                       <div className="px-3 py-2 text-xs text-zinc-400">ບໍ່ພົບໃນສາງ {warehouseCode}</div>
@@ -1149,7 +1147,7 @@ export default function RackVisualization({
 
               {/* "Found here" panel — locations of the searched product. */}
               {pickedItem && (
-                <div className="absolute right-4 top-4 z-20 max-h-[82%] w-64 overflow-y-auto rounded-xl border border-sunset-200 bg-white/95 p-3 shadow-xl backdrop-blur dark:border-sunset-900 dark:bg-zinc-900/95">
+                <div className="absolute right-4 top-4 z-20 max-h-[82%] w-64 overflow-y-auto rounded-2xl border border-sunset-200 bg-white/95 p-3.5 shadow-2xl backdrop-blur dark:border-sunset-900 dark:bg-zinc-900/95">
                   <div className="mb-1 flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="font-mono text-xs font-bold text-sunset-700 dark:text-sunset-400">📍 {pickedItem.item_code}</div>
@@ -1166,7 +1164,7 @@ export default function RackVisualization({
                         <button
                           type="button"
                           onClick={() => { setSelectedCode(l.rack || null); setFocusLoc(l.location); }}
-                          className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left transition ${
+                          className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left transition ${
                             focusLoc === l.location
                               ? "bg-sunset-700 text-white"
                               : "bg-sunset-50 hover:bg-sunset-100 dark:bg-sunset-950/40 dark:hover:bg-sunset-900/40"
@@ -1201,49 +1199,55 @@ export default function RackVisualization({
                   );
                 })()}
             </div>
-            <p className="border-t border-zinc-100 px-5 py-3 text-[11px] font-medium text-zinc-400 dark:border-zinc-800">
-              🖱️ ລາກ = ໝຸນ · scroll = ຊູມ · ຄລິກຂວາລາກ = ເລື່ອນ · ຄລິກແຕ່ລະຫ້ອງ ເພື່ອเບິ່ງ popup ສິນຄ້າ
-            </p>
+            <div className="border-t border-zinc-100 bg-zinc-50/60 px-5 py-3 text-[11px] font-medium text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950/30 dark:text-zinc-400 sm:px-6">
+              🖱️ ລາກ = ໝຸນ · scroll = ຊູມ · ຄລິກຂວາລາກ = ເລື່ອນ · ຄລິກແຕ່ລະຫ້ອງ ເພື່ອເບິ່ງ popup ສິນຄ້າ
+            </div>
           </section>
         </div>
       ) : view === "map" ? (
         <div className="space-y-6">
           {/* Aisle-based 2D warehouse layout */}
-          <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-6">
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-4 dark:border-zinc-800">
-              <h2 className="flex items-center gap-2 text-base font-bold text-zinc-800 dark:text-zinc-100">
-                <MapPinIcon className="h-5 w-5 text-emerald-500 animate-bounce" />
-                ແຜນຜັງພື້ນທີ່ສາງ: {selectedWarehouse?.code}
-                <span className="text-xs font-medium text-zinc-400">
-                  · {summary.occupiedRacks} ມີສິນຄ້າ / {summary.emptyRacks} ຫວ່າງ
-                </span>
-              </h2>
-              {/* Heatmap Legend */}
-              <div className="flex flex-wrap items-center gap-3 text-xs font-semibold">
-                <span className="text-[10px] text-zinc-400 uppercase tracking-wider">ລະດັບຄວາມແໜ້ນ:</span>
-                <div className="flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-zinc-150 dark:bg-zinc-800" title="ຫວ່າງ" />
-                  <span className="text-[11px] text-zinc-500">0%</span>
+          <section className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-aqua-50 text-aqua-600 ring-1 ring-inset ring-aqua-600/10 dark:bg-aqua-950/40 dark:text-aqua-400">
+                  <MapPinIcon className="h-5 w-5" />
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="h-3 w-8 bg-gradient-to-r from-teal-400 to-emerald-400 rounded-sm" />
-                  <span className="text-[11px] text-zinc-500">1-50%</span>
+                <div>
+                  <h2 className="text-base font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+                    ແຜນຜັງພື້ນທີ່ສາງ — {selectedWarehouse?.code}
+                  </h2>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {summary.occupiedRacks} rack ມີສິນຄ້າ · {summary.emptyRacks} ຫວ່າງ
+                  </p>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="h-3 w-8 bg-gradient-to-r from-amber-400 to-orange-400 rounded-sm" />
-                  <span className="text-[11px] text-zinc-500">50-90%</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="h-3 w-4 bg-red-400 rounded-sm" />
-                  <span className="text-[11px] text-zinc-500">&gt;90%</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="h-3 w-3 rounded bg-red-500 animate-pulse" />
-                  <span className="text-[11px] text-red-500">ເຕັມ/ຕິດລົບ</span>
-                </div>
+              </div>
+              {/* Heatmap legend */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <Chip>
+                  <span className="h-2 w-2 rounded-full bg-zinc-200 dark:bg-zinc-700" />
+                  0%
+                </Chip>
+                <Chip tone="emerald">
+                  <span className="h-2 w-2 rounded-full bg-gradient-to-r from-teal-400 to-emerald-400" />
+                  1–50%
+                </Chip>
+                <Chip tone="amber">
+                  <span className="h-2 w-2 rounded-full bg-gradient-to-r from-amber-400 to-orange-400" />
+                  50–90%
+                </Chip>
+                <Chip tone="red">
+                  <span className="h-2 w-2 rounded-full bg-red-400" />
+                  &gt;90%
+                </Chip>
+                <Chip tone="red">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                  ເຕັມ/ຕິດລົບ
+                </Chip>
               </div>
             </div>
 
+            <div className="p-5 sm:p-6">
             {/* Elevation map (looks like the 3D, flattened) */}
             {hasRealPlan ? (
               <WarehousePlan
@@ -1282,10 +1286,10 @@ export default function RackVisualization({
                 }}
               />
             )}
-            <p className="mt-5 text-[11px] font-semibold text-zinc-400 flex items-center gap-1">
-              <span>💡 ຄຳແນະນຳ:</span>
-              <span>ຄລິກແຕ່ລະຫ້ອງ ເພື່ອเບິ່ງສິນຄ້າ+ບໍລິມາດ · ຄລິກຊື່ Rack ເພື່ອเບິ່ງ Elevation ເຕັມດ້ານລຸ່ມ.</span>
-            </p>
+            </div>
+            <div className="border-t border-zinc-100 bg-zinc-50/60 px-5 py-3 text-[11px] font-medium text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950/30 dark:text-zinc-400 sm:px-6">
+              💡 ຄຳແນະນຳ: ຄລິກແຕ່ລະຫ້ອງ ເພື່ອເບິ່ງສິນຄ້າ+ບໍລິມາດ · ຄລິກຊື່ Rack ເພື່ອເບິ່ງ Elevation ເຕັມດ້ານລຸ່ມ
+            </div>
           </section>
 
           {/* Interactive Rack Elevation View */}
@@ -1359,21 +1363,21 @@ function MiniRackElevation({
     });
   }
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex flex-col items-center gap-1.5">
       <div
-        className={`rounded-md border-2 bg-slate-100/60 p-1 shadow-sm dark:bg-zinc-900 ${
+        className={`rounded-xl bg-white p-1.5 ring-1 transition dark:bg-zinc-950 ${
           selected
-            ? "border-zinc-900 dark:border-white"
-            : "border-slate-400/70 dark:border-slate-700"
+            ? "shadow-md ring-2 ring-brand-500 dark:ring-brand-400"
+            : "ring-zinc-200 hover:ring-zinc-300 dark:ring-zinc-800 dark:hover:ring-zinc-700"
         }`}
       >
         {rows.map((row) => (
           <div
             key={row.floor}
-            className="mb-0.5 flex justify-center gap-0.5 border-b border-slate-300/40 pb-0.5 last:mb-0 last:border-b-0 last:pb-0 dark:border-slate-700/40"
+            className="mb-1 flex justify-center gap-1 border-b border-dashed border-zinc-200 pb-1 last:mb-0 last:border-b-0 last:pb-0 dark:border-zinc-800"
           >
             {row.cells.length === 0 ? (
-              <span className="text-[7px] leading-3 text-zinc-300">·</span>
+              <span className="text-[7px] leading-4 text-zinc-300 dark:text-zinc-700">·</span>
             ) : (
               row.cells.map((loc) => (
                 <button
@@ -1381,7 +1385,7 @@ function MiniRackElevation({
                   type="button"
                   title={`${loc.code}\n${cellStatusText(loc)}`}
                   onClick={() => onCellClick(rack.code, loc.code)}
-                  className={`h-3.5 w-3.5 rounded-[2px] transition hover:scale-125 hover:ring-1 hover:ring-zinc-900 dark:hover:ring-white ${cellTone(
+                  className={`h-4 w-4 rounded-[3px] transition hover:scale-125 hover:ring-2 hover:ring-zinc-900/60 dark:hover:ring-white/60 ${cellTone(
                     loc,
                   )} ${
                     selectedLoc === loc.code
@@ -1397,10 +1401,10 @@ function MiniRackElevation({
       <button
         type="button"
         onClick={() => onSelectRack(rack.code)}
-        className={`max-w-24 truncate font-mono text-[10px] font-bold transition ${
+        className={`max-w-28 truncate rounded-full px-2 py-0.5 font-mono text-[10px] font-bold transition ${
           selected
-            ? "text-zinc-900 underline dark:text-white"
-            : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+            ? "bg-brand-600 text-white shadow-sm dark:bg-brand-500"
+            : "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-200 hover:text-zinc-900 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-white"
         }`}
       >
         {rack.name || rack.code}
@@ -1487,7 +1491,7 @@ function RackElevationMap({
         return (
           <div
             key={g.label}
-            className="rounded-xl border border-zinc-200 bg-zinc-50/40 p-3 dark:border-zinc-800 dark:bg-zinc-950/20"
+            className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/30"
           >
             <div
               className="grid items-end gap-x-1.5 gap-y-1.5"
@@ -1501,7 +1505,7 @@ function RackElevationMap({
                     style={{ gridColumn: i + 1, gridRow: 1 }}
                     className="flex flex-col items-center"
                   >
-                    <span className="whitespace-nowrap rounded bg-aqua-600 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
+                    <span className="whitespace-nowrap rounded-full bg-aqua-600 px-2 py-0.5 text-[9px] font-bold text-white shadow-sm">
                       🚪 {doorByCode.get(s.rack.code)}
                     </span>
                     <span className="h-2 w-px bg-aqua-500/60" />
@@ -1514,7 +1518,7 @@ function RackElevationMap({
               {g.label && (
                 <div
                   style={{ gridColumn: "1 / -1", gridRow: 2 }}
-                  className="rounded-md bg-zinc-100 px-2 py-1 text-center text-xs font-bold text-zinc-600 ring-1 ring-inset ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700"
+                  className="rounded-lg bg-brand-50 px-2 py-1 text-center text-xs font-bold text-brand-700 ring-1 ring-inset ring-brand-200 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50"
                 >
                   {g.label}
                 </div>
@@ -1548,8 +1552,8 @@ function RackElevationMap({
       })}
 
       {sideRack && zone.side && (
-        <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50/40 p-3 dark:border-zinc-800 dark:bg-zinc-950/20">
-          <div className="rounded-md bg-zinc-100 px-2 py-1 text-center text-xs font-bold text-zinc-600 ring-1 ring-inset ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700">
+        <div className="flex flex-col gap-2 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/30">
+          <div className="rounded-lg bg-brand-50 px-2 py-1 text-center text-xs font-bold text-brand-700 ring-1 ring-inset ring-brand-200 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50">
             {zone.side.label}
           </div>
           <div className="flex items-end">
@@ -1678,7 +1682,7 @@ function ZonedFloorGrid({
               <div
                 key={g.label}
                 style={{ gridColumn: `${start} / ${start + span}`, gridRow: 2 }}
-                className="flex items-center justify-center rounded-md bg-zinc-100 py-1 text-xs font-bold text-zinc-600 ring-1 ring-inset ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700"
+                className="flex items-center justify-center rounded-lg bg-zinc-100 py-1 text-xs font-bold text-zinc-600 ring-1 ring-inset ring-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700"
               >
                 {g.label}
               </div>
@@ -1706,7 +1710,7 @@ function ZonedFloorGrid({
         {/* Corner */}
         <div
           style={{ gridColumn: 1, gridRow: headerRow }}
-          className="flex items-center justify-center rounded-md bg-zinc-100 text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:bg-zinc-800"
+          className="flex items-center justify-center rounded-lg bg-zinc-100 text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:bg-zinc-800"
         >
           Floor
         </div>
@@ -1719,7 +1723,7 @@ function ZonedFloorGrid({
             onClick={() => onSelect(rack.code)}
             style={{ gridColumn: 2 + i, gridRow: headerRow }}
             title={rack.code}
-            className={`truncate rounded-md px-1 py-1.5 text-center text-xs font-bold ring-1 ring-inset transition ${aisleCls(
+            className={`truncate rounded-lg px-1 py-1.5 text-center text-xs font-bold ring-1 ring-inset transition ${aisleCls(
               rack.code,
             )} ${
               selectedCode === rack.code
@@ -1736,7 +1740,7 @@ function ZonedFloorGrid({
           <Fragment key={floor}>
             <div
               style={{ gridColumn: 1, gridRow: firstFloorRow + fi }}
-              className="flex items-center justify-center rounded-md bg-zinc-50 text-[11px] font-bold text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300"
+              className="flex items-center justify-center rounded-lg bg-zinc-50 text-[11px] font-bold text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300"
             >
               Floor {floor}
             </div>
@@ -1750,7 +1754,7 @@ function ZonedFloorGrid({
                   onClick={() => onSelect(rack.code)}
                   style={{ gridColumn: 2 + i, gridRow: firstFloorRow + fi }}
                   title={`${rack.name || rack.code} · Floor ${floor}\n${a.occupied}/${a.total} ຊ່ອງມີສິນຄ້າ${a.empty ? "" : ` · ${a.pct.toFixed(0)}%`}`}
-                  className={`flex min-h-12 flex-col items-center justify-center rounded-md px-1 py-1 text-center ring-1 ring-inset transition hover:-translate-y-0.5 hover:shadow ${aisleCls(
+                  className={`flex min-h-12 flex-col items-center justify-center rounded-lg px-1 py-1 text-center ring-1 ring-inset transition hover:-translate-y-0.5 hover:shadow ${aisleCls(
                     rack.code,
                   )} ${
                     a.total === 0
@@ -1896,7 +1900,7 @@ function WarehouseFloorGrid({
         )}
 
         {/* Header row */}
-        <div className="sticky left-0 z-10 flex items-center justify-center rounded-md bg-zinc-100 px-1 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:bg-zinc-800">
+        <div className="sticky left-0 z-10 flex items-center justify-center rounded-lg bg-zinc-100 px-1 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:bg-zinc-800">
           Floor
         </div>
         {columns.map((rack) => (
@@ -1905,7 +1909,7 @@ function WarehouseFloorGrid({
             type="button"
             onClick={() => onSelect(rack.code)}
             title={rack.code}
-            className={`truncate rounded-md px-1 py-2 text-center text-xs font-bold ring-1 ring-inset transition ${
+            className={`truncate rounded-lg px-1 py-2 text-center text-xs font-bold ring-1 ring-inset transition ${
               selectedCode === rack.code
                 ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900"
                 : "bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-zinc-800 dark:hover:bg-zinc-800"
@@ -1918,7 +1922,7 @@ function WarehouseFloorGrid({
         {/* Floor rows */}
         {floors.map((floor) => (
           <Fragment key={floor}>
-            <div className="sticky left-0 z-10 flex items-center justify-center rounded-md bg-zinc-50 px-1 text-[11px] font-bold text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
+            <div className="sticky left-0 z-10 flex items-center justify-center rounded-lg bg-zinc-50 px-1 text-[11px] font-bold text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
               Floor {floor}
             </div>
             {columns.map((rack) => {
@@ -1930,7 +1934,7 @@ function WarehouseFloorGrid({
                   type="button"
                   onClick={() => onSelect(rack.code)}
                   title={`${rack.name || rack.code} · Floor ${floor}\n${a.occupied}/${a.total} ຊ່ອງມີສິນຄ້າ${a.empty ? "" : ` · ${a.pct.toFixed(0)}%`}`}
-                  className={`flex min-h-13 flex-col items-center justify-center rounded-md px-1 py-1.5 text-center ring-1 ring-inset transition hover:-translate-y-0.5 hover:shadow ${
+                  className={`flex min-h-13 flex-col items-center justify-center rounded-lg px-1 py-1.5 text-center ring-1 ring-inset transition hover:-translate-y-0.5 hover:shadow ${
                     a.total === 0
                       ? "bg-zinc-50/40 text-zinc-300 ring-zinc-100 dark:bg-zinc-900/20 dark:text-zinc-700 dark:ring-zinc-800/50"
                       : floorCellStyle(a.pct, a.empty, a.negative)
@@ -1959,250 +1963,6 @@ function WarehouseFloorGrid({
         ))}
       </div>
     </div>
-  );
-}
-
-// 2D Floor map tile redesign with premium visuals
-function FloorTile({
-  rack,
-  selected,
-  onSelect,
-}: {
-  rack: RackView;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const heat = rackHeat(rack);
-  const style = heatStyle(heat);
-
-  const statusLabel = heat.negative
-    ? "ຍອດຕິດລົບ"
-    : heat.empty
-      ? "ຫວ່າງ"
-      : `${heat.pct.toFixed(0)}%${heat.estimated ? " (ປະມານ)" : ""}`;
-
-  const bigLabel = heat.empty ? "ຫວ່າງ" : `${Math.round(heat.pct)}%`;
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      title={`${rack.code}${rack.name ? ` — ${rack.name}` : ""}\nສະຖານະ: ${statusLabel}\n${rack.occupiedLocations}/${rack.locations.length} locations active\nພາເລດ: ${formatPallets(rack.usedPallets)} / ${formatPallets(rack.capacityPallets)}\nQty: ${formatQty(rack.qty)}`}
-      className={`group relative flex aspect-[1.1] flex-col justify-between rounded-2xl p-3 text-left ring-1 ring-inset transition-all duration-300 ease-out ${style.tile} ${style.glow} ${
-        selected
-          ? "scale-[1.03] ring-2 ring-zinc-950 dark:ring-zinc-50 shadow-lg bg-white/90 dark:bg-zinc-900/90 z-10"
-          : "hover:scale-[1.02] hover:-translate-y-0.5 hover:shadow-md"
-      }`}
-    >
-      {/* Selected Indicator Checkmark */}
-      {selected && (
-        <span className="absolute -right-1.5 -top-1.5 flex h-5.5 w-5.5 items-center justify-center rounded-full bg-zinc-950 text-white shadow-md ring-2 ring-white dark:bg-white dark:text-zinc-950 dark:ring-zinc-900">
-          <CheckIcon className="h-3 w-3" />
-        </span>
-      )}
-
-      {/* Header Info */}
-      <div className="flex items-start justify-between gap-1 w-full">
-        <span className="truncate font-mono text-[11px] font-bold tracking-tight uppercase">
-          {rack.code}
-        </span>
-        <div className="flex items-center gap-1">
-          {heat.estimated && !heat.empty && (
-            <span
-              title="ຈຳນວນພາເລດປະມານ — ມີ SKU ທີ່ຈັບຄູ່ PH ບໍ່ໄດ້"
-              className="text-[9px] font-black text-amber-500"
-            >
-              ~
-            </span>
-          )}
-          {!rack.active && (
-            <span className="rounded bg-zinc-200/80 px-1 text-[8px] font-extrabold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-              ປິດ
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Large visual value */}
-      <div className="my-1.5">
-        <div className="font-mono text-xl font-black tracking-tight tabular-nums leading-none">
-          {bigLabel}
-        </div>
-      </div>
-
-      {/* Footer Info & mini progress bar */}
-      <div className="w-full space-y-1.5">
-        <div className="text-[9px] font-bold opacity-80 leading-none">
-          {rack.locations.length > 0
-            ? `${rack.occupiedLocations}/${rack.locations.length} ບ່ອນ`
-            : `qty: ${formatQty(rack.qty)}`}
-        </div>
-
-        {!heat.empty && (
-          <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-200/50 dark:bg-zinc-850">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${style.bar}`}
-              style={{ width: `${Math.min(100, Math.max(5, heat.pct))}%` }}
-            />
-          </div>
-        )}
-      </div>
-    </button>
-  );
-}
-
-// Focused panel for a single clicked cell (ຫ້ອງ) — shows only that location's
-// items, not the whole rack elevation.
-function SingleCellPanel({
-  rack,
-  locationCode,
-  onClose,
-}: {
-  rack: RackView;
-  locationCode: string;
-  onClose: () => void;
-}) {
-  const [itemSearch, setItemSearch] = useState("");
-  const loc = rack.locations.find((l) => l.code === locationCode) ?? null;
-  const allItems = rack.items.filter((i) => i.locationCode === locationCode);
-  const items = useMemo(() => {
-    const q = itemSearch.trim().toLowerCase();
-    if (!q) return allItems;
-    return allItems.filter(
-      (i) =>
-        i.itemCode.toLowerCase().includes(q) ||
-        (i.itemName ?? "").toLowerCase().includes(q),
-    );
-  }, [allItems, itemSearch]);
-  const usedTotal = allItems.reduce((s, i) => s + i.usedPallets, 0);
-
-  return (
-    <section className="overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-md dark:border-emerald-950/70 dark:bg-zinc-900">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-150 bg-emerald-50/40 px-6 py-4 dark:border-zinc-850 dark:bg-emerald-950/10">
-        <div className="flex items-center gap-2">
-          <MapPinIcon className="h-5 w-5 text-emerald-500" />
-          <div>
-            <h2 className="font-mono text-lg font-black tracking-tight text-zinc-900 dark:text-zinc-50">
-              {locationCode}
-            </h2>
-            <p className="text-[11px] font-bold text-zinc-400">
-              {rack.name || rack.code}
-              {loc?.name ? ` · ${loc.name}` : ""}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <div className="font-mono text-base font-black text-zinc-900 dark:text-zinc-50">
-              {loc?.utilizationPct == null
-                ? "—"
-                : `${loc.utilizationPct.toFixed(0)}%`}
-            </div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-              {loc?.capacityPallets
-                ? `${formatPallets(usedTotal)} / ${formatPallets(loc.capacityPallets)} ພາເລດ`
-                : "ໃຊ້ຄວາມຈຸ"}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 shadow-sm transition hover:bg-zinc-50 hover:text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-white"
-            title="ປິດ"
-          >
-            ✕
-          </button>
-        </div>
-      </header>
-
-      <div className="space-y-4 p-6">
-        <div className="relative max-w-sm">
-          <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
-          <input
-            type="text"
-            value={itemSearch}
-            onChange={(e) => setItemSearch(e.target.value)}
-            placeholder="ຄົ້ນຫາ SKU ໃນຫ້ອງ..."
-            className="h-9 w-full rounded-lg border border-zinc-200 bg-white pl-8 pr-3 text-xs text-zinc-800 outline-none transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-          />
-        </div>
-
-        <span className="block text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-          ລາຍການສິນຄ້າ ({items.length})
-        </span>
-
-        {items.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-zinc-200 bg-white px-4 py-10 text-center text-sm text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900">
-            {allItems.length === 0 ? "ຫ້ອງນີ້ບໍ່ມີສິນຄ້າ" : "ບໍ່ພົບຕາມຄຳຄົ້ນຫາ"}
-          </div>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((item, idx) => {
-              const sharePct =
-                usedTotal > 0 ? (item.usedPallets / usedTotal) * 100 : 0;
-              return (
-                <div
-                  key={`${item.itemCode}-${idx}`}
-                  className={`rounded-xl border bg-white p-3 transition hover:shadow-md dark:bg-zinc-900 ${
-                    item.qty < 0
-                      ? "border-red-200 dark:border-red-950/80"
-                      : "border-zinc-150 dark:border-zinc-800"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-mono text-xs font-bold text-zinc-900 dark:text-zinc-50">
-                        {item.itemCode}
-                      </div>
-                      {item.itemName && (
-                        <div
-                          className="mt-0.5 max-w-[170px] truncate text-[10px] text-zinc-500"
-                          title={item.itemName}
-                        >
-                          {item.itemName}
-                        </div>
-                      )}
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <span
-                        className={`font-mono text-xs font-black ${
-                          item.qty < 0
-                            ? "text-red-500"
-                            : "text-zinc-900 dark:text-zinc-50"
-                        }`}
-                      >
-                        {formatQty(item.qty)}
-                      </span>
-                      {item.unitCode && (
-                        <span className="ml-1 text-[9px] font-semibold text-zinc-400">
-                          {item.unitCode}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-2.5 flex items-center justify-between border-t border-zinc-100 pt-2 text-[9px] font-semibold text-zinc-400 dark:border-zinc-800">
-                    <span>
-                      {item.palletQty
-                        ? `${formatQty(item.palletQty)} ${item.unitCode || "ໜ່ວຍ"}/ພາເລດ${item.stackQty ? ` · stack ${formatQty(item.stackQty)}` : ""}`
-                        : "ຈັບຄູ່ PH ບໍ່ໄດ້"}
-                    </span>
-                    <span>
-                      {item.missingPh ? (
-                        <span className="text-amber-500">ບໍ່ມີ PH</span>
-                      ) : (
-                        <span>
-                          {formatPallets(item.usedPallets)} ພາເລດ ({sharePct.toFixed(0)}%)
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </section>
   );
 }
 
@@ -2345,7 +2105,7 @@ function RackElevationView({
           };
 
   return (
-    <article className="overflow-hidden rounded-3xl border border-zinc-200/80 bg-white shadow-xl shadow-zinc-900/[0.04] dark:border-zinc-800 dark:bg-zinc-900">
+    <article className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
       {/* Header bar */}
       <header className="relative flex flex-wrap items-center justify-between gap-4 overflow-hidden px-6 py-5">
         <div
@@ -2523,14 +2283,14 @@ function RackElevationView({
                       setSelectedLocCode(null);
                       setItemSearch("");
                     }}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-200 text-xs font-bold text-zinc-500 shadow-sm transition hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-zinc-200 text-xs font-bold text-zinc-500 shadow-sm transition hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
                   >
                     ✕
                   </button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-xl border border-zinc-150 bg-white p-2.5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <div className="rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
                     <span className="block text-[9px] font-bold uppercase tracking-wider text-zinc-400">
                       ຄວາມຈຸ Location
                     </span>
@@ -2540,7 +2300,7 @@ function RackElevationView({
                         : `${formatPallets(activeLocDetails.capacityPallets)} ພາເລດ`}
                     </span>
                   </div>
-                  <div className="rounded-xl border border-zinc-150 bg-white p-2.5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <div className="rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
                     <span className="block text-[9px] font-bold uppercase tracking-wider text-zinc-400">
                       ໃຊ້ຄວາມຈຸ
                     </span>
@@ -2584,8 +2344,8 @@ function RackElevationView({
                             key={`${item.itemCode}-${idx}`}
                             className={`rounded-xl border bg-white p-3 transition-all duration-200 hover:border-emerald-500/50 hover:shadow-md dark:bg-zinc-900 ${
                               item.qty < 0
-                                ? "border-red-200 dark:border-red-950/80"
-                                : "border-zinc-150 dark:border-zinc-800"
+                                ? "border-red-200 dark:border-red-900/60"
+                                : "border-zinc-200 dark:border-zinc-800"
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -2716,7 +2476,7 @@ function LocationShelfSlot({
     fillBg = "bg-emerald-500/20 dark:bg-emerald-500/25";
     indicatorDot = "bg-emerald-500";
   } else {
-    themeClass = "border-zinc-200 bg-zinc-50/5 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950/20 dark:text-zinc-500";
+    themeClass = "border-zinc-200 bg-zinc-50/50 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950/20 dark:text-zinc-500";
     fillBg = "bg-zinc-100 dark:bg-zinc-900";
     indicatorDot = "bg-zinc-300 dark:bg-zinc-700";
   }
@@ -2728,7 +2488,7 @@ function LocationShelfSlot({
       title={`${location.code}${location.name ? ` — ${location.name}` : ""}\nຂະໜາດ: ${location.widthCm ?? "?"}×${location.lengthCm ?? "?"}×${location.heightCm ?? "?"} cm\nຄວາມຈຸ: ${capacityLabel}\nໃຊ້ແລ້ວ: ${formatPallets(location.usedPallets)} ພາເລດ (${utilizationLabel})\nQty: ${formatQty(location.qty)} · ${location.itemCount} SKU`}
       className={`group relative flex h-24 flex-col justify-between rounded-xl border p-2.5 text-left transition-all duration-300 ease-out focus:outline-none ${themeClass} ${
         selected
-          ? "scale-[1.06] z-10 border-zinc-900 shadow-lg ring-2 ring-zinc-900/10 dark:border-white dark:ring-white/10"
+          ? "scale-[1.06] z-10 border-brand-600 shadow-lg ring-2 ring-brand-500/30 dark:border-brand-400 dark:ring-brand-400/20"
           : dimmed
             ? "opacity-35 grayscale saturate-50 blur-[0.4px] hover:opacity-80 hover:grayscale-0 hover:blur-0"
             : "hover:scale-[1.02] hover:-translate-y-0.5 hover:shadow-sm"
@@ -2838,7 +2598,7 @@ function Location3DPopup({
         <button
           type="button"
           onClick={onClose}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-200 text-xs font-bold text-zinc-500 transition hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-zinc-200 text-xs font-bold text-zinc-500 transition hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
         >
           ✕
         </button>
@@ -2888,10 +2648,10 @@ function Location3DPopup({
             {items.map((item, idx) => (
               <div
                 key={`${item.itemCode}-${idx}`}
-                className={`rounded-lg border px-2.5 py-2 ${
+                className={`rounded-xl border px-2.5 py-2 ${
                   item.qty < 0
-                    ? "border-red-200 bg-red-50/50 dark:border-red-950/80 dark:bg-red-950/10"
-                    : "border-zinc-150 bg-white dark:border-zinc-800 dark:bg-slate-900"
+                    ? "border-red-200 bg-red-50/50 dark:border-red-900/60 dark:bg-red-950/10"
+                    : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -2957,16 +2717,16 @@ function MiniStat({
   tone?: "neutral" | "emerald" | "navy" | "amber" | "red";
 }) {
   const colors = {
-    neutral: "bg-zinc-100 border border-zinc-200/50 text-zinc-900 dark:bg-zinc-950 dark:border-zinc-850 dark:text-zinc-100",
-    emerald: "bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-300",
-    navy: "bg-brand-500/10 border border-brand-500/20 text-brand-800 dark:bg-brand-950/20 dark:border-brand-900/30 dark:text-brand-300",
-    amber: "bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-300",
-    red: "bg-red-500/10 border border-red-500/20 text-red-850 dark:bg-red-950/20 dark:border-red-900/30 dark:text-red-400",
+    neutral: "bg-white ring-zinc-200 text-zinc-900 dark:bg-zinc-900 dark:ring-zinc-800 dark:text-zinc-100",
+    emerald: "bg-emerald-50 ring-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:ring-emerald-900/50 dark:text-emerald-300",
+    navy: "bg-brand-50 ring-brand-200 text-brand-700 dark:bg-brand-950/30 dark:ring-brand-900/50 dark:text-brand-300",
+    amber: "bg-amber-50 ring-amber-200 text-amber-700 dark:bg-amber-950/30 dark:ring-amber-900/50 dark:text-amber-300",
+    red: "bg-red-50 ring-red-200 text-red-700 dark:bg-red-950/30 dark:ring-red-900/50 dark:text-red-300",
   };
   return (
-    <div className={`rounded-xl px-3 py-2.5 transition duration-150 ${colors[tone]} shadow-sm`}>
-      <div className="text-[9px] font-bold uppercase tracking-wider text-zinc-450 dark:text-zinc-500">{label}</div>
-      <div className="mt-1 font-mono text-sm font-black tracking-tight">
+    <div className={`rounded-xl px-3 py-2.5 ring-1 ring-inset transition duration-150 ${colors[tone]}`}>
+      <div className="text-[9px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{label}</div>
+      <div className="mt-1 font-mono text-sm font-black tracking-tight tabular-nums">
         {typeof value === "number" ? value.toLocaleString("en-US") : value}
       </div>
     </div>

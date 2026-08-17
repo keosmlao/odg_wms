@@ -156,11 +156,11 @@ function Block({
       {/* ບລ໋ອກທີ່ຈາງ ບໍ່ຕ້ອງສະແດງປ້າຍ ບໍ່ດັ່ງນັ້ນປ້າຍຈະບັງອັນທີ່ກົດ */}
       {!dimmed && (
         <Html position={[0, capH + 0.35, 0]} center distanceFactor={26} pointerEvents="none">
+          {/* ຮູບແບບປ້າຍ: ຂະໜາດ/ສີ/ພື້ນຫຼັງ ດຽວກັນທຸກກ້ອນ ແລະ ຄືກັນກັບປ້າຍໃນຜັງ 2D
+              (ຕົວອັກສອນເຂັ້ມ ພື້ນຂາວ) — ອັນທີ່ເລືອກເນັ້ນດ້ວຍຂອບຟ້າ ບໍ່ແມ່ນປ່ຽນສີຕົວ. */}
           <div
-            className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold shadow-sm ${
-              selected
-                ? "bg-sky-500 text-white"
-                : "bg-white/85 text-zinc-700 dark:bg-zinc-900/85 dark:text-zinc-200"
+            className={`whitespace-nowrap rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-bold text-slate-900 shadow-sm ${
+              selected ? "ring-2 ring-sky-500" : ""
             }`}
           >
             {shape.label ?? shape.code}
