@@ -7,7 +7,7 @@ import { fitCell } from "@/lib/printFit";
 import AutoPrint from "../AutoPrint";
 
 /**
- * ໃບບິນໂອນສິນຄ້າ — the copy that travels WITH the goods.
+ * ໃບບິນໂອນສິນຄ້າ / ໃບເບີກສິນຄ້າ — the copy that travels WITH the goods.
  *
  * Deliberately coarser than the movement slip next door (../page.tsx): item and
  * quantity only, down to the warehouse, never the bin and never the serials.
@@ -18,11 +18,19 @@ import AutoPrint from "../AutoPrint";
  * One line per item: an item picked from several bins is summed into a single
  * row, so this bill never shows the same code twice.
  *
- * IDENTITY: this bill is headed by the ERP transfer number (FT…), not the WMS
- * movement number (DP…). Everyone outside the warehouse — the destination store,
- * accounting, SmartBiz — tracks the transfer by its FT; the DP is an internal
- * WMS id and is printed only as a cross-reference. The SN/ISN movement slip next
- * door keeps leading with the DP, since that is the warehouse's own record.
+ * Same doc, two ERP shapes: a relocation (trans_flag 70/72) posts a +1 leg that
+ * lands somewhere else, so this prints as ໃบบิลโอนสินค้า headed by the ERP FT
+ * transfer number with a destination warehouse; a straight issue (trans_flag 56,
+ * no +1 leg — the goods just leave) prints as ໃบเบิกสินค้า headed by the ERP
+ * requisition number instead, and drops the destination / transfer-ref fields
+ * that don't apply to a consumption doc. `isIssue` below is what tells them apart.
+ *
+ * IDENTITY: this bill is headed by the ERP doc number (FT… / WFOH… etc.), not the
+ * WMS movement number (DP…). Everyone outside the warehouse — the destination
+ * store, accounting, SmartBiz — tracks the movement by its ERP number; the DP is
+ * an internal WMS id and is printed only as a cross-reference. The SN/ISN
+ * movement slip next door keeps leading with the DP, since that is the
+ * warehouse's own record.
  */
 type Header = {
   doc_no: string; doc_date: string | null; doc_time: string | null; doc_ref: string | null;
@@ -115,6 +123,11 @@ export default async function PrintTransferBillPage({ params, searchParams }: { 
   // Show the real destination rather than the in-transit staging code.
   const destLabel = toWh === IN_TRANSIT_WH ? (finalDest ?? whLabel(toWh, toWhName)) : whLabel(toWh, toWhName);
 
+  // No leg of this doc lands in another warehouse → it's a straight issue
+  // (trans_flag 56, ໃบเบิกสินค้า), not a relocation (70/72, ໃบโอนสินค้า). Same
+  // test ../page.tsx uses to tell the two apart.
+  const isIssue = !lines.some((l) => l.to_wh);
+
   const totalQty = lines.reduce((s, l) => s + (Number.parseFloat(l.qty) || 0), 0);
   const filler = Math.max(0, MIN_FORM_ROWS - lines.length);
   // Nothing on a document that leaves the building may be clipped — the receiver
@@ -136,17 +149,19 @@ export default async function PrintTransferBillPage({ params, searchParams }: { 
         <div className="flex flex-1 flex-col">
           <PrintLetterhead docNo={billNo} />
 
-          <div className="mb-3 text-center text-base font-bold">ໃບບິນໂອນສິນຄ້າ</div>
+          <div className="mb-3 text-center text-base font-bold">{isIssue ? "ໃບເບີກສິນຄ້າ" : "ໃບບິນໂອນສິນຄ້າ"}</div>
 
           <div className="mb-3 grid grid-cols-2 gap-x-6 gap-y-0.5 text-xs">
-            <div><b>ຈາກສາງ:</b> {whLabel(fromWh, fromWhName)}</div>
+            <div><b>{isIssue ? "ຈ່າຍອອກສາງ:" : "ຈາກສາງ:"}</b> {whLabel(fromWh, fromWhName)}</div>
             <div>
-              <b>ເລກທີ່ໂອນ:</b> <span className="font-mono font-bold">{billNo}</span>
-              {!erp && <span className="ml-1 text-[10px] text-slate-500">(ຍັງບໍ່ໄດ້ອອກເລກ ໃບໂອນ ERP)</span>}
+              <b>{isIssue ? "ເລກທີເບີກ:" : "ເລກທີ່ໂອນ:"}</b> <span className="font-mono font-bold">{billNo}</span>
+              {!erp && <span className="ml-1 text-[10px] text-slate-500">{isIssue ? "(ຍັງບໍ່ໄດ້ອອກເລກ ໃບເບີກ ERP)" : "(ຍັງບໍ່ໄດ້ອອກເລກ ໃບໂອນ ERP)"}</span>}
             </div>
-            <div><b>ເຖິງສາງ:</b> {destLabel}</div>
+            {/* An issue has no destination warehouse and no transfer-request ref
+                to show — it consumes stock, it doesn't relocate it. */}
+            {!isIssue && <div><b>ເຖິງສາງ:</b> {destLabel}</div>}
             <div><b>ວັນທີ:</b> {erp?.doc_date ?? h.doc_date} {erp?.doc_time ?? h.doc_time}</div>
-            <div><b>ອ້າງອີງ ໃບຂໍໂອນ:</b> <span className="font-mono">{h.doc_ref ?? "—"}</span></div>
+            {!isIssue && <div><b>ອ້າງອີງ ໃບຂໍໂອນ:</b> <span className="font-mono">{h.doc_ref ?? "—"}</span></div>}
             {/* Cross-reference back to the WMS movement, so this bill can always
                 be matched to the SN/ISN slip that lists the units. */}
             {erp && <div><b>ເອກະສານ WMS:</b> <span className="font-mono">{h.doc_no}</span></div>}

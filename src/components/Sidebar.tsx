@@ -144,6 +144,33 @@ const groups: Group[] = [
     ],
   },
   {
+    label: "ບັດສະຕັອກ",
+    basePath: "/stock-card",
+    icon: <LayersIcon className="h-4.5 w-4.5" />,
+    items: [
+      {
+        label: "ບັດສະຕັອກ",
+        href: "/stock-card",
+        icon: <ListIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ເພີ່ມຂໍ້ມູນ",
+        href: "/stock-card?tab=new",
+        icon: <PlusIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ປະຫວັດໃບບັນທຶກ",
+        href: "/stock-card?tab=docs",
+        icon: <ListIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ຍອດຕັ້ງຕົ້ນ (sync)",
+        href: "/stock-card?tab=sync",
+        icon: <LayersIcon className="h-3.5 w-3.5" />,
+      },
+    ],
+  },
+  {
     label: "ລາຍງານ & ວິເຄາະ",
     basePath: "/movements/reports",
     icon: <ListIcon className="h-4.5 w-4.5" />,

@@ -9,6 +9,7 @@ import {
 } from "@/lib/erpPost";
 import { type MoveNote, saveMoveNotes } from "@/lib/moveReasons";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
+import { moveDefectWarehouse } from "@/lib/productDefect";
 
 const WMS_FLAG = 72; // odg_wms_trans(_detail): ໃບໂອນສິນຄ້າ
 const SN_FLAG = 56; // sn_trans(_detail)
@@ -204,6 +205,10 @@ export async function moveFromTransit(
     wmsDoc,
     remark: `WMS ${label} ${refDoc}${srcFt ? ` ເລກທີໂອນຕົ້ນທາງ ${srcFt}` : ""}`,
   });
+
+  // This leg's own destination (real warehouse on receive, source on return) —
+  // follow any defective unit here (odg_product_defect, matched by sn/isn).
+  await moveDefectWarehouse(client, active.flatMap((l) => l.serials), whTo);
 
   // Short-movement reasons (best-effort; never blocks the commit).
   if (notes && notes.length > 0) {

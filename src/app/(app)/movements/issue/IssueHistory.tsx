@@ -43,6 +43,21 @@ type LineRow = {
   qty: string;
 };
 
+type SerialRow = {
+  doc_no: string;
+  item_code: string | null;
+  sn: string | null;
+  isn: string | null;
+  rack: string | null;
+  location: string | null;
+  pallet: string | null;
+};
+/** Groups sn_trans_detail rows to the same bin key a LineRow uses, so a bin-split
+ *  item's SN/ISN chips land under the right row instead of all under the first. */
+function serialKey(doc_no: string, item_code: string | null, rack: string | null, location: string | null, pallet: string | null) {
+  return `${doc_no}|${item_code ?? ""}|${rack ?? ""}|${location ?? ""}|${pallet ?? ""}`;
+}
+
 type WarehouseOption = { code: string; name: string | null };
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -187,6 +202,28 @@ export default async function IssueHistory({
       )
     : [];
 
+  // Per-unit SN/ISN actually dispatched (sn_trans_detail, trans_flag 56 — always
+  // the −1/out leg regardless of req/sale/transfer, see issueCore.ts) — so the
+  // history can show "which unit, which bin" inline, without opening a print doc.
+  const serialRows = docNos.length
+    ? await query<SerialRow>(
+        `SELECT doc_no, item_code, NULLIF(TRIM(sn), '') AS sn, NULLIF(TRIM(isn), '') AS isn,
+                NULLIF(TRIM(rack), '') AS rack, NULLIF(TRIM(location), '') AS location, NULLIF(TRIM(pallet), '') AS pallet
+         FROM public.sn_trans_detail
+         WHERE doc_no = ANY($1) AND calc_flag = -1
+         ORDER BY doc_no, item_code, COALESCE(isn, sn)`,
+        [docNos],
+      )
+    : [];
+  const serialsByKey = new Map<string, { sn: string | null; isn: string | null }[]>();
+  for (const s of serialRows) {
+    const key = serialKey(s.doc_no, s.item_code, s.rack, s.location, s.pallet);
+    const arr = serialsByKey.get(key);
+    const entry = { sn: s.sn, isn: s.isn };
+    if (arr) arr.push(entry);
+    else serialsByKey.set(key, [entry]);
+  }
+
   const linesByDoc = new Map<string, LineRow[]>();
   for (const l of lines) {
     const arr = linesByDoc.get(l.doc_no);
@@ -239,7 +276,7 @@ export default async function IssueHistory({
 
   // ໃບໂອນອອກ = posted INTO the in-transit wh (9903); ໃບໂອນເຂົ້າ = posted OUT of it.
   function erpLabel(trans_flag: number, wh_from: string | null, wh_to: string | null): string {
-    if (trans_flag === 56) return "ໃບເບີກ";
+    if (trans_flag === 56) return "ໃບເບີກສິນຄ້າ";
     if (wh_from === "9903") return "ໃບໂອນເຂົ້າ";
     if (wh_to === "9903") return "ໃບໂອນອອກ";
     return "ໃບໂອນ";
@@ -422,12 +459,14 @@ export default async function IssueHistory({
                       <tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/50">
                         <th className="px-4 py-2">ສິນຄ້າ</th>
                         <th className="px-4 py-2">ພື້ນທີ່</th>
+                        <th className="px-4 py-2">SN / ISN</th>
                         <th className="px-4 py-2 text-right">ຈ່າຍອອກ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                       {docLines.map((l, idx) => {
                         const loc = [l.shelf_code, l.shelf_code1, l.pallet].filter(Boolean).join(" / ");
+                        const units = serialsByKey.get(serialKey(l.doc_no, l.item_code, l.shelf_code, l.shelf_code1, l.pallet)) ?? [];
                         return (
                           <tr key={`${l.doc_no}-${l.item_code}-${idx}`}>
                             <td className="px-4 py-2">
@@ -435,6 +474,17 @@ export default async function IssueHistory({
                               <div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={l.item_name ?? ""}>{l.item_name ?? "—"}</div>
                             </td>
                             <td className="px-4 py-2 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">{loc || "—"}</td>
+                            <td className="px-4 py-2">
+                              {units.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {units.map((u, ui) => (
+                                    <span key={ui} title={`SN ${u.sn ?? "—"} · ISN ${u.isn ?? "—"}`} className="rounded bg-blue-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                                      {u.isn ?? u.sn ?? "—"}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : <span className="text-[11px] text-zinc-300 dark:text-zinc-600">—</span>}
+                            </td>
                             <td className="px-4 py-2 text-right font-mono text-xs font-bold tabular-nums text-red-600 dark:text-red-400">
                               −{formatQty(l.qty)}
                               <span className="ml-1 text-[10px] uppercase text-zinc-400">{l.unit_code}</span>

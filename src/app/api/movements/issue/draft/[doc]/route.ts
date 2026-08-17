@@ -188,18 +188,37 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ doc: st
   }
 }
 
-/** PATCH — edit a pending pick before confirm: remove one item from it. If it was
- *  the last item, the whole draft is cancelled. Only while status 0. */
+/**
+ * PATCH — edit a pending pick before confirm. Only while status 0.
+ *   `remove_item`        — drop one item (all its rows) from the pick. If it was
+ *                           the last item, the whole draft is cancelled.
+ *   `set_qty` (roworder,  — change one line's qty. Capped at the node's current
+ *   qty)                    stock balance; if the item is serial-tracked and this
+ *                           lowers its total qty below what was already pre-picked
+ *                           in `wms_product_out_serial_detail`, the excess serials
+ *                           (highest serial_number first) are dropped to match.
+ */
 export async function PATCH(request: Request, ctx: { params: Promise<{ doc: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "ກະລຸນາເຂົ້າສູ່ລະບົບ" }, { status: 401 });
   if (!session.role) return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງ" }, { status: 403 });
   const { doc } = await ctx.params;
   const docNo = decodeURIComponent(doc).trim();
-  let body: { remove_item?: unknown };
-  try { body = (await request.json()) as { remove_item?: unknown }; } catch { body = {}; }
+  let body: { remove_item?: unknown; set_qty?: { roworder?: unknown; qty?: unknown } };
+  try { body = (await request.json()) as typeof body; } catch { body = {}; }
   const removeItem = typeof body.remove_item === "string" ? body.remove_item.trim() : "";
-  if (!removeItem) return NextResponse.json({ error: "ບໍ່ມີລາຍການໃຫ້ລົບ" }, { status: 400 });
+  const setQty = body.set_qty;
+  const roworder = setQty && typeof setQty.roworder === "number" ? setQty.roworder : null;
+  const newQty = setQty && typeof setQty.qty === "number" ? setQty.qty : null;
+  if (!removeItem && (roworder === null || newQty === null)) {
+    return NextResponse.json({ error: "ບໍ່ມີການແກ້ໄຂ" }, { status: 400 });
+  }
+  if (removeItem && roworder !== null) {
+    return NextResponse.json({ error: "ແກ້ໄຂໄດ້ເທື່ອລະຢ່າງ" }, { status: 400 });
+  }
+  if (newQty !== null && !(newQty > 0)) {
+    return NextResponse.json({ error: "ຈຳນວນຕ້ອງຫຼາຍກວ່າ 0 — ໃຊ້ 🗑 ຖ້າຕ້ອງການລົບອອກທັງແຖວ" }, { status: 400 });
+  }
 
   const client = await pool.connect();
   try {
@@ -213,13 +232,69 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ doc: stri
     if (Array.isArray(accessible) && hdr.warehouse_code && !accessible.includes(hdr.warehouse_code)) {
       await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າเຖິງສาງนี้" }, { status: 403 });
     }
-    await client.query(`DELETE FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1 AND item_code = $2`, [docNo, removeItem]);
-    await client.query(`DELETE FROM public.wms_product_out_detail WHERE doc_no = $1 AND item_code = $2`, [docNo, removeItem]);
-    const left = (await client.query<{ n: string }>(`SELECT count(*)::text AS n FROM public.wms_product_out_detail WHERE doc_no = $1`, [docNo])).rows[0];
-    const emptied = (Number.parseInt(left?.n ?? "0", 10) || 0) === 0;
-    if (emptied) await client.query(`DELETE FROM public.wms_product_out WHERE doc_no = $1`, [docNo]);
+
+    if (removeItem) {
+      await client.query(`DELETE FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1 AND item_code = $2`, [docNo, removeItem]);
+      await client.query(`DELETE FROM public.wms_product_out_detail WHERE doc_no = $1 AND item_code = $2`, [docNo, removeItem]);
+      const left = (await client.query<{ n: string }>(`SELECT count(*)::text AS n FROM public.wms_product_out_detail WHERE doc_no = $1`, [docNo])).rows[0];
+      const emptied = (Number.parseInt(left?.n ?? "0", 10) || 0) === 0;
+      if (emptied) await client.query(`DELETE FROM public.wms_product_out WHERE doc_no = $1`, [docNo]);
+      await client.query("COMMIT");
+      return NextResponse.json({ ok: true, doc_no: docNo, emptied });
+    }
+
+    const row = (await client.query<{ item_code: string; shelf_code: string | null }>(
+      `SELECT item_code, shelf_code FROM public.wms_product_out_detail WHERE doc_no = $1 AND roworder = $2 FOR UPDATE`,
+      [docNo, roworder],
+    )).rows[0];
+    if (!row) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ພົບແຖວນີ້" }, { status: 404 }); }
+    const node = parseNode(row.shelf_code);
+
+    // Cap at the node's current stock — same rule executeIssue enforces at
+    // confirm, checked here too so an over-edit fails fast instead of at confirm.
+    const bal = (await client.query<{ before: string }>(
+      `SELECT COALESCE(SUM(t.qty * t.calc_flag), 0)::numeric::text AS before
+       FROM public.odg_wms_trans_detail t
+       WHERE t.wh_code = $1
+         AND COALESCE(NULLIF(TRIM(t.shelf_code), ''), '')  = $2
+         AND COALESCE(NULLIF(TRIM(t.shelf_code1), ''), '') = $3
+         AND COALESCE(NULLIF(TRIM(t.pallet), ''), '')      = $4
+         AND t.item_code = $5`,
+      [hdr.warehouse_code, node.rack, node.location, node.pallet, row.item_code],
+    )).rows[0];
+    const before = Number.parseFloat(bal?.before ?? "0") || 0;
+    if (newQty! > before + 1e-6) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: `ຈ່າຍ ${newQty} ເກີນຄົງເຫຼືອ ${before} ຢູ່ບ່ອນນີ້` }, { status: 400 });
+    }
+
+    await client.query(
+      `UPDATE public.wms_product_out_detail SET qty = $3, last_update_datetime = now() WHERE doc_no = $1 AND roworder = $2`,
+      [docNo, roworder, newQty],
+    );
+
+    // If this item is pre-serialized and the new TOTAL qty (across all its rows)
+    // is now lower than what was already pre-picked, trim the excess so the pick
+    // never carries more serials than it plans to issue.
+    const itemTotal = (await client.query<{ total: string }>(
+      `SELECT COALESCE(SUM(qty), 0)::numeric::text AS total FROM public.wms_product_out_detail WHERE doc_no = $1 AND item_code = $2`,
+      [docNo, row.item_code],
+    )).rows[0];
+    const total = Math.round(Number.parseFloat(itemTotal?.total ?? "0") || 0);
+    const trimmed = (await client.query<{ serial_number: string }>(
+      `DELETE FROM public.wms_product_out_serial_detail
+       WHERE ctid IN (
+         SELECT ctid FROM (
+           SELECT ctid, row_number() OVER (ORDER BY serial_number) AS rn
+           FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1 AND item_code = $2
+         ) ranked WHERE rn > $3
+       )
+       RETURNING serial_number`,
+      [docNo, row.item_code, total],
+    )).rows;
+
     await client.query("COMMIT");
-    return NextResponse.json({ ok: true, doc_no: docNo, emptied });
+    return NextResponse.json({ ok: true, doc_no: docNo, qty: newQty, trimmed_serials: trimmed.map((r) => r.serial_number) });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     return NextResponse.json({ error: err instanceof Error ? err.message : "ບໍ່ສຳເລັດ" }, { status: 500 });
@@ -244,8 +319,15 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
   const { doc } = await ctx.params;
   const docNo = decodeURIComponent(doc).trim();
 
-  let body: { scanned?: unknown; notes?: unknown; moves?: unknown };
-  try { body = (await request.json()) as { scanned?: unknown; notes?: unknown; moves?: unknown }; } catch { body = {}; }
+  let body: { scanned?: unknown; notes?: unknown; moves?: unknown; department?: unknown; erp_format?: unknown };
+  try { body = (await request.json()) as typeof body; } catch { body = {}; }
+  // Required only for a req (122→56) confirm — the operator's department + ERP
+  // doc-header choice, made fresh every time (see /api/movements/issue/erp-options).
+  const department = typeof body.department === "string" && body.department.trim() ? body.department.trim() : null;
+  const erpFormatRaw = body.erp_format as Record<string, unknown> | undefined;
+  const erpFormat = erpFormatRaw && typeof erpFormatRaw.code === "string" && typeof erpFormatRaw.pattern === "string"
+    ? { code: erpFormatRaw.code.trim(), pattern: erpFormatRaw.pattern.trim() }
+    : null;
   const scanned = new Set(
     Array.isArray(body.scanned) ? (body.scanned as unknown[]).map((s) => String(s).trim().toUpperCase()).filter(Boolean) : [],
   );
@@ -412,9 +494,14 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
     });
 
     const sourceType = SRC_TYPE[hdr.doc_type ?? 0] ?? "";
+    if (sourceType === "req" && (!erpFormat || !department)) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "ກະລຸນາເລືອກພະແນກ ແລະ ຫົວເອກະສານເບີກ ກ່ອນຢືນຢັນ" }, { status: 400 });
+    }
     const result = await executeIssue(client, {
       wh, docRef: hdr.ref_doc_no, sourceType,
       location: lines[0]?.location ?? null, user: session.employee_code, lines,
+      erpFormat, department,
     });
 
     // Record short-pick reasons (best-effort).

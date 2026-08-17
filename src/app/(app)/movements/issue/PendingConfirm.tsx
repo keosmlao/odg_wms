@@ -14,6 +14,10 @@ type DraftDoc = {
 type Unit = { sn: string | null; isn: string | null; rack: string; location: string; pallet: string };
 /** A bin in this warehouse that still holds the item — a re-point target. */
 type LocOption = { rack: string; location: string; pallet: string; qty: string; sn_qty: number };
+/** erp_department_list — chosen fresh at every trans_flag=56 confirm. */
+type DeptOption = { code: string; name: string | null };
+/** erp_doc_format (screen_code 'IO'), filtered to the 122 request's own branch. */
+type DocFormatOption = { code: string; name: string | null; format: string | null; branch: string | null };
 type DraftLine = { roworder: number; item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; serials: string[]; units?: Unit[]; loc_options?: LocOption[]; serial_required?: boolean; dual_required?: boolean };
 /** Where a line's goods were actually taken from, when it differs from the plan. */
 type NodeRef = { rack: string; location: string; pallet: string };
@@ -75,7 +79,14 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
   const [wh, setWh] = useState(warehouses.length === 1 ? warehouses[0].code : "");
   const [docs, setDocs] = useState<DraftDoc[]>([]);
   const [loading, setLoading] = useState(false);
-  const [active, setActive] = useState<{ header: DraftDoc; lines: DraftLine[] } | null>(null);
+  const [active, setActive] = useState<{ header: DraftDoc; lines: DraftLine[]; source_type: string } | null>(null);
+  // erp_department_list / erp_doc_format — required for a "req" (trans_flag=56)
+  // doc, re-fetched and re-chosen fresh every time a doc is opened.
+  const [erpDepartments, setErpDepartments] = useState<DeptOption[]>([]);
+  const [erpFormats, setErpFormats] = useState<DocFormatOption[]>([]);
+  const [erpDepartment, setErpDepartment] = useState("");
+  const [erpFormatCode, setErpFormatCode] = useState("");
+  const [erpOptionsLoading, setErpOptionsLoading] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [linesByDoc, setLinesByDoc] = useState<Record<string, DraftLine[]>>({});
   const [scanned, setScanned] = useState<Set<string>>(new Set());
@@ -92,6 +103,8 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ k: "ok" | "err"; t: string } | null>(null);
   const scanRef = useRef<HTMLInputElement>(null);
+  // The one line currently being qty-edited (roworder → the input's live text).
+  const [qtyEdit, setQtyEdit] = useState<{ roworder: number; value: string } | null>(null);
 
   function showToast(k: "ok" | "err", t: string) { setToast({ k, t }); setTimeout(() => setToast(null), 2800); }
 
@@ -171,9 +184,10 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
     setBusy(true);
     try {
       const res = await fetch(`/api/movements/issue/draft/${encodeURIComponent(doc_no)}`);
-      const data = (await res.json()) as { header?: DraftDoc; lines?: DraftLine[]; error?: string };
+      const data = (await res.json()) as { header?: DraftDoc; lines?: DraftLine[]; source_type?: string; error?: string };
       if (!res.ok || !data.header) throw new Error(data.error ?? "ໂຫຼດບໍ່ສຳເລັດ");
-      setActive({ header: data.header, lines: data.lines ?? [] });
+      const source_type = data.source_type ?? "";
+      setActive({ header: data.header, lines: data.lines ?? [], source_type });
       logDoc.current = { doc_no: data.header.doc_no, ref_doc: data.header.ref_doc_no ?? null, wh: data.header.warehouse_code ?? null };
       // Restore any scans stashed for this doc from a previous (unconfirmed) session.
       const saved = loadScan(doc_no);
@@ -182,6 +196,23 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       setMoves(saved.moves);
       lsSet(LS_ACTIVE, doc_no);
       setTimeout(() => scanRef.current?.focus(), 50);
+
+      // A "req" (trans_flag=56) doc must have its department + ERP doc-header
+      // chosen fresh at every confirm — no per-warehouse default. Re-fetch even
+      // if this doc was open before, so a stale list never lingers.
+      setErpDepartment(""); setErpFormatCode(""); setErpDepartments([]); setErpFormats([]);
+      if (source_type === "req" && data.header.ref_doc_no) {
+        setErpOptionsLoading(true);
+        try {
+          const r2 = await fetch(`/api/movements/issue/erp-options?doc=${encodeURIComponent(data.header.ref_doc_no)}`);
+          const d2 = (await r2.json()) as { departments?: DeptOption[]; doc_formats?: DocFormatOption[]; error?: string };
+          if (!r2.ok) throw new Error(d2.error ?? "ໂຫຼດຕົວເລືອກ ERP ບໍ່ສຳເລັດ");
+          setErpDepartments(d2.departments ?? []);
+          setErpFormats(d2.doc_formats ?? []);
+        } catch (e) {
+          showToast("err", e instanceof Error ? e.message : "ໂຫຼດຕົວເລືອກ ERP ບໍ່ສຳເລັດ");
+        } finally { setErpOptionsLoading(false); }
+      }
     } catch (e) {
       // The stashed doc no longer opens (confirmed / cancelled elsewhere) — drop
       // the pointer so a refresh doesn't keep failing.
@@ -305,8 +336,10 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
   const totalScanned = [...serialItems].reduce((s, i) => s + scannedCount(i), 0);
   const shortItems = useMemo(() => [...serialItems].filter((i) => scannedCount(i) < (neededByItem.get(i) ?? 0)), [serialItems, scanned, neededByItem]); // eslint-disable-line react-hooks/exhaustive-deps
   const shortAllHaveReason = shortItems.every((i) => reasons[i]);
+  // A "req" doc posts an ERP 56 — department + doc-header must be chosen first.
+  const erpChoicePending = active?.source_type === "req" && (!erpDepartment || !erpFormatCode);
   // Confirm allowed when: fully scanned, OR every short item has a reason and there is something to issue.
-  const canConfirm = !busy && shortAllHaveReason && (allDone || noSerials || totalScanned > 0);
+  const canConfirm = !busy && !erpChoicePending && shortAllHaveReason && (allDone || noSerials || totalScanned > 0);
 
   function handleScan() {
     if (!active) return;
@@ -345,6 +378,8 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
 
   async function confirm() {
     if (!active) return;
+    if (erpChoicePending) { showToast("err", "ກະລຸນາເລືອກພະແນກ ແລະ ຫົວເອກະສານເບີກ ກ່ອນຢືນຢັນ"); return; }
+    const chosenFormat = erpFormats.find((f) => f.code === erpFormatCode);
     setBusy(true);
     // Push the scan trail first, so it is on record even if the issue then fails.
     await flushLog();
@@ -356,6 +391,10 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
           notes: shortItems.map((i) => ({ item_code: i, reason_code: reasons[i] })),
           // Re-pointed lines — the pick slip is updated to these bins as it posts.
           moves: Object.entries(moves).map(([roworder, n]) => ({ roworder: Number(roworder), ...n })),
+          // Only meaningful for a "req" doc (ERP 56) — the API validates it's
+          // present when needed and ignores it otherwise.
+          department: active.source_type === "req" ? erpDepartment : undefined,
+          erp_format: active.source_type === "req" && chosenFormat ? { code: chosenFormat.code, pattern: chosenFormat.format } : undefined,
         }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string; issue_code?: string; erp_doc?: string | null; partial?: boolean; moved?: number };
@@ -388,6 +427,54 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       else await openDoc(active.header.doc_no);
     } catch (e) { showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ"); }
     finally { setBusy(false); }
+  }
+
+  async function setLineQty(l: DraftLine, qty: number) {
+    if (!active) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/movements/issue/draft/${encodeURIComponent(active.header.doc_no)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ set_qty: { roworder: l.roworder, qty } }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string; trimmed_serials?: string[] };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
+      if (data.trimmed_serials && data.trimmed_serials.length > 0) {
+        const trimmedSet = new Set(data.trimmed_serials.map((s) => s.toUpperCase()));
+        setScanned((prev) => new Set([...prev].filter((s) => !trimmedSet.has(s))));
+        showToast("ok", `ແກ້ຈຳນວນແລ້ວ · ຕັດ serial ${data.trimmed_serials.length} ໜ່ວຍ (ເກີນຈຳນວນໃໝ່)`);
+      } else {
+        showToast("ok", "ແກ້ຈຳນວນແລ້ວ");
+      }
+      await openDoc(active.header.doc_no);
+    } catch (e) { showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ"); }
+    finally { setBusy(false); }
+  }
+
+  function commitQtyEdit(l: DraftLine) {
+    const raw = qtyEdit?.roworder === l.roworder ? qtyEdit.value : null;
+    setQtyEdit(null);
+    if (raw === null) return;
+    const q = Number.parseFloat(raw);
+    const current = Number.parseInt(l.qty, 10) || 0;
+    if (!Number.isFinite(q) || q <= 0) { showToast("err", "ຈຳນວນຕ້ອງຫຼາຍກວ່າ 0"); return; }
+    if (q === current) return;
+
+    // Lowering a serialized item below what's already scanned this session would
+    // leave it permanently over-scanned (confirm rejects it as "over qty") — drop
+    // the extra scans up front, with the same explicit confirm changeNode() uses.
+    if (serialItems.has(l.item_code)) {
+      const already = [...scanned].filter((s) => serialOwner.get(s) === l.item_code);
+      const keepN = Math.floor(q);
+      if (already.length > keepN) {
+        const drop = already.length - keepN;
+        const ok = window.confirm(`ຫຼຸດຈຳນວນ ${l.item_code} ເປັນ ${q} — SN ທີ່ຍິງໄວ້ແລ້ວ ${drop} ໜ່ວຍ ຈະຖືກຍົກເລີກ.\n\nຕ້ອງການສືບຕໍ່ບໍ?`);
+        if (!ok) return;
+        const keep = new Set(already.slice(0, keepN));
+        setScanned((prev) => new Set([...prev].filter((s) => serialOwner.get(s) !== l.item_code || keep.has(s))));
+      }
+    }
+    void setLineQty(l, q);
   }
 
   async function cancelDraft(doc_no: string) {
@@ -443,12 +530,21 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                       <div className="py-3 text-center text-xs text-zinc-400">ກຳລັງໂຫຼດ...</div>
                     ) : (
                       <table className="w-full text-sm">
-                        <thead><tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase text-zinc-500 dark:bg-zinc-800/50"><th className="px-4 py-2">ສິນຄ້າ</th><th className="px-4 py-2">ບ່ອນເກັບ</th><th className="px-4 py-2 text-right">ຄ້າງຈ່າຍ</th></tr></thead>
+                        <thead><tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase text-zinc-500 dark:bg-zinc-800/50"><th className="px-4 py-2">ສິນຄ້າ</th><th className="px-4 py-2">ບ່ອນເກັບ</th><th className="px-4 py-2">SN / ISN</th><th className="px-4 py-2 text-right">ຄ້າງຈ່າຍ</th></tr></thead>
                         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                           {linesByDoc[d.doc_no].map((l, i) => (
                             <tr key={`${l.item_code}-${i}`}>
                               <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-red-600 dark:text-red-400">{l.item_code}</span><div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{l.item_name}</div></td>
                               <td className="px-4 py-2 font-mono text-[11px] text-zinc-500">{[l.rack, l.location, l.pallet].filter(Boolean).join(" / ") || "—"}</td>
+                              <td className="px-4 py-2">
+                                {l.serials && l.serials.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {l.serials.map((s) => (
+                                      <span key={s} className="rounded bg-blue-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">{s}</span>
+                                    ))}
+                                  </div>
+                                ) : <span className="text-[11px] text-zinc-300 dark:text-zinc-600">—</span>}
+                              </td>
                               <td className="px-4 py-2 text-right font-mono font-bold tabular-nums text-red-600 dark:text-red-400">{l.qty} <span className="text-[10px] text-zinc-400">{l.unit_code}</span></td>
                             </tr>
                           ))}
@@ -495,6 +591,34 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
               )}
             </div>
           </div>
+
+          {/* ພະແນກ + ຫົວເອກະສານເບີກ — ຕ້ອງເລືອກໃໝ່ທຸກຄັ້ງກ່ອນຢືນຢັນ (ໃບເບີກ ERP 56) */}
+          {active.source_type === "req" && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-3.5 dark:border-amber-900/40 dark:bg-amber-950/15">
+              <div className="mb-2 text-[11px] font-bold text-amber-800 dark:text-amber-300">📋 ເອກະສານເບີກ ERP — ເລືອກກ່ອນຢືນຢັນ</div>
+              {erpOptionsLoading ? (
+                <div className="text-xs text-zinc-400">ກຳລັງໂຫຼດຕົວເລືອກ...</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">ພະແນກ</label>
+                    <select value={erpDepartment} onChange={(e) => setErpDepartment(e.target.value)} className={inputCls + " w-full"}>
+                      <option value="">— ເລືອກພະແນກ —</option>
+                      {erpDepartments.map((d) => <option key={d.code} value={d.code}>{d.code}{d.name ? ` · ${d.name}` : ""}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">ຫົວເອກະສານເບີກ</label>
+                    <select value={erpFormatCode} onChange={(e) => setErpFormatCode(e.target.value)} className={inputCls + " w-full"}>
+                      <option value="">— ເລືອກຫົວເອກະສານ —</option>
+                      {erpFormats.map((f) => <option key={f.code} value={f.code}>{f.code}{f.name ? ` · ${f.name}` : ""}</option>)}
+                    </select>
+                    {erpFormats.length === 0 && !erpOptionsLoading && <div className="mt-1 text-[10px] text-rose-600">ບໍ່ພົບຫົວເອກະສານເບີກ (screen_code IO) ສຳລັບສາຂານີ້</div>}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* big scan */}
           {totalNeeded > 0 && (
@@ -568,6 +692,33 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                             <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300" title={`ແຜນເດີມ: ${nodeLabel({ rack: l.rack, location: l.location, pallet: l.pallet })}`}>
                               ແກ້ location · ເດີມ {nodeLabel({ rack: l.rack, location: l.location, pallet: l.pallet })}
                             </span>
+                          )}
+                        </div>
+                        {/* ຈຳນວນ — ແກ້ໄດ້ ຖ້າຂໍ pick ໄວ້ຫຼາຍ/ໜ້ອຍ ກວ່າຄວາມຈິງ */}
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-zinc-400">🔢 ຈຳນວນ</span>
+                          {qtyEdit?.roworder === l.roworder ? (
+                            <input
+                              type="number" min="0.0001" step="any" autoFocus
+                              disabled={busy}
+                              value={qtyEdit.value}
+                              onChange={(e) => setQtyEdit({ roworder: l.roworder, value: e.target.value })}
+                              onBlur={() => commitQtyEdit(l)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+                                if (e.key === "Escape") setQtyEdit(null);
+                              }}
+                              className="w-24 rounded-lg bg-zinc-50 px-2 py-1 font-mono text-[11px] font-bold text-zinc-700 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-red-500/30 disabled:opacity-50 dark:bg-zinc-950 dark:text-zinc-300 dark:ring-zinc-800"
+                            />
+                          ) : (
+                            <button
+                              type="button" disabled={busy}
+                              onClick={() => setQtyEdit({ roworder: l.roworder, value: l.qty })}
+                              title="ແກ້ໄຂຈຳນວນ"
+                              className="rounded-lg bg-zinc-50 px-2 py-1 font-mono text-[11px] font-bold text-zinc-700 ring-1 ring-zinc-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:bg-zinc-950 dark:text-zinc-300 dark:ring-zinc-800"
+                            >
+                              {l.qty} {l.unit_code} ✎
+                            </button>
                           )}
                         </div>
                       </div>

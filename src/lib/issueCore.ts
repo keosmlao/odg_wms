@@ -4,13 +4,14 @@ import {
   IN_TRANSIT_WH,
   IN_TRANSIT_LOC,
   TRANSFER_FORMAT,
-  issueFormatFor,
   nextErpDocNo,
+  nextErpDocNoForPattern,
   postErpIssue,
   postErpTransfer,
 } from "@/lib/erpPost";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 import { getSnDualBrands } from "@/lib/snDualBrand";
+import { markDefectDispatched, moveDefectWarehouse } from "@/lib/productDefect";
 
 const ISSUE_STOCK_FLAG = 72; // odg_wms_trans(_detail): ໃບໂອນສິນຄ້າ (calc_flag -1)
 const ISSUE_SN_FLAG = 56; // sn_trans(_detail): ໃບເບີກເປັນສິນຄ້າ (calc_flag -1)
@@ -34,6 +35,11 @@ export type ExecuteIssueParams = {
   location: string | null;
   user: string | null;
   lines: IssueLine[];
+  /** Required when sourceType === "req" — chosen fresh at every confirm from
+   *  erp_doc_format (screen_code 'IO', filtered to the 122 request's branch). */
+  erpFormat?: { code: string; pattern: string } | null;
+  /** Required when sourceType === "req" — erp_department_list.code. */
+  department?: string | null;
 };
 
 /**
@@ -44,7 +50,7 @@ export type ExecuteIssueParams = {
  * confirm so both paths post identically.
  */
 export async function executeIssue(client: PoolClient, p: ExecuteIssueParams): Promise<{ issueCode: string; erpDoc: string | null; serials: number }> {
-  const { wh, docRef, sourceType, location, user, lines } = p;
+  const { wh, docRef, sourceType, location, user, lines, erpFormat, department } = p;
   // A transfer (124) does NOT consume stock — it RELOCATES the goods into the
   // in-transit warehouse (9903). The destination receives them later. A req/sale
   // is a true consumption (serials leave: sn_inventory.status → 1).
@@ -199,6 +205,13 @@ export async function executeIssue(client: PoolClient, p: ExecuteIssueParams): P
     }
   }
 
+  // 3.5) Defect tracking (odg_product_defect, matched by sn/isn): a req/sale
+  // issue CONSUMES the unit — close out its defect record. A transfer only
+  // RELOCATES it, handled below (to 9903) once its ERP leg is known.
+  if (sourceType !== "transfer") {
+    await markDefectDispatched(client, lines.flatMap((l) => l.serials));
+  }
+
   // 4) ERP posting (same tx).
   let erpDoc: string | null = null;
   if (sourceType === "req" || sourceType === "transfer") {
@@ -210,9 +223,29 @@ export async function executeIssue(client: PoolClient, p: ExecuteIssueParams): P
     }
     const items = [...byItem.values()];
     if (sourceType === "req") {
-      const fmt = issueFormatFor(wh);
-      erpDoc = await nextErpDocNo(client, fmt);
-      await postErpIssue(client, { docNo: erpDoc, format: fmt, items, wh, location: location || null, refDoc: docRef || null, user, wmsDoc: docNo, remark: docRef ? `WMS issue ${docRef}` : null });
+      // Carry the condition (ສະພາບ) the requester recorded on the 122 into the
+      // ERP ໃບເບີກ per line (shelf_code) — same rule the transfer branch below
+      // follows for a 124. The ERP doc must reflect what was REQUESTED, not
+      // wherever the forklift actually found the goods at confirm time.
+      const cond = docRef
+        ? await client.query<{ item_code: string; shelf_code: string | null }>(
+            `SELECT item_code, shelf_code FROM public.ic_trans_detail
+             WHERE doc_no = $1 AND trans_flag = 122 ORDER BY line_number`,
+            [docRef],
+          )
+        : { rows: [] as { item_code: string; shelf_code: string | null }[] };
+      const srcByItem = new Map<string, string | null>();
+      for (const r of cond.rows) if (!srcByItem.has(r.item_code)) srcByItem.set(r.item_code, r.shelf_code);
+      for (const e of items) e.shelfCode = srcByItem.get(e.item_code) ?? null;
+      const headerLocFrom = cond.rows[0]?.shelf_code ?? location ?? null;
+
+      // The operator picks these fresh at every confirm (erp_department_list /
+      // erp_doc_format) — there is no per-warehouse default to fall back to.
+      if (!erpFormat?.code || !department) {
+        throw new Error("ກະລຸນາເລືອກພະແນກ ແລະ ຫົວເອກະສານເບີກ ກ່ອນຢືນຢັນ");
+      }
+      erpDoc = await nextErpDocNoForPattern(client, erpFormat.code, erpFormat.pattern);
+      await postErpIssue(client, { docNo: erpDoc, format: erpFormat.code, items, wh, location: headerLocFrom, refDoc: docRef || null, user, wmsDoc: docNo, department, remark: docRef ? `WMS issue ${docRef}` : null });
     } else {
       const dest = await client.query<{ wh_to: string | null; location_from: string | null }>(
         `SELECT wh_to, location_from FROM public.ic_trans WHERE doc_no = $1 AND trans_flag = 124 LIMIT 1`,
@@ -239,6 +272,9 @@ export async function executeIssue(client: PoolClient, p: ExecuteIssueParams): P
       // posts leg 2 (9903 → dest) when it receives.
       erpDoc = await nextErpDocNo(client, TRANSFER_FORMAT);
       await postErpTransfer(client, { docNo: erpDoc, format: TRANSFER_FORMAT, items, whFrom: wh, locFrom: headerLocFrom, whTo: IN_TRANSIT_WH, locTo: IN_TRANSIT_LOC, refDoc: docRef || null, user, wmsDoc: docNo, remark: docRef ? `WMS transfer ${docRef} → ສາງລະຫວ່າງທາງ` : null });
+      // This FT's own destination is the in-transit wh — the defect record
+      // follows the unit there; moveFromTransit moves it on again at receive.
+      await moveDefectWarehouse(client, lines.flatMap((l) => l.serials), IN_TRANSIT_WH);
     }
   }
 
