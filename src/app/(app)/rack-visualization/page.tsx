@@ -420,7 +420,25 @@ export default async function RackVisualizationPage() {
     missingPh: row.missing_ph,
   }));
 
+  // ສາງໃດມີຜັງພື້ນທີ່ຈິງແລ້ວ — ສະເພາະສາງເຫຼົ່ານີ້ຈຶ່ງສະແດງແທັບ "ຜັງ 2D / ຜັງ 3D".
+  // ຫຸ້ມ try ໄວ້ ເພາະຖ້າຍັງບໍ່ໄດ້ run migration 036 ຕາຕະລາງຈະຍັງບໍ່ມີ.
+  let planWarehouses: string[] = [];
+  try {
+    const rows = await query<{ wh_code: string }>(
+      `SELECT DISTINCT wh_code FROM public.odg_wms_layout_shape`,
+    );
+    planWarehouses = rows.map((r) => r.wh_code);
+  } catch {
+    // migration 036 ຍັງບໍ່ໄດ້ run → ທຸກສາງໃຊ້ແທັບເກົ່າ
+  }
+
   return (
-    <RackVisualization warehouses={warehouses} stock={stock} items={items} />
+    <RackVisualization
+      warehouses={warehouses}
+      stock={stock}
+      items={items}
+      planWarehouses={planWarehouses}
+      canEditLayout={session.role === "manager"}
+    />
   );
 }

@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/Icons";
 import { Chip, Hero, KpiCard } from "@/components/ui/Card";
 import type { Rack3DDatum } from "./Warehouse3D";
+import type { PlanCell } from "@/lib/warehouseLayout";
+import WarehousePlan, { type PlanLocationMaster } from "./WarehousePlan";
 
 // WebGL scene must run client-only (no SSR) — it touches window/canvas at mount.
 const Warehouse3D = dynamic(() => import("./Warehouse3D"), {
@@ -86,6 +88,11 @@ export type RackMapItem = {
 };
 
 type StatusFilter = "all" | "occupied" | "empty" | "full" | "negative";
+/**
+ * ແທັບຊຸດດຽວກັນທຸກສາງ. ສິ່ງທີ່ຕ່າງແມ່ນ **ເນື້ອໃນ** ຂອງ "3D" ແລະ "ແຜນຜັງ 2D":
+ * ສາງທີ່ມີຜັງພື້ນທີ່ຈິງບັນທຶກໄວ້ (odg_wms_layout_shape — ເຊັ່ນ 1404) ຈະແຕ້ມຕາມ
+ * ພິກັດຈິງ, ສາງທີ່ຍັງບໍ່ມີຜັງ (ເຊັ່ນ 1201) ໃຊ້ພາບຈຳລອງເກົ່າຄືເກົ່າ.
+ */
 type ViewMode = "grid" | "3d" | "map" | "list";
 
 // How a location's fill % is measured: by real item volume vs the location's
@@ -356,10 +363,16 @@ export default function RackVisualization({
   warehouses,
   stock,
   items,
+  planWarehouses = [],
+  canEditLayout = false,
 }: {
   warehouses: RackMapWarehouse[];
   stock: RackMapStock[];
   items: RackMapItem[];
+  /** ລະຫັດສາງທີ່ມີຜັງພື້ນທີ່ຈິງບັນທຶກໄວ້ແລ້ວ. */
+  planWarehouses?: string[];
+  /** ຜູ້ຈັດການເທົ່ານັ້ນຈຶ່ງລາກຈັດຜັງພື້ນທີ່ ແລະ ບັນທຶກໄດ້. */
+  canEditLayout?: boolean;
 }) {
   const firstWarehouseWithRacks =
     warehouses.find((warehouse) => warehouse.racks.length > 0)?.code ??
@@ -633,6 +646,43 @@ export default function RackVisualization({
 
   const selectedRack =
     rackViews.find((rack) => rack.code === selectedCode) ?? null;
+
+  const hasRealPlan = planWarehouses.includes(warehouseCode);
+
+  // ຂໍ້ມູນທີ່ຜັງພື້ນທີ່ຈິງຕ້ອງໃຊ້: ສະຖານະສະຕັອກ + ລາຍການບ່ອນເກັບ (master) ຕໍ່ code.
+  // ບໍ່ກັ່ນຕອງດ້ວຍ search/status ເພາະຜັງຕ້ອງເຫັນທັງອາຄານສະເໝີ.
+  const planCells = useMemo(() => {
+    const map = new Map<string, PlanCell>();
+    for (const rack of rackViews) {
+      for (const loc of rack.locations) {
+        map.set(loc.code, {
+          rackCode: rack.code,
+          locationCode: loc.code,
+          name: loc.name,
+          qty: loc.qty,
+          itemCount: loc.itemCount,
+          pct: loc.utilizationPct,
+          negative: loc.qty < 0,
+        });
+      }
+    }
+    return map;
+  }, [rackViews]);
+
+  const planMasters = useMemo<PlanLocationMaster[]>(
+    () =>
+      rackViews.flatMap((rack) =>
+        rack.locations.map((loc) => ({
+          code: loc.code,
+          name: loc.name,
+          rackCode: rack.code,
+          widthCm: loc.widthCm,
+          lengthCm: loc.lengthCm,
+          heightCm: loc.heightCm,
+        })),
+      ),
+    [rackViews],
+  );
 
   const zone = selectedWarehouse
     ? ZONE_LAYOUTS[selectedWarehouse.code] ??
@@ -1055,23 +1105,47 @@ export default function RackVisualization({
             </div>
 
             <div className="relative h-[60vh] min-h-[420px] w-full touch-none">
-              <Warehouse3D
-                racks={cols3D}
-                side={side3D}
-                zoneLabel={zoneLabel3D}
-                doors={zone?.doors}
-                selectedCode={selectedCode}
-                selectedLoc={focusLoc}
-                highlightLocs={highlightLocs}
-                onSelectRack={(code) => {
-                  setFocusLoc(null);
-                  setSelectedCode(code);
-                }}
-                onSelectCell={(rack, loc) => {
-                  setSelectedCode(rack);
-                  setFocusLoc(loc);
-                }}
-              />
+              {/* ໂຄງໜ້າດຽວກັນທຸກສາງ — ປ່ຽນສະເພາະສາກຂ້າງໃນ: ສາງທີ່ມີຜັງພື້ນທີ່ຈິງ
+                  ໃຊ້ຜັງນັ້ນ, ສາງອື່ນໃຊ້ພາບຈຳລອງ rack ເກົ່າ. */}
+              {hasRealPlan ? (
+                <WarehousePlan
+                  key={`plan3d-${warehouseCode}`}
+                  whCode={warehouseCode}
+                  mode="3d"
+                  cells={planCells}
+                  masters={planMasters}
+                  canEdit={canEditLayout}
+                  selectedLoc={focusLoc}
+                  highlightLocs={highlightLocs}
+                  onSelectLoc={(rack, loc) => {
+                    // loc = null (ກົດພື້ນຫວ່າງ) ຫຼື ກົດອັນເກົ່າຊ້ຳ → ຍົກເລີກການເລືອກ
+                    if (loc == null) {
+                      setFocusLoc(null);
+                      return;
+                    }
+                    if (rack) setSelectedCode(rack);
+                    setFocusLoc((prev) => (prev === loc ? null : loc));
+                  }}
+                />
+              ) : (
+                <Warehouse3D
+                  racks={cols3D}
+                  side={side3D}
+                  zoneLabel={zoneLabel3D}
+                  doors={zone?.doors}
+                  selectedCode={selectedCode}
+                  selectedLoc={focusLoc}
+                  highlightLocs={highlightLocs}
+                  onSelectRack={(code) => {
+                    setFocusLoc(null);
+                    setSelectedCode(code);
+                  }}
+                  onSelectCell={(rack, loc) => {
+                    setSelectedCode(rack);
+                    setFocusLoc(loc);
+                  }}
+                />
+              )}
 
               {/* "Found here" panel — locations of the searched product. */}
               {pickedItem && (
@@ -1171,21 +1245,43 @@ export default function RackVisualization({
             </div>
 
             {/* Elevation map (looks like the 3D, flattened) */}
-            <RackElevationMap
-              rackViews={rackViews}
-              filteredRacks={filteredRacks}
-              zone={zone}
-              selectedCode={selectedCode}
-              selectedLoc={focusLoc}
-              onSelectRack={(code) => {
-                setFocusLoc(null);
-                setSelectedCode((prev) => (prev === code ? null : code));
-              }}
-              onCellClick={(rack, loc) => {
-                setSelectedCode(rack);
-                setFocusLoc(loc);
-              }}
-            />
+            {hasRealPlan ? (
+              <WarehousePlan
+                key={`plan2d-${warehouseCode}`}
+                whCode={warehouseCode}
+                mode="2d"
+                cells={planCells}
+                masters={planMasters}
+                canEdit={canEditLayout}
+                selectedLoc={focusLoc}
+                highlightLocs={highlightLocs}
+                onSelectLoc={(rack, loc) => {
+                  // loc = null (ກົດພື້ນຫວ່າງ) ຫຼື ກົດອັນເກົ່າຊ້ຳ → ຍົກເລີກການເລືອກ
+                  if (loc == null) {
+                    setFocusLoc(null);
+                    return;
+                  }
+                  if (rack) setSelectedCode(rack);
+                  setFocusLoc((prev) => (prev === loc ? null : loc));
+                }}
+              />
+            ) : (
+              <RackElevationMap
+                rackViews={rackViews}
+                filteredRacks={filteredRacks}
+                zone={zone}
+                selectedCode={selectedCode}
+                selectedLoc={focusLoc}
+                onSelectRack={(code) => {
+                  setFocusLoc(null);
+                  setSelectedCode((prev) => (prev === code ? null : code));
+                }}
+                onCellClick={(rack, loc) => {
+                  setSelectedCode(rack);
+                  setFocusLoc(loc);
+                }}
+              />
+            )}
             <p className="mt-5 text-[11px] font-semibold text-zinc-400 flex items-center gap-1">
               <span>💡 ຄຳແນະນຳ:</span>
               <span>ຄລິກແຕ່ລະຫ້ອງ ເພື່ອเບິ່ງສິນຄ້າ+ບໍລິມາດ · ຄລິກຊື່ Rack ເພື່ອเບິ່ງ Elevation ເຕັມດ້ານລຸ່ມ.</span>
