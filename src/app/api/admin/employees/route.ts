@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { requireManager } from "@/lib/session";
 import type { WmsRole } from "@/lib/session-shared";
-import { WMS_DEPARTMENT_CODES } from "@/lib/wmsDepartments";
 
 type Row = {
   employee_id: number;
@@ -40,11 +39,10 @@ export async function GET() {
     FROM public.odg_employee e
     LEFT JOIN public.wms_user_role r ON r.employee_id = e.employee_id
     LEFT JOIN public.odg_department d ON d.department_code = e.department_code
-    -- ຂອບເຂດດຽວກັນກັບໜ້າ /settings/access: ພະແນກທີ່ໃຊ້ WMS + ຄົນທີ່ຖືສິດຢູ່ແລ້ວ
+    -- ຂອບເຂດດຽວກັນກັບໜ້າ /settings/access: ພະນັກງານ ACTIVE ທຸກພະແນກ
     WHERE COALESCE(e.employment_status, 'ACTIVE') = 'ACTIVE'
-      AND (e.department_code = ANY($1) OR r.role IS NOT NULL)
     ORDER BY e.fullname_lo NULLS LAST, e.employee_code
-  `, [WMS_DEPARTMENT_CODES]);
+  `);
 
   return NextResponse.json({ employees: rows });
 }

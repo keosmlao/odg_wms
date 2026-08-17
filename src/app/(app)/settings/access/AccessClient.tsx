@@ -35,7 +35,21 @@ export default function AccessClient({
   const [employees, setEmployees] = useState(initialEmployees);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | WmsRole | "none">("all");
+  const [deptFilter, setDeptFilter] = useState<string>("all");
   const [editing, setEditing] = useState<EmployeeRow | null>(null);
+
+  // ພະນັກງານມາທຸກພະແນກແລ້ວ ຈຶ່ງຕ້ອງມີຕົວກອງພະແນກເພື່ອໃຫ້ຫາຄົນໄດ້ໄວ.
+  const departments = useMemo(() => {
+    const m = new Map<string, { key: string; label: string; count: number }>();
+    for (const e of employees) {
+      const key = e.department_code ?? "";
+      const label = e.department_name ?? e.department_code ?? "ບໍ່ລະບຸພະແນກ";
+      const hit = m.get(key);
+      if (hit) hit.count++;
+      else m.set(key, { key, label, count: 1 });
+    }
+    return Array.from(m.values()).sort((a, b) => b.count - a.count);
+  }, [employees]);
 
   const warehouseNameByCode = useMemo(() => {
     const m = new Map<string, string>();
@@ -49,6 +63,8 @@ export default function AccessClient({
       if (roleFilter === "none" && e.role !== null) return false;
       if (roleFilter !== "all" && roleFilter !== "none" && e.role !== roleFilter)
         return false;
+      if (deptFilter !== "all" && (e.department_code ?? "") !== deptFilter)
+        return false;
       if (!q) return true;
       return (
         e.employee_code.toLowerCase().includes(q) ||
@@ -56,7 +72,7 @@ export default function AccessClient({
         (e.nickname ?? "").toLowerCase().includes(q)
       );
     });
-  }, [employees, search, roleFilter]);
+  }, [employees, search, roleFilter, deptFilter]);
 
   const counts = useMemo(() => {
     const c = { manager: 0, supervisor: 0, keeper: 0, none: 0 };
@@ -102,6 +118,18 @@ export default function AccessClient({
             {ROLE_LABEL_LO.keeper} ({counts.keeper})
           </option>
           <option value="none">ຍັງບໍ່ມີສິດ ({counts.none})</option>
+        </select>
+        <select
+          value={deptFilter}
+          onChange={(e) => setDeptFilter(e.target.value)}
+          className="max-w-[14rem] rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        >
+          <option value="all">ທຸກພະແນກ ({employees.length})</option>
+          {departments.map((d) => (
+            <option key={d.key} value={d.key}>
+              {d.label} ({d.count})
+            </option>
+          ))}
         </select>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
           ສະແດງ {filtered.length} / {employees.length}
@@ -162,7 +190,7 @@ export default function AccessClient({
                     {e.out_of_scope && (
                       <div
                         className="mt-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
-                        title="ຢູ່ນອກພະແນກສາງ/ໄອທີ ແຕ່ຍັງຖືສິດ WMS ຢູ່"
+                        title="ຖືສິດ WMS ຢູ່ ແຕ່ບໍ່ໄດ້ຢູ່ພະແນກສາງ/ໄອທີ — ຄວນທົບທວນ"
                       >
                         ⚠ ນອກພະແນກ
                       </div>
