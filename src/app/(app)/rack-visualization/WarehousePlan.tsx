@@ -91,9 +91,9 @@ export default function WarehousePlan({
   const [layout, setLayout] = useState<WarehouseLayout | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // ຄ່າເລີ່ມຕົ້ນ = ສີຕາມຮູບຜັງທີ່ທີມສາງແຕ້ມ (A ແດງ, B ນ້ຳຕານ, C ຟ້າ, D ເຫຼືອງແກ່,
-  // Z ເຫຼືອງ, GR ຂຽວ) ເພື່ອໃຫ້ຄົນສາງເຫັນແລ້ວຈຳໄດ້ທັນທີ. heat = ໂໝດວິເຄາະ.
-  const [colorMode, setColorMode] = useState<ColorMode>("rack");
+  // ຄ່າເລີ່ມຕົ້ນ = ສີຕາມຄວາມແໜ້ນ ຊຸດດຽວກັນກັບ 1201 ເພື່ອໃຫ້ໂທນສີທັງໜ້າຄືກັນ.
+  // "rack" = ສີຕາມຮູບຜັງທີ່ທີມສາງແຕ້ມ (A ແດງ, B ນ້ຳຕານ, C ຟ້າ, D ເຫຼືອງແກ່...).
+  const [colorMode, setColorMode] = useState<ColorMode>("heat");
   const [editing, setEditing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -425,17 +425,17 @@ export default function WarehousePlan({
             onPointerUp={endDrag}
             onPointerLeave={endDrag}
           >
-            {/* ພື້ນສາງ — ພື້ນດຳ + ຕາຕະລາງ 5 ມ. ຄືຮູບຜັງທີ່ທີມສາງແຕ້ມ */}
+            {/* ພື້ນສາງ — ໂທນອ່ອນຄືກັນກັບ 3D ຂອງ 1201 (ບໍ່ໃຊ້ພື້ນດຳ) */}
             <defs>
               <pattern id="wms-grid-5m" width="500" height="500" patternUnits="userSpaceOnUse">
-                <path d="M 500 0 L 0 0 0 500" fill="none" stroke="#27272a" strokeWidth="4" />
+                <path d="M 500 0 L 0 0 0 500" fill="none" stroke="#cbd5e1" strokeWidth="4" />
               </pattern>
             </defs>
             {/* ກົດພື້ນຫວ່າງ = ຍົກເລີກການເລືອກ ກັບໄປເຫັນທັງສາງ */}
             <rect
               width={layout.width}
               height={layout.depth}
-              fill="#000000"
+              fill="#eef2f7"
               onClick={() => {
                 if (!editing) onSelectLoc("", null);
               }}
@@ -445,8 +445,8 @@ export default function WarehousePlan({
               width={layout.width}
               height={layout.depth}
               fill="none"
-              stroke="#000000"
-              strokeWidth="26"
+              stroke="#94a3b8"
+              strokeWidth="16"
             />
 
             {sorted.map((shape) => {
@@ -480,8 +480,8 @@ export default function WarehousePlan({
                     rx={8}
                     fill={shapeFill(shape)}
                     fillOpacity={1}
-                    stroke={selected ? "#0284c7" : "#000000"}
-                    strokeWidth={selected ? 26 : 8}
+                    stroke={selected ? "#0284c7" : "#1e293b"}
+                    strokeWidth={selected ? 26 : 6}
                     className={editing ? "cursor-move" : isZone ? "" : "cursor-pointer"}
                     onPointerDown={(e) => handlePointerDown(e, shape, "move")}
                     onClick={() => {
@@ -544,7 +544,7 @@ export default function WarehousePlan({
             {/* ປ້າຍຂະໜາດອາຄານ — ແຖບຂາວ + ໂຕເລກແດງ ຄືຮູບຜັງຕົ້ນສະບັບ */}
             <g pointerEvents="none">
               {/* ດ້ານລຸ່ມ = ຄວາມກວ້າງ */}
-              <rect x={0} y={layout.depth + 300} width={layout.width} height={30} fill="#3f3f46" />
+              <rect x={0} y={layout.depth + 300} width={layout.width} height={30} fill="#94a3b8" />
               <text
                 x={layout.width / 2}
                 y={layout.depth + 500}
@@ -556,7 +556,7 @@ export default function WarehousePlan({
                 {formatMeters(layout.width)}
               </text>
               {/* ດ້ານຊ້າຍ = ຄວາມເລິກ */}
-              <rect x={-330} y={0} width={30} height={layout.depth} fill="#3f3f46" />
+              <rect x={-330} y={0} width={30} height={layout.depth} fill="#94a3b8" />
               <text
                 x={-450}
                 y={layout.depth / 2}

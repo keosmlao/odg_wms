@@ -207,39 +207,40 @@ export default function WarehousePlan3D({
       // ກົດບ່ອນຫວ່າງ (ບໍ່ຖືກກ້ອນໃດ) = ຍົກເລີກການເລືອກ ຖອຍອອກເຫັນທັງສາງ
       onPointerMissed={() => onSelectLoc("", null)}
     >
-      <color attach="background" args={["#ffffff"]} />
-      <ambientLight intensity={0.85} />
-      <directionalLight position={[span * 0.4, span * 0.8, span * 0.3]} intensity={1.2} castShadow />
-      <directionalLight position={[-span * 0.5, span * 0.5, -span * 0.4]} intensity={0.4} />
+      {/* ແສງ ແລະ ໂທນສີ — ຊຸດດຽວກັນກັບ 3D ຂອງ 1201 (ພື້ນອ່ອນ ບໍ່ໃຊ້ພື້ນດຳ) */}
+      <color attach="background" args={["#eef2f7"]} />
+      <hemisphereLight args={["#ffffff", "#cbd5e1", 1.1]} />
+      <directionalLight position={[span * 0.4, span * 0.8, span * 0.3]} intensity={1.1} castShadow />
+      <directionalLight position={[-span * 0.5, span * 0.5, -span * 0.4]} intensity={0.35} color="#bfdbfe" />
 
-      {/* ພື້ນອາຄານ — ດຳຄືຜັງ 2D */}
+      {/* ພື້ນອາຄານ */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
         <planeGeometry args={[w, d]} />
-        <meshStandardMaterial color="#0a0a0a" roughness={0.95} />
+        <meshStandardMaterial color="#e2e8f0" roughness={0.9} />
       </mesh>
       <Grid
         args={[w, d]}
         position={[0, 0.006, 0]}
         cellSize={5}
-        cellColor="#3f3f46"
+        cellColor="#cbd5e1"
         sectionSize={10}
-        sectionColor="#52525b"
+        sectionColor="#94a3b8"
         fadeDistance={span * 4}
         infiniteGrid={false}
       />
 
-      {/* ກຳແພງອາຄານ — ຂອບດຽວກັນກັບເສັ້ນດຳໃນຜັງ 2D */}
+      {/* ຂອບອາຄານ — ເສັ້ນເທົາອ່ອນ ບໍ່ແມ່ນກຳແພງດຳ */}
       {(
         [
-          [0, -d / 2, w, 0.25],
-          [0, d / 2, w, 0.25],
-          [-w / 2, 0, 0.25, d],
-          [w / 2, 0, 0.25, d],
+          [0, -d / 2, w, 0.2],
+          [0, d / 2, w, 0.2],
+          [-w / 2, 0, 0.2, d],
+          [w / 2, 0, 0.2, d],
         ] as const
       ).map(([wx, wz, ww, wd], i) => (
-        <mesh key={`wall-${i}`} position={[wx, 0.3, wz]} raycast={() => null}>
-          <boxGeometry args={[ww, 0.6, wd]} />
-          <meshStandardMaterial color="#18181b" />
+        <mesh key={`wall-${i}`} position={[wx, 0.15, wz]} raycast={() => null}>
+          <boxGeometry args={[ww, 0.3, wd]} />
+          <meshStandardMaterial color="#94a3b8" />
         </mesh>
       ))}
 
