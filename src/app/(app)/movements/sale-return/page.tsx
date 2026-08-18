@@ -21,8 +21,8 @@ export default async function SaleReturnPage() {
     <div className="w-full space-y-5">
       <BackButton />
       <Hero
-        title="ຮັບคืนจากลูกค้า (Sale Return)"
-        description="ຮັບສິນຄ້າທີ່ລູກค้าส่งคืน ກັບເຂົ້າ stock — WMS ບັນທຶກ stock + serial ຄืน. (ໃບລดหนี้/CN ทำใน SmartBiz)"
+        title="ຮັບຄືນຈາກລູກຄ້າ (Sale Return)"
+        description="ຮັບສິນຄ້າທີ່ລູກຄ້າສົ່ງຄືນ ກັບເຂົ້າ stock — WMS ບັນທຶກ stock + serial ຄືນ. (ໃບຫຼຸດໜີ້/CN ເຮັດໃນ SmartBiz)"
         icon={<ArrowLeftRightIcon className="h-6 w-6" />}
         tone="aqua"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}

@@ -45,7 +45,7 @@ function buildPlan(lines: SrcLine[]): Task[] {
       need -= take;
     }
     if (need > 0.0001) {
-      tasks.push({ key: `${l.item_code}@short`, sortKey: "~~~", loc: "⚠ ບໍ່ພอ stock", barcode: "", rack: "", pallet: "", item_code: l.item_code, item_name: l.item_name, unit: l.unit_code, qty: need, short: true });
+      tasks.push({ key: `${l.item_code}@short`, sortKey: "~~~", loc: "⚠ ບໍ່ພໍ stock", barcode: "", rack: "", pallet: "", item_code: l.item_code, item_name: l.item_name, unit: l.unit_code, qty: need, short: true });
     }
   }
   return tasks.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
@@ -157,7 +157,7 @@ export default function PickClient({ warehouses }: { warehouses: WarehouseOption
           <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
             <button type="button" onClick={() => { setActive(null); setTasks(null); }} className="text-sm font-semibold text-zinc-500 hover:text-zinc-700">← ກັບ</button>
             <div className="flex items-center gap-2">
-              {pickStats && <span className="text-xs text-zinc-500">{pickStats.done}/{pickStats.total} ເກັບແລ້ວ{pickStats.short ? ` · ${pickStats.short} ບໍ່ພอ` : ""}</span>}
+              {pickStats && <span className="text-xs text-zinc-500">{pickStats.done}/{pickStats.total} ເກັບແລ້ວ{pickStats.short ? ` · ${pickStats.short} ບໍ່ພໍ` : ""}</span>}
               <button type="button" onClick={() => window.print()} className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg">🖨 ພິມໃບເກັບ</button>
             </div>
           </div>
@@ -168,7 +168,7 @@ export default function PickClient({ warehouses }: { warehouses: WarehouseOption
               <span className="font-mono text-sm font-bold text-zinc-800 dark:text-zinc-100">{active.doc_no}</span>
               <span className="ml-2 text-xs text-zinc-500">{active.cust_name ?? ""} · {ddmm(active.doc_date)}</span>
             </div>
-            {loadingPlan ? <div className="py-10 text-center text-sm text-zinc-400">ກຳลังจัดใบเก็บ...</div>
+            {loadingPlan ? <div className="py-10 text-center text-sm text-zinc-400">ກຳລັງຈັດໃບເກັບ...</div>
             : !tasks || tasks.length === 0 ? <div className="py-10 text-center text-sm text-zinc-400">ບໍ່ມີຫຍັງໃຫ້ເກັບ</div>
             : (
               <table className="w-full text-sm">
@@ -196,7 +196,7 @@ export default function PickClient({ warehouses }: { warehouses: WarehouseOption
             <div className="print-sheet hidden print:block text-black">
               <div className="mb-2 border-b border-black pb-1">
                 <div className="text-lg font-bold">ໃບເກັບສິນຄ້າ / Pick List</div>
-                <div className="text-xs">{active.doc_no} · {active.cust_name ?? ""} · {ddmm(active.doc_date)} · ສาง {wh}</div>
+                <div className="text-xs">{active.doc_no} · {active.cust_name ?? ""} · {ddmm(active.doc_date)} · ສາງ {wh}</div>
               </div>
               <table className="w-full border-collapse text-[11px]">
                 <thead><tr className="border-b border-black text-left"><th className="py-1 pr-2">✓</th><th className="py-1 pr-2">ບ່ອນເກັບ</th><th className="py-1 pr-2">ສິນຄ້າ</th><th className="py-1 text-right">ເກັບ</th></tr></thead>

@@ -26,6 +26,7 @@ import {
   SearchIcon,
   SettingsIcon,
   ShieldIcon,
+  TrendIcon,
   UsersIcon,
 } from "@/components/ui/Icons";
 
@@ -155,6 +156,11 @@ const groups: Group[] = [
     basePath: "/movements/reports",
     icon: <ListIcon className="h-4.5 w-4.5" />,
     items: [
+      {
+        label: "ປະສິດທິພາບສາງ (KPI)",
+        href: "/movements/performance",
+        icon: <TrendIcon className="h-3.5 w-3.5" />,
+      },
       {
         label: "ເຄື່ອນໄຫວປະຈຳວັນ",
         href: "/movements/daily",

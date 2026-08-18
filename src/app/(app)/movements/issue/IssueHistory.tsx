@@ -225,7 +225,7 @@ export default async function IssueHistory({
 
   // Related ERP documents this issue posted, plus the FULL document chain of a
   // transfer request: the request (124) is fulfilled from the SOURCE at issue-
-  // confirm time (this DP → an outbound ໃบโอน, source→9903) and later RECEIVED
+  // confirm time (this DP → an outbound ໃບໂອນ, source→9903) and later RECEIVED
   // at the DESTINATION (a completely different DP, from the receive screen —
   // 9903→dest). Both legs share `ic_trans.doc_ref` = the 124's doc_no, so we can
   // trace the whole chain even though the receive-side doc wasn't created here.

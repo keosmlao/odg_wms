@@ -26,7 +26,7 @@ export default async function PutawayPage() {
     <div className="w-full space-y-5">
       <Hero
         title="ບ່ອນວ່າງ / Putaway"
-        description="ຫາ location ວ່າງ ຫຼື ໃຊ້ໜ້ອຍ ເພື່ອวາງສິນຄ້າເຂົ້າ — ຈັດສາງໃຫ້ເປັນລະບຽບ"
+        description="ຫາ location ວ່າງ ຫຼື ໃຊ້ໜ້ອຍ ເພື່ອວາງສິນຄ້າເຂົ້າ — ຈັດສາງໃຫ້ເປັນລະບຽບ"
         icon={<BuildingIcon className="h-6 w-6" />}
         tone="emerald"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}

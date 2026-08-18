@@ -282,7 +282,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   const [lastIssued, setLastIssued] = useState<string | null>(null); // last DP doc → print banner
   const [gscan, setGscan] = useState(""); // global SN scan box
   const gscanRef = useRef<HTMLInputElement>(null);
-  const [assignee, setAssignee] = useState(""); // มอบหมายให้ forklift/คนเก็บ → wms_product_out.remark
+  const [assignee, setAssignee] = useState(""); // ມອບໝາຍໃຫ້ forklift/ຄົນເກັບ → wms_product_out.remark
   const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   // Per-warehouse SN policy (settings → ສາງ → SN ຕໍ່ເມນູ):
   //  · snIssueOn      ("ຈ່າຍ")      → serials tracked in the issue flow at all.
@@ -479,7 +479,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
       const total = Math.round(parsedQty(l.qty) ?? 0);
       const here = Math.min(total, locStock);
       const rest = total - here;
-      if (rest <= 0) { showToast("err", "ບ່ອນนี้ พอแล้ว — ບໍ່ต้องแยก"); return prev; }
+      if (rest <= 0) { showToast("err", "ບ່ອນນີ້ ພໍແລ້ວ — ບໍ່ຕ້ອງແຍກ"); return prev; }
       const usedIdx = new Set(prev.filter((x) => x.item_code === l.item_code).map((x) => x.selIdx));
       const newIdx = l.locations.findIndex((_, i) => !usedIdx.has(i));
       const updated: WorkingLine = { ...l, qty: String(here), selectedSerials: l.selectedSerials.slice(0, here) };
@@ -647,13 +647,13 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
       if (!m) continue;
       if (l.selectedSerials.includes(m.sn)) { showToast("err", `${term} ເລືອກໄປແລ້ວ`); setGscan(""); return; }
       const cap = Math.round(l.remaining);
-      if (l.selectedSerials.length >= cap) { showToast("err", `${l.item_code}: ครบจำนวนแล้ว`); setGscan(""); return; }
+      if (l.selectedSerials.length >= cap) { showToast("err", `${l.item_code}: ຄົບຈຳນວນແລ້ວ`); setGscan(""); return; }
       setLines((prev) => prev.map((x) => x.key === l.key ? { ...x, qty: String(x.selectedSerials.length + 1), selectedSerials: [...x.selectedSerials, m.sn] } : x));
       showToast("ok", `✓ ${m.isn ?? m.sn} → ${l.item_code}`);
       setGscan(""); setTimeout(() => gscanRef.current?.focus(), 30);
       return;
     }
-    showToast("err", `ບໍ່ພົບ SN "${term}" — ກົດ "ISN" ຂອງສິນຄ້ານั้นเพื่อเลือก`);
+    showToast("err", `ບໍ່ພົບ SN "${term}" — ກົດ "ISN" ຂອງສິນຄ້ານັ້ນເພື່ອເລືອກ`);
     setGscan("");
   }
 
@@ -747,7 +747,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   function addSerialByScan(sn: string, label: string) {
     if (!pickerLine) return;
     if (pickerLine.selectedSerials.includes(sn)) showToast("err", `${label} ເລືອກແລ້ວ`);
-    else if (pickerLine.selectedSerials.length >= targetQty(pickerLine)) showToast("err", "ເລືອກครบ ตามที่ขอแล้ว");
+    else if (pickerLine.selectedSerials.length >= targetQty(pickerLine)) showToast("err", "ເລືອກຄົບ ຕາມທີ່ຂໍແລ້ວ");
     else { toggleSerial(pickerLine.key, sn); showToast("ok", `+ ${label}`); }
     setSerialSearch("");
     setTimeout(() => serialScanRef.current?.focus(), 30);
@@ -993,7 +993,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
             </button>
           </div>
 
-          {/* ໃບ pick ຄ້າງຢືນຢັນ ຂອງເອກະສານนี้ — ຈຳນວນໃນໃບເຫຼົ່ານີ້ຖືກຫັກອອກຈາກ "ຄ້າງຈ່າຍ"
+          {/* ໃບ pick ຄ້າງຢືນຢັນ ຂອງເອກະສານນີ້ — ຈຳນວນໃນໃບເຫຼົ່ານີ້ຖືກຫັກອອກຈາກ "ຄ້າງຈ່າຍ"
               ດ້ານລຸ່ມແລ້ວ. ຖ້າບໍ່ບອກ ຜູ້ໃຊ້ຈະເຫັນວ່າ "ລະບົບ default ຈຳນວນຫຼຸດ". */}
           {pendingPicks.length > 0 && (
             <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20">
@@ -1025,14 +1025,14 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
             </div>
           )}
 
-          {/* ມອບໝາຍ ຜູ້เก็บ (forklift) — บันทึกลงใบ pick */}
+          {/* ມອບໝາຍ ຜູ້ເກັບ (forklift) — ບັນທຶກລົງໃບ pick */}
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200/70 bg-zinc-50/50 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-950/20">
             <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">🚜 ມອບໝາຍ ຜູ້ເກັບ:</span>
-            <input value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="ຊື່ forklift / ຄนเก็บ (ບໍ່ບັງຄັບ)"
+            <input value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="ຊື່ forklift / ຄົນເກັບ (ບໍ່ບັງຄັບ)"
               className="min-w-[200px] flex-1 rounded-lg bg-white px-3 py-1.5 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-red-500/30 dark:bg-zinc-950 dark:ring-zinc-800" />
           </div>
 
-          {/* Global SN scan — ยิง SN ของรายการ serial ใดก็ได้ */}
+          {/* Global SN scan — ຍິງ SN ຂອງລາຍການ serial ໃດກໍ່ໄດ້ */}
           {lines.some((l) => l.serialized) && (
             <div className="mb-4 rounded-2xl border border-aqua-200 bg-aqua-50/50 p-3.5 dark:border-aqua-900/40 dark:bg-aqua-950/20">
               {snIssueOn && !snPickRequired && (
@@ -1099,7 +1099,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                       <div className="flex shrink-0 items-center gap-3">
                         <div className="text-right">
                           <div className={`font-mono text-sm font-bold ${complete ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>{formatQty(alloc)} / {formatQty(need)}</div>
-                          <div className="text-[10px] text-zinc-400">{g.line.unit_code} · {complete ? "ครບ ✓" : "ยังไม่ครບ"}</div>
+                          <div className="text-[10px] text-zinc-400">{g.line.unit_code} · {complete ? "ຄົບ ✓" : "ຍັງບໍ່ຄົບ"}</div>
                         </div>
                         <button type="button" onClick={() => setRemoved((p) => new Set([...g.allocs.map((a) => a.key), ...p]))} title="ລົບສິນຄ້ານີ້ (ບໍ່ຈ່າຍ)" className="rounded p-1 text-zinc-300 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30">✕</button>
                       </div>
@@ -1153,7 +1153,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
           {/* Removed lines — pull back into the issue */}
           {removedLines.length > 0 && (
             <div className="mt-4 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/50 p-3 dark:border-zinc-700 dark:bg-zinc-950/30">
-              <div className="mb-2 text-[11px] font-bold text-zinc-500 dark:text-zinc-400">ລາຍການທີ່ລົບ (ບໍ່ຈ່າຍ) — ກົດເພື່ອเพิ่มกลับ</div>
+              <div className="mb-2 text-[11px] font-bold text-zinc-500 dark:text-zinc-400">ລາຍການທີ່ລົບ (ບໍ່ຈ່າຍ) — ກົດເພື່ອເພີ່ມກັບ</div>
               <div className="flex flex-wrap gap-2">
                 {removedLines.map((l) => (
                   <button key={l.key} type="button" onClick={() => setRemoved((p) => { const n = new Set(p); n.delete(l.key); return n; })}
@@ -1324,15 +1324,15 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                   {(() => {
                     const remain = filteredSerials.filter((s) => !pickerLine.selectedSerials.includes(s.sn));
                     if (remain.length === 0) {
-                      return <p className="py-6 text-center text-[11px] text-zinc-400">{pickerLine.availableSerials.length === 0 ? "ບໍ່ມີ serial ໃນບ່ອນนี้" : "ໝົດแล้ว / ບໍ່ພົບ"}</p>;
+                      return <p className="py-6 text-center text-[11px] text-zinc-400">{pickerLine.availableSerials.length === 0 ? "ບໍ່ມີ serial ໃນບ່ອນນີ້" : "ໝົດແລ້ວ / ບໍ່ພົບ"}</p>;
                     }
-                    // ສ່ວນທີ່ເຫຼືອ (serial ທີ່ບໍ່ໄດ້ຈ່າຍ) ຍັງສະແດງเต็ม — ກົດตอนครบ → toast
+                    // ສ່ວນທີ່ເຫຼືອ (serial ທີ່ບໍ່ໄດ້ຈ່າຍ) ຍັງສະແດງເຕັມ — ກົດຕອນຄົບ → toast
                     return remain.map((s) => (
                       <button
                         key={s.sn}
                         type="button"
                         onClick={() => {
-                          if (pickerLine.selectedSerials.length >= targetQty(pickerLine)) showToast("err", "ເລືອກครบ ตามที่ขอแล้ว — ເອົາออกก่อนถ้าจะเปลี่ยน");
+                          if (pickerLine.selectedSerials.length >= targetQty(pickerLine)) showToast("err", "ເລືອກຄົບ ຕາມທີ່ຂໍແລ້ວ — ເອົາອອກກ່ອນຖ້າຈະປ່ຽນ");
                           else toggleSerial(pickerLine.key, s.sn);
                         }}
                         className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left transition hover:bg-aqua-50 dark:hover:bg-aqua-950/20"

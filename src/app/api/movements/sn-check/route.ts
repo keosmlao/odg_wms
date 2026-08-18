@@ -451,7 +451,7 @@ export async function DELETE(request: Request) {
     const wh = hdr.rows[0].wh_code ?? "";
     if (!wh) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: "ໃບนี้ບໍ່ມີຂໍ້ມູນສາງ — undo ບໍ່ໄດ້" }, { status: 400 });
+      return NextResponse.json({ error: "ໃບນີ້ບໍ່ມີຂໍ້ມູນສາງ — undo ບໍ່ໄດ້" }, { status: 400 });
     }
     const accessible = accessibleWarehouses(session);
     if (Array.isArray(accessible) && wh && !accessible.includes(wh)) {

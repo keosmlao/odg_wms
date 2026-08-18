@@ -109,7 +109,7 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
 
   async function submit() {
     if (!detail || !palletCode) return;
-    if (toWh === whCode && !toRack && !toLoc) { showToast("err", "ກະລຸນາເລືອກປາຍທາງ (ສาง / rack / location)"); return; }
+    if (toWh === whCode && !toRack && !toLoc) { showToast("err", "ກະລຸນາເລືອກປາຍທາງ (ສາງ / rack / location)"); return; }
     setSubmitting(true);
     try {
       const res = await fetch(`/api/movements/pallet-move`, {
@@ -189,7 +189,7 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/40 dark:text-brand-400"><LayersIcon className="h-5 w-5" /></span>
                 <div>
                   <div className="font-mono text-sm font-bold text-zinc-900 dark:text-zinc-50">📦 {detail.pallet.code}</div>
-                  <div className="text-xs text-zinc-500">ຢູ່ປັດຈຸບัน: <span className="font-mono text-brand-600 dark:text-brand-400">{loc(detail.pallet.rack, detail.pallet.location)}</span>{!detail.found && <span className="ml-1 text-rose-500">· ບໍ່ມີໃນ pallet master</span>}</div>
+                  <div className="text-xs text-zinc-500">ຢູ່ປັດຈຸບັນ: <span className="font-mono text-brand-600 dark:text-brand-400">{loc(detail.pallet.rack, detail.pallet.location)}</span>{!detail.found && <span className="ml-1 text-rose-500">· ບໍ່ມີໃນ pallet master</span>}</div>
                 </div>
               </div>
               <div className="flex items-center gap-4 text-right">
@@ -223,7 +223,7 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
           {(detail.items.length > 0 || detail.serial_count > 0) && (
             <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
               <h3 className="mb-1 text-sm font-semibold text-zinc-800 dark:text-zinc-200">ຍ້າຍໄປບ່ອນໃໝ່</h3>
-              <p className="mb-3 text-[11px] text-zinc-400">ເລືອກ ສาง (ຂ້າມສາງໄດ້) · Rack ແລະ Location ເປັນທາງเลือก — ປ່ອຍວ່າງ = ວາງລະດັບ rack/ສาง</p>
+              <p className="mb-3 text-[11px] text-zinc-400">ເລືອກ ສາງ (ຂ້າມສາງໄດ້) · Rack ແລະ Location ເປັນທາງເລືອກ — ປ່ອຍວ່າງ = ວາງລະດັບ rack/ສາງ</p>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className={labelCls}>ສາງ ປາຍທາງ *</label>
@@ -261,7 +261,7 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
       {!detail && !loadingDetail && whCode && (
         <div className="rounded-2xl border border-dashed border-zinc-200 py-12 text-center dark:border-zinc-800">
           <PackageIcon className="mx-auto h-8 w-8 text-zinc-300 dark:text-zinc-600" />
-          <p className="mt-2 text-xs font-semibold text-zinc-500">ເລືອກ pallet ເພື່ອเริ่ม</p>
+          <p className="mt-2 text-xs font-semibold text-zinc-500">ເລືອກ pallet ເພື່ອເລີ່ມ</p>
         </div>
       )}
 

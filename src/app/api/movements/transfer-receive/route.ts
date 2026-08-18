@@ -103,7 +103,7 @@ export async function GET(request: Request) {
        ORDER BY location LIMIT 300`,
       [dest],
     );
-    // ① location ທີ່ມີສິນຄ້າດຽວກັນຢູ່ແລ້ວ (รวมกอง) — ของ items ในใบนี้ ที่ยังมี stock
+    // ① location ທີ່ມີສິນຄ້າດຽວກັນຢູ່ແລ້ວ (ລວມກອງ) — ຂອງ items ໃນໃບນີ້ ທີ່ຍັງມີ stock
     const sameLocs = items.length > 0 ? await query<{ location: string; item_code: string; qty: string }>(
       `SELECT NULLIF(TRIM(shelf_code1), '') AS location, item_code, SUM(qty * calc_flag)::numeric::text AS qty
        FROM public.odg_wms_trans_detail
@@ -113,7 +113,7 @@ export async function GET(request: Request) {
        ORDER BY SUM(qty * calc_flag) DESC LIMIT 30`,
       [dest, items],
     ) : [];
-    // ② location ວ່າง (เคยใช้ แต่ตอนนี้ยอด 0)
+    // ② location ວ່າງ (ເຄີຍໃຊ້ ແຕ່ຕອນນີ້ຍອດ 0)
     const emptyLocs = await query<{ location: string }>(
       `SELECT location FROM (
          SELECT NULLIF(TRIM(shelf_code1), '') AS location, SUM(qty * calc_flag) AS bal
@@ -198,7 +198,7 @@ export async function POST(request: Request) {
     const accessible = accessibleWarehouses(session);
     if (Array.isArray(accessible) && !accessible.includes(whTo)) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: "ບໍ່ມີສິດຮັບເຂົ້າสาງปลายทางนี้" }, { status: 403 });
+      return NextResponse.json({ error: "ບໍ່ມີສິດຮັບເຂົ້າສາງປາຍທາງນີ້" }, { status: 403 });
     }
     const notes = Array.isArray(body.notes)
       ? (body.notes as Record<string, unknown>[]).map((n) => ({ item_code: str(n.item_code), reason_code: str(n.reason_code), short_qty: num(n.short_qty) })).filter((n) => n.item_code && n.reason_code)

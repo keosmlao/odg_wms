@@ -27,7 +27,7 @@ export default async function TransferRequestPage() {
       <BackButton href="/movements/transfer-dashboard" />
       <Hero
         title="ອອກໃບຂໍໂອນ (ໃບຂໍ)"
-        description="ສ້າງໃບຂໍໂອນສິນຄ້າຈາກສາງอื่น — ສາງปลายทาง(ຜູ້ຂໍ) ຂໍສິນຄ້າຈາກສາງຕົ້ນທາງ. ສาง source ຈ່າຍອອກภายหลัง"
+        description="ສ້າງໃບຂໍໂອນສິນຄ້າຈາກສາງອື່ນ — ສາງປາຍທາງ(ຜູ້ຂໍ) ຂໍສິນຄ້າຈາກສາງຕົ້ນທາງ. ສາງ source ຈ່າຍອອກພາຍຫຼັງ"
         icon={<ArrowLeftRightIcon className="h-6 w-6" />}
         tone="navy"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}

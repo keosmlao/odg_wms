@@ -1,5 +1,11 @@
-// One-time migrations for the transfer pro-features.
-// Run from the project root:  node migrations/apply.mjs
+// ⚠️ ປະຫວັດສາດ — ຢ່າ run ອີກ.
+//
+// ສະຄຣິບຄັ້ງດຽວຂອງງານ transfer pro-features ຮຸ່ນເກົ່າ. ເກັບໄວ້ເປັນບັນທຶກເທົ່ານັ້ນ:
+//   · ຂັ້ນຕອນ 1 (auto-approve ic_trans 124 ທີ່ status=0) ເປັນການແກ້ຂໍ້ມູນຄັ້ງດຽວ
+//     — run ຊ້ຳຈະໄປອະນຸມັດໃບທີ່ລໍຖ້າຢູ່ຈິງ.
+//   · ຂັ້ນຕອນ 2 (ຕາຕະລາງ odg_wms_move_note) ຍ້າຍໄປ 038_wms_move_note.sql ແລ້ວ.
+//
+// migration ໃໝ່ທັງໝົດໃຫ້ຂຽນເປັນ .sql ແລ້ວ run ດ້ວຍ:  npm run db:migrate
 import pg from "pg";
 import { readFileSync } from "fs";
 

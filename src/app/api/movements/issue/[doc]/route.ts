@@ -101,7 +101,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
     [docNo],
   );
 
-  // Short-movement reasons (table may not exist yet → degrade silently).
+  // ເຫດຜົນການເຄື່ອນຍ້າຍບໍ່ຄົບ — ອ່ານບໍ່ໄດ້ ບໍ່ຄວນລົ້ມທັງໜ້າ ແຕ່ຕ້ອງເຫັນໃນ log.
   let notes: { item_code: string; reason_code: string | null; short_qty: string | null }[] = [];
   try {
     notes = await query<{ item_code: string; reason_code: string | null; short_qty: string | null }>(
@@ -109,7 +109,10 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
        FROM public.odg_wms_move_note WHERE doc_no = $1 ORDER BY item_code`,
       [docNo],
     );
-  } catch { notes = []; }
+  } catch (err) {
+    console.warn("[issue] ອ່ານ odg_wms_move_note ບໍ່ໄດ້ (migration 038?)", err);
+    notes = [];
+  }
 
   const fromWh = lines.find((l) => l.from_wh)?.from_wh ?? null;
   const toWh = lines.find((l) => l.to_wh)?.to_wh ?? null;
@@ -230,7 +233,7 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ doc: st
       );
       if (neg.rows.length > 0) {
         await client.query("ROLLBACK");
-        return NextResponse.json({ error: `ລົບບໍ່ໄດ້ — ມีรายการฮับ/ฮับคืนต่อจากใบนี้แล้ว (${neg.rows[0].item_code}). ต้องลบใบฮับก่อน` }, { status: 409 });
+        return NextResponse.json({ error: `ລົບບໍ່ໄດ້ — ມີລາຍການຮັບ/ຮັບຄືນຕໍ່ຈາກໃບນີ້ແລ້ວ (${neg.rows[0].item_code}). ຕ້ອງລົບໃບຮັບກ່ອນ` }, { status: 409 });
       }
     }
 

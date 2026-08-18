@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   if (!wh) return NextResponse.json({ error: "ກະລຸນາເລືອກສາງ" }, { status: 400 });
   if (!VALID_SRC.has(sourceType)) return NextResponse.json({ error: "ປະເພດເອກະສານບໍ່ຖືກຕ້ອງ" }, { status: 400 });
   const accessible = accessibleWarehouses(session);
-  if (Array.isArray(accessible) && !accessible.includes(wh)) return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າเຖິງສາງນີ້" }, { status: 403 });
+  if (Array.isArray(accessible) && !accessible.includes(wh)) return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
 
   if (!Array.isArray(body.lines) || body.lines.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການໃຫ້ຈ່າຍ" }, { status: 400 });
   const lines: IssueLine[] = [];

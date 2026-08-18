@@ -64,7 +64,7 @@ export async function moveFromTransit(
     );
     const bal = Number.parseFloat(balRes.rows[0]?.bal ?? "0") || 0;
     if (line.qty > bal + 1e-6) {
-      throw new Error(`ສິນຄ້າ ${line.item_code}: ${stage === "receive" ? "ຮັບ" : "ຮັບคืน"} ${line.qty} ເກີນທີ່ຄ້າງໃນສາງລະຫວ່າງທາງ ${bal}`);
+      throw new Error(`ສິນຄ້າ ${line.item_code}: ${stage === "receive" ? "ຮັບ" : "ຮັບຄືນ"} ${line.qty} ເກີນທີ່ຄ້າງໃນສາງລະຫວ່າງທາງ ${bal}`);
     }
     if (line.serials.length > 0) {
       const okRes = await client.query<{ n: string }>(

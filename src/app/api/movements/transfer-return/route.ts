@@ -187,7 +187,7 @@ export async function POST(request: Request) {
     const accessible = accessibleWarehouses(session);
     if (Array.isArray(accessible) && !accessible.includes(whFrom)) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: "ບໍ່ມີສິດຮັບคืนเข้าສาງต้นทางนี้" }, { status: 403 });
+      return NextResponse.json({ error: "ບໍ່ມີສິດຮັບຄືນເຂົ້າສາງຕົ້ນທາງນີ້" }, { status: 403 });
     }
     const notes = Array.isArray(body.notes)
       ? (body.notes as Record<string, unknown>[]).map((n) => ({ item_code: str(n.item_code), reason_code: str(n.reason_code), short_qty: num(n.short_qty) })).filter((n) => n.item_code && n.reason_code)

@@ -99,7 +99,7 @@ function WhMovers({ r, sort, setSort, loading }: { r: WhResult; sort: SortKey; s
           <Kard label="ຮັບເຂົ້າລວມ" value={fmt(kpi.total_in)} tone="emerald" />
           <Kard label="ຈ່າຍອອກລວມ" value={fmt(kpi.total_out)} tone="rose" />
           <Kard label="ສິນຄ້າເຄື່ອນໄຫວ" value={kpi.active_items} tone="navy" />
-          <Kard label="ມື້ມີການเคลื่อนไหว" value={kpi.active_days} tone="zinc" />
+          <Kard label="ມື້ມີການເຄື່ອນໄຫວ" value={kpi.active_days} tone="zinc" />
         </div>
       )}
 

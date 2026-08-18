@@ -8,7 +8,7 @@ import { accessibleWarehouses } from "@/lib/session-shared";
  * a transfer request (124) and approves or rejects it. Only an APPROVED request
  * (ic_trans.status = 1) can be fulfilled by the goods-issue flow.
  *
- * status: 0 = ລໍຖ້າອະນຸມັດ · 1 = ອະນຸມັດ · 2 = ປฏิเสธ
+ * status: 0 = ລໍຖ້າອະນຸມັດ · 1 = ອະນຸມັດ · 2 = ປະຕິເສດ
  *
  * GET            → requests awaiting approval for a source the user owns
  * GET ?doc=<124> → that request's lines + source stock availability
@@ -100,11 +100,11 @@ export async function POST(request: Request) {
     const accessible = accessibleWarehouses(session);
     if (Array.isArray(accessible) && !accessible.includes(src)) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: "ບໍ່ມີສິດ ອະນຸມັດ ໃບนี้ (ບໍ່ແມ່ນສາງต้นทางของท่าน)" }, { status: 403 });
+      return NextResponse.json({ error: "ບໍ່ມີສິດ ອະນຸມັດ ໃບນີ້ (ບໍ່ແມ່ນສາງຕົ້ນທາງຂອງທ່ານ)" }, { status: 403 });
     }
     if ((hdr.rows[0]?.status ?? 0) !== 0) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: "ໃບนี้ຖືກດຳເນີນการแล้ว" }, { status: 409 });
+      return NextResponse.json({ error: "ໃບນີ້ຖືກດຳເນີນການແລ້ວ" }, { status: 409 });
     }
     const newStatus = action === "approve" ? 1 : 2;
     await client.query(`UPDATE public.ic_trans SET status = $2 WHERE doc_no = $1 AND trans_flag = ${FLAG}`, [doc, newStatus]);

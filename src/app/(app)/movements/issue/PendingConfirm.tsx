@@ -324,13 +324,13 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       rack: at?.rack ?? null, location: at?.location ?? null, pallet: at?.pallet ?? null,
     };
     if (!owner) {
-      showToast("err", `ISN ${scan} ບໍ່ມีໃนstock / ບໍ່ແມ່ນຂອງໃບนี้`);
+      showToast("err", `ISN ${scan} ບໍ່ມີໃນstock / ບໍ່ແມ່ນຂອງໃບນີ້`);
       logEvent({ ...base, result: "not_found", note: "ບໍ່ມີໃນ stock ຫຼື ບໍ່ແມ່ນຂອງບ່ອນທີ່ເລືອກ" });
     } else if (scanned.has(t) || dupByUnit) {
       showToast("err", `${scan} ຍິງແລ້ວ`);
       logEvent({ ...base, result: "duplicate", note: dupByUnit && !scanned.has(t) ? "ໜ່ວຍດຽວກັນ ຍິງດ້ວຍ id ອື່ນແລ້ວ" : "ຍິງຊ້ຳ" });
     } else if (scannedCount(owner) >= (neededByItem.get(owner) ?? 0)) {
-      showToast("err", `${owner}: ຍິງครບ ${neededByItem.get(owner)} ແລ້ວ`);
+      showToast("err", `${owner}: ຍິງຄົບ ${neededByItem.get(owner)} ແລ້ວ`);
       logEvent({ ...base, result: "over_qty", note: `ເກີນຈຳນວນ ${neededByItem.get(owner)}` });
     } else {
       const isSub = !active.lines.some((l) => l.item_code === owner && l.serials.some((s) => s.toUpperCase() === t));
@@ -359,7 +359,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       });
       const data = (await res.json()) as { ok?: boolean; error?: string; issue_code?: string; erp_doc?: string | null; partial?: boolean; moved?: number };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
-      showToast("ok", `ຈ່າຍສຳເລັດ ${data.issue_code}${data.moved ? ` · ແກ້ location ${data.moved} ລາຍການ` : ""}${data.partial ? " · ส่วนที่เหลือยังค้างใน pending" : ""}`);
+      showToast("ok", `ຈ່າຍສຳເລັດ ${data.issue_code}${data.moved ? ` · ແກ້ location ${data.moved} ລາຍການ` : ""}${data.partial ? " · ສ່ວນທີ່ເຫຼືອຍັງຄ້າງໃນ pending" : ""}`);
       // Issued serials are consumed — clear the stash (a partial remainder is
       // re-scanned fresh against the reduced pending).
       lsDel(scanKey(active.header.doc_no));
@@ -639,7 +639,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                         })() : (
                           <div className="text-right"><div className="font-mono text-lg font-black text-zinc-700 dark:text-zinc-200">{l.qty}</div><div className="text-[10px] text-zinc-400">{l.unit_code} · ຈ່າຍ</div></div>
                         )}
-                        <button type="button" disabled={busy} onClick={() => removeLine(l.item_code)} title="ລົບ ออกจากใบ pick" className="rounded p-1 text-zinc-300 hover:bg-rose-50 hover:text-rose-500 disabled:opacity-40 dark:hover:bg-rose-950/30">🗑</button>
+                        <button type="button" disabled={busy} onClick={() => removeLine(l.item_code)} title="ລົບ ອອກຈາກໃບ pick" className="rounded p-1 text-zinc-300 hover:bg-rose-50 hover:text-rose-500 disabled:opacity-40 dark:hover:bg-rose-950/30">🗑</button>
                       </div>
                     </div>
                     {isSer && (
@@ -664,7 +664,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                                         <td className="truncate px-3 py-1.5 font-mono text-zinc-800 dark:text-zinc-200">{u.isn ?? <span className="text-rose-500">— ຂາດ —</span>}</td>
                                         <td className="px-3 py-1.5 text-right whitespace-nowrap">
                                           {missing && <span className="mr-1 text-[9px] font-bold text-rose-600">ບໍ່ຄົບ</span>}
-                                          {u.sub && <span className="mr-1 text-[9px] text-amber-600">ຕัวแทน</span>}
+                                          {u.sub && <span className="mr-1 text-[9px] text-amber-600">ຕົວແທນ</span>}
                                           <button type="button" onClick={() => {
                                             setScanned((p) => { const n = new Set(p); n.delete(u.key); return n; });
                                             logEvent({ event: "unscan", result: "ok", item_code: l.item_code, scan_input: u.key, sn: u.sn, isn: u.isn, rack: node.rack, location: node.location, pallet: node.pallet });
@@ -681,7 +681,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                           )}
                           {short && (
                             <div className="mt-2 flex items-center gap-2">
-                              <span className="text-[11px] font-bold text-amber-600">ขาด {(neededByItem.get(l.item_code) ?? 0) - got} →</span>
+                              <span className="text-[11px] font-bold text-amber-600">ຂາດ {(neededByItem.get(l.item_code) ?? 0) - got} →</span>
                               <select value={reasons[l.item_code] ?? ""} onChange={(e) => setReasons((r) => ({ ...r, [l.item_code]: e.target.value }))}
                                 className="rounded-lg border border-amber-300 bg-amber-50/40 px-2 py-1 text-xs text-zinc-700 dark:bg-amber-950/20 dark:text-amber-200">
                                 <option value="">ເຫດຜລ (ຖ້າຈ່າຍບໍ່ຄົບ)…</option>
@@ -704,7 +704,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
           <div className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 px-4 py-3 backdrop-blur md:left-64 dark:border-zinc-800 dark:bg-zinc-950/95">
             <div className="flex w-full items-center justify-between gap-3">
               <span className="text-sm font-bold text-zinc-600 dark:text-zinc-300">
-                {totalNeeded > 0 ? `${totalScanned}/${totalNeeded} ຍິງແລ້ວ` : " พร้อมจ่าย"}{shortItems.length > 0 ? " · ຈ່າຍບໍ່ຄົບ" : ""}
+                {totalNeeded > 0 ? `${totalScanned}/${totalNeeded} ຍິງແລ້ວ` : " ພ້ອມຈ່າຍ"}{shortItems.length > 0 ? " · ຈ່າຍບໍ່ຄົບ" : ""}
                 {Object.keys(moves).length > 0 && (
                   <span className="ml-2 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
                     ແກ້ location {Object.keys(moves).length} ລາຍການ — ໃບ pick ຈະອັບເດດຕອນບັນທຶກ

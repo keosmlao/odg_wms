@@ -72,8 +72,8 @@ function parsedQty(raw: string): number | null {
 // PO receipts go through the count-sheet flow; this wizard handles the rest.
 const DOC_TYPES = [
   { value: "transfer", label: "ໃບໂອນ" },
-  { value: "sales_return", label: "ຮັບคืนขาย" },
-  { value: "issue_return", label: "ຮັບคืนเบิก" },
+  { value: "sales_return", label: "ຮັບຄືນຂາຍ" },
+  { value: "issue_return", label: "ຮັບຄືນເບີກ" },
 ] as const;
 
 export default function ReceiveClient({ warehouses, initialSearch = "", initialType = "" }: { warehouses: WarehouseOption[]; initialSearch?: string; initialType?: string }) {
@@ -463,14 +463,14 @@ export default function ReceiveClient({ warehouses, initialSearch = "", initialT
           {pos.length === 0 ? (
             <div className="rounded-xl border border-dashed border-zinc-200 py-12 text-center dark:border-zinc-800">
               <PackageIcon className="mx-auto h-7 w-7 text-zinc-300 dark:text-zinc-600" />
-              <p className="mt-2 text-xs font-semibold text-zinc-500">{loadingPending ? "ກຳລັງໂຫຼດ..." : 'ກົດ "ໂຫຼດເອກະສານຄ້າງຮັບ" ເພື່ອเริ่ม'}</p>
+              <p className="mt-2 text-xs font-semibold text-zinc-500">{loadingPending ? "ກຳລັງໂຫຼດ..." : 'ກົດ "ໂຫຼດເອກະສານຄ້າງຮັບ" ເພື່ອເລີ່ມ'}</p>
             </div>
           ) : (
             <div className="space-y-2.5">
               <div className="flex items-center justify-between px-1">
                 <span className="text-xs text-zinc-500 dark:text-zinc-400">ພົບ {pos.length} ໃບ{docLabel}ຄ້າງຮັບ</span>
                 <button type="button" onClick={() => loadPending(true)} disabled={loadingPending} className="text-xs font-semibold text-emerald-600 hover:underline disabled:opacity-50 dark:text-emerald-400">
-                  ↻ ໂຫຼດສด (ล่าสุดจาก ERP)
+                  ↻ ໂຫຼດສົດ (ລ່າສຸດຈາກ ERP)
                 </button>
               </div>
               {poGroups.map((grp) => (

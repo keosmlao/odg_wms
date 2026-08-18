@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງ (ຕົ້ນທາງ/ປາຍທາງ)" }, { status: 403 });
   }
   if (toWh === wh && !toRack && !toLoc) {
-    return NextResponse.json({ error: "ກະລຸນາเลือกปลายทาง (ສาง / rack / location)" }, { status: 400 });
+    return NextResponse.json({ error: "ກະລຸນາເລືອກປາຍທາງ (ສາງ / rack / location)" }, { status: 400 });
   }
 
   const user = session.employee_code;
@@ -203,7 +203,7 @@ export async function POST(request: Request) {
     );
 
     await client.query("COMMIT");
-    const toLabel = `${toWh}${[toRack, toLoc].filter(Boolean).length ? " · " + [toRack, toLoc].filter(Boolean).join(" / ") : " (ສาง)"}`;
+    const toLabel = `${toWh}${[toRack, toLoc].filter(Boolean).length ? " · " + [toRack, toLoc].filter(Boolean).join(" / ") : " (ສາງ)"}`;
     return NextResponse.json({ ok: true, doc_no: docNo, items: items.length, serials: moveSerials ? serials.length : 0, serials_kept: moveSerials ? 0 : serials.length, to: toLabel });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});

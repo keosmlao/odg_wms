@@ -68,7 +68,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "flag ບໍ່ຖືກຕ້ອງ" }, { status: 400 });
   }
   if (typeof body.value !== "boolean") {
-    return NextResponse.json({ error: "ຕ້ອງระบุ value (true/false)" }, { status: 400 });
+    return NextResponse.json({ error: "ຕ້ອງລະບຸ value (true/false)" }, { status: 400 });
   }
 
   let codes: string[];
@@ -79,7 +79,7 @@ export async function PATCH(request: Request) {
   } else if (Array.isArray(body.codes)) {
     codes = body.codes.filter((c): c is string => typeof c === "string" && c.length > 0);
   } else {
-    return NextResponse.json({ error: "ຕ້ອງระบุ codes[] ຫຼື all:true" }, { status: 400 });
+    return NextResponse.json({ error: "ຕ້ອງລະບຸ codes[] ຫຼື all:true" }, { status: 400 });
   }
 
   const updated = await setManyWarehousesSnFlag(

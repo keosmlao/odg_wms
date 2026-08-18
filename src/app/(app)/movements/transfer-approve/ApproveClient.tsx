@@ -51,7 +51,7 @@ export default function ApproveClient() {
   };
 
   const act = async (doc: string, action: "approve" | "reject") => {
-    if (action === "reject" && !confirm(`ປฏิเสธ ໃບຂໍໂອນ ${doc}?`)) return;
+    if (action === "reject" && !confirm(`ປະຕິເສດ ໃບຂໍໂອນ ${doc}?`)) return;
     setBusy(doc); setMsg(null);
     try {
       const r = await fetch("/api/movements/transfer-approve", {
@@ -60,7 +60,7 @@ export default function ApproveClient() {
       });
       const j = await r.json();
       if (!r.ok) { setMsg({ tone: "err", text: j.error || "ບໍ່ສຳເລັດ" }); setBusy(null); return; }
-      setMsg({ tone: "ok", text: action === "approve" ? `ອະນຸມັດ ${doc} ແລ້ວ` : `ປฏิเสธ ${doc} ແລ້ວ` });
+      setMsg({ tone: "ok", text: action === "approve" ? `ອະນຸມັດ ${doc} ແລ້ວ` : `ປະຕິເສດ ${doc} ແລ້ວ` });
       await load();
     } catch (e) { setMsg({ tone: "err", text: e instanceof Error ? e.message : "ບໍ່ສຳເລັດ" }); }
     setBusy(null);
@@ -95,10 +95,10 @@ export default function ApproveClient() {
                   <span className="font-mono text-sm font-bold text-brand-600">{d.doc_no}</span>
                   <span className="text-[11px] text-slate-400">{d.doc_date} {d.doc_time}</span>
                   <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">ລໍຖ້າອະນຸມັດ</span>
-                  {overdue && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">ຕ້ອງการ {d.want_date}</span>}
+                  {overdue && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">ຕ້ອງການ {d.want_date}</span>}
                 </div>
                 <div className="mt-0.5 text-xs text-slate-500">
-                  ຈาก <b>{d.wh_from_name ?? d.wh_from}</b> → ຜູ້ຂໍ <b>{d.wh_to_name ?? d.wh_to}</b>{d.remark ? ` · ${d.remark}` : ""}
+                  ຈາກ <b>{d.wh_from_name ?? d.wh_from}</b> → ຜູ້ຂໍ <b>{d.wh_to_name ?? d.wh_to}</b>{d.remark ? ` · ${d.remark}` : ""}
                 </div>
               </div>
               <div className="shrink-0 text-right text-[11px] text-slate-500">{d.line_count} ລາຍການ · {Number.parseFloat(d.req_qty)}</div>
@@ -109,7 +109,7 @@ export default function ApproveClient() {
                   <div className="py-4 text-center text-xs text-slate-400">ກຳລັງໂຫລດ…</div>
                 ) : (
                   <table className="w-full text-sm">
-                    <thead><tr className="bg-slate-50 text-left text-[10px] font-semibold uppercase text-slate-500"><th className="px-4 py-2">ສິນຄ້າ</th><th className="px-4 py-2 text-right">ຂໍ</th><th className="px-4 py-2 text-right">ມີໃນສາງ</th><th className="px-4 py-2 text-right">ພร้อม?</th></tr></thead>
+                    <thead><tr className="bg-slate-50 text-left text-[10px] font-semibold uppercase text-slate-500"><th className="px-4 py-2">ສິນຄ້າ</th><th className="px-4 py-2 text-right">ຂໍ</th><th className="px-4 py-2 text-right">ມີໃນສາງ</th><th className="px-4 py-2 text-right">ພ້ອມ?</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">
                       {detail[d.doc_no].map((ln) => {
                         const req = Number.parseFloat(ln.req_qty) || 0, av = Number.parseFloat(ln.available) || 0;
@@ -128,7 +128,7 @@ export default function ApproveClient() {
                 )}
                 <div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-3">
                   <button disabled={busy === d.doc_no} onClick={() => act(d.doc_no, "reject")}
-                    className="rounded-lg bg-rose-50 px-4 py-2 text-sm font-bold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-100 disabled:opacity-50 cursor-pointer">ປฏิเสธ</button>
+                    className="rounded-lg bg-rose-50 px-4 py-2 text-sm font-bold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-100 disabled:opacity-50 cursor-pointer">ປະຕິເສດ</button>
                   <button disabled={busy === d.doc_no} onClick={() => act(d.doc_no, "approve")}
                     className="rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 px-5 py-2 text-sm font-bold text-white shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer">
                     {busy === d.doc_no ? "…" : "✓ ອະນຸມັດ"}

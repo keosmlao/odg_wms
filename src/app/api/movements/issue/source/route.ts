@@ -96,7 +96,7 @@ export async function GET(request: Request) {
          AND w.calc_flag = -1 AND w.wh_code <> '9903'
        GROUP BY w.item_code
      ),
-     -- ໃບສັ່ງຈ່າຍ (pick) ທີ່ສ້າງແລ້ວ ລໍຖ້າຢືນຢັນ (status 0) — ຫักออกจากค้าง
+     -- ໃບສັ່ງຈ່າຍ (pick) ທີ່ສ້າງແລ້ວ ລໍຖ້າຢືນຢັນ (status 0) — ຫັກອອກຈາກຄ້າງ
      -- ໃບຖ້ຽວ (1 ໃບ ຫຼາຍບິນ) ເກັບບິນຕົ້ນທາງໄວ້ລະດັບແຖວ → ໃຊ້ d.ref_doc_no ກ່ອນ.
      pending AS (
        SELECT d.item_code, SUM(d.qty) AS pend_qty

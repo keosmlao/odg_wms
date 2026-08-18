@@ -117,7 +117,7 @@ export default function AdjustSerialModal({
     const local = serials.find((s) => idOf(s).toUpperCase() === code.toUpperCase() || norm(s.sn).toUpperCase() === code.toUpperCase());
     if (local) {
       addCode(idOf(local), false);
-      flash("ok", `+ ${idOf(local)} (ຈาก ${locLabel(local)})`);
+      flash("ok", `+ ${idOf(local)} (ຈາກ ${locLabel(local)})`);
       setTimeout(() => scanRef.current?.focus(), 30);
       return;
     }
@@ -128,7 +128,7 @@ export default function AdjustSerialModal({
       const data = (await res.json()) as { found?: boolean; isn?: string | null; in_stock?: boolean };
       if (data.found) {
         addCode(data.isn ?? code, false);
-        flash("ok", `+ ${data.isn ?? code} (ມີໃນລະບบ${data.in_stock ? "" : " · ເຄີຍຈ່າຍ"})`);
+        flash("ok", `+ ${data.isn ?? code} (ມີໃນລະບົບ${data.in_stock ? "" : " · ເຄີຍຈ່າຍ"})`);
         setTimeout(() => scanRef.current?.focus(), 30);
       } else {
         setPendingNew(code);
@@ -162,7 +162,7 @@ export default function AdjustSerialModal({
             <div className="truncate text-xs text-zinc-500">{item.item_name} · ບ່ອນເລືອກ: <span className="font-mono">{locLabel({ rack, location, pallet })}</span></div>
           </div>
           <div className="shrink-0 text-right">
-            <div className="text-[10px] uppercase text-zinc-400">ຍอด {item.before} → <b className={delta > 0 ? "text-emerald-600" : delta < 0 ? "text-rose-600" : "text-zinc-500"}>{after}</b></div>
+            <div className="text-[10px] uppercase text-zinc-400">ຍອດ {item.before} → <b className={delta > 0 ? "text-emerald-600" : delta < 0 ? "text-rose-600" : "text-zinc-500"}>{after}</b></div>
             <div className={`font-mono text-sm font-bold ${delta > 0 ? "text-emerald-600 dark:text-emerald-400" : delta < 0 ? "text-rose-600 dark:text-rose-400" : "text-zinc-400"}`}>{delta > 0 ? "+" : ""}{delta}</div>
           </div>
         </div>

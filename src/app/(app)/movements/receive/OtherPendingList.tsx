@@ -27,8 +27,8 @@ type OtherRow = {
 
 const TYPE_LABEL: Record<OtherRow["type"], string> = {
   transfer: "ໃບໂອນ",
-  sales_return: "ຮັບคืนขาย",
-  issue_return: "ຮັບคืนเบิก",
+  sales_return: "ຮັບຄືນຂາຍ",
+  issue_return: "ຮັບຄືນເບີກ",
 };
 
 // Pending transfer (72) + sales/issue returns (48/58) not yet received into WMS.
@@ -92,7 +92,7 @@ async function getOtherItems(docNos: string[]): Promise<OtherItem[]> {
   );
 }
 
-/** ໂອນ / ຮັບคืน ຄ້າງຮັບ — direct receive (no count sheet). */
+/** ໂອນ / ຮັບຄືນ ຄ້າງຮັບ — direct receive (no count sheet). */
 export default async function OtherPendingList({ session, params }: { session: Session; params: SearchParams }) {
   const accessible = accessibleWarehouses(session);
   if (Array.isArray(accessible) && accessible.length === 0) return null;

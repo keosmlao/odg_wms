@@ -2214,7 +2214,7 @@ function RackElevationView({
                 <span className="text-[10px] font-semibold text-zinc-400">
                   {selectedLocCode
                     ? `ເລືອກ ${selectedLocCode}`
-                    : "ກົດ Location ໃດ ເພື່ອเບິ່ງสินค้า"}
+                    : "ກົດ Location ໃດ ເພື່ອເບິ່ງສິນຄ້າ"}
                 </span>
               </div>
 

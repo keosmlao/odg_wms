@@ -177,7 +177,7 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ doc: st
       [docNo],
     );
     if (hdr.rows.length === 0) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ພົບໃບ pending" }, { status: 404 }); }
-    if ((hdr.rows[0].status ?? 0) !== 0) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ໃບนี้ບໍ່ແມ່ນ pending (ອາจຢືນຢັນแล้ว)" }, { status: 400 }); }
+    if ((hdr.rows[0].status ?? 0) !== 0) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ໃບນີ້ບໍ່ແມ່ນ pending (ອາດຢືນຢັນແລ້ວ)" }, { status: 400 }); }
     const accessible = accessibleWarehouses(session);
     if (Array.isArray(accessible) && hdr.rows[0].warehouse_code && !accessible.includes(hdr.rows[0].warehouse_code)) {
       await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
@@ -218,10 +218,10 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ doc: stri
       `SELECT warehouse_code, status FROM public.wms_product_out WHERE doc_no = $1 FOR UPDATE`, [docNo],
     )).rows[0];
     if (!hdr) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ພົບໃບ pick" }, { status: 404 }); }
-    if ((hdr.status ?? 0) !== 0) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ໃບนี้ ຢືນຢັນไปแล้ว" }, { status: 400 }); }
+    if ((hdr.status ?? 0) !== 0) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ໃບນີ້ ຢືນຢັນໄປແລ້ວ" }, { status: 400 }); }
     const accessible = accessibleWarehouses(session);
     if (Array.isArray(accessible) && hdr.warehouse_code && !accessible.includes(hdr.warehouse_code)) {
-      await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າเຖິງສาງนี้" }, { status: 403 });
+      await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
     }
     await client.query(`DELETE FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1 AND item_code = $2`, [docNo, removeItem]);
     await client.query(`DELETE FROM public.wms_product_out_detail WHERE doc_no = $1 AND item_code = $2`, [docNo, removeItem]);
@@ -292,7 +292,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       )
     ).rows[0];
     if (!hdr) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ພົບໃບ pending" }, { status: 404 }); }
-    if ((hdr.status ?? 0) !== 0) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ໃບนี้ ຢືນຢັນไปแล้ว" }, { status: 400 }); }
+    if ((hdr.status ?? 0) !== 0) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ໃບນີ້ ຢືນຢັນໄປແລ້ວ" }, { status: 400 }); }
     const wh = hdr.warehouse_code ?? "";
     const accessible = accessibleWarehouses(session);
     if (Array.isArray(accessible) && (!wh || !accessible.includes(wh))) {
@@ -378,7 +378,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
     const badScan = scannedArr.filter((s) => !validById.has(s) || !docItems.has(validById.get(s)!));
     if (badScan.length > 0) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: `ISN ບໍ່ຖືກຕ້ອງ / ບໍ່ມີໃນ stock ຫຼື ບໍ່ແມ່ນຂອງໃບนี้: ${badScan.join(", ")}` }, { status: 400 });
+      return NextResponse.json({ error: `ISN ບໍ່ຖືກຕ້ອງ / ບໍ່ມີໃນ stock ຫຼື ບໍ່ແມ່ນຂອງໃບນີ້: ${badScan.join(", ")}` }, { status: 400 });
     }
     // Group actual scanned serials per item.
     const scannedByItem: Record<string, string[]> = {};
@@ -399,11 +399,11 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
         return NextResponse.json({ error: `ສິນຄ້າ ${item}: ຍິງ ${got} ເກີນ ${need}` }, { status: 400 });
       }
       if (got < need) {
-        // Short pick allowed ONLY with a reason (ของหาย/ชำรุด/ฯลฯ).
+        // Short pick allowed ONLY with a reason (ສູນຫາຍ / ຊຳລຸດ / ອື່ນໆ).
         const reason = reasonByItem.get(item);
         if (!reason) {
           await client.query("ROLLBACK");
-          return NextResponse.json({ error: `ສິນຄ້າ ${item}: ຍິງ ${got} / ${need} — ບໍ່ຄົບ ຕ້ອງເລືອກເຫດผล` }, { status: 400 });
+          return NextResponse.json({ error: `ສິນຄ້າ ${item}: ຍິງ ${got} / ${need} — ບໍ່ຄົບ ຕ້ອງເລືອກເຫດຜົນ` }, { status: 400 });
         }
         shortNotes.push({ item_code: item, reason_code: reason, short_qty: need - got });
       }

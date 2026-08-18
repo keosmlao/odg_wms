@@ -20,7 +20,7 @@ function statusOf(d: ReqDoc): StatusInfo {
   const amber = "bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300";
   // Approval gate first (ic_trans.status): 0 = awaiting approval, 2 = rejected.
   if ((d.status ?? 0) === 0) return { key: "await", label: "ລໍຖ້າອະນຸມັດ", cls: amber };
-  if ((d.status ?? 0) === 2) return { key: "rejected", label: "ຖືກປฏิเสธ", cls: "bg-rose-50 text-rose-600 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300" };
+  if ((d.status ?? 0) === 2) return { key: "rejected", label: "ຖືກປະຕິເສດ", cls: "bg-rose-50 text-rose-600 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300" };
   if (req > 0 && rcv + 1e-6 >= req) return { key: "done", label: "ຮັບຄົບ ✓", cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300" };
   if (inT > 0.0001) return { key: "transit", label: "ຄ້າງລະຫວ່າງທາງ", cls: amber };
   if (rcv > 0.0001) return { key: "partial", label: "ຮັບບາງສ່ວນ", cls: "bg-aqua-50 text-aqua-700 ring-1 ring-aqua-200 dark:bg-aqua-950/40 dark:text-aqua-300" };
@@ -182,7 +182,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
   async function submit() {
     if (!whFrom || !whTo) { showToast("err", "ເລືອກສາງຕົ້ນທາງ + ປາຍທາງ"); return; }
     const ready = lines.filter((l) => (Number.parseFloat(l.qty) || 0) > 0);
-    if (ready.length === 0) { showToast("err", "ກະລຸນາเพิ่มสินค้า"); return; }
+    if (ready.length === 0) { showToast("err", "ກະລຸນາເພີ່ມສິນຄ້າ"); return; }
     setSubmitting(true);
     try {
       const payloadLines = ready.map((l) => ({ item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: Number.parseFloat(l.qty), shelf_from: l.shelfFrom || null, shelf_to: l.shelfTo || null }));
@@ -205,7 +205,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
   const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
   const labelCls = "mb-1 block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400";
 
-  // "ຈ່າຍແລ້ວ" = ຖูกดึงไปออกใบสั่งจ่าย (pending draft) ຫຼື finalize (DP) ແລ້ວ.
+  // "ຈ່າຍແລ້ວ" = ຖືກດຶງໄປອອກໃບສັ່ງຈ່າຍ (pending draft) ຫຼື finalize (DP) ແລ້ວ.
   const isDone = (d: ReqDoc) => statusOf(d).key === "done";
   const counts = { all: docs.length, pending: docs.filter((d) => !isDone(d)).length, done: docs.filter(isDone).length };
   const filtered = docs.filter((d) => statusTab === "all" || (statusTab === "done" ? isDone(d) : !isDone(d)));
@@ -246,7 +246,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
         ) : filtered.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-200 py-12 text-center dark:border-zinc-800">
             <p className="text-sm font-semibold text-zinc-500">ບໍ່ມີໃບຂໍໂອນ{statusTab === "pending" ? " ລໍຖ້າຈ່າຍ" : statusTab === "done" ? " ທີ່ຈ່າຍແລ້ວ" : ""}</p>
-            <p className="mt-1 text-xs text-zinc-400">ກົດ &quot;ສ້າງໃບຂໍໂອນ&quot; ເພື່ອเริ่ม</p>
+            <p className="mt-1 text-xs text-zinc-400">ກົດ &quot;ສ້າງໃບຂໍໂອນ&quot; ເພື່ອເລີ່ມ</p>
           </div>
         ) : (
           <div className="space-y-7">
@@ -288,7 +288,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
                         <div className="py-4 text-center text-xs text-zinc-400">ກຳລັງໂຫຼດ...</div>
                       ) : (
                         <table className="w-full text-sm">
-                          <thead><tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase text-zinc-500 dark:bg-zinc-800/50"><th className="px-4 py-2">ສິນຄ້າ</th><th className="px-4 py-2 text-right">ຂໍ</th><th className="px-4 py-2 text-right">ຈ່າຍແລ້ວ</th><th className="px-4 py-2 text-right">ຄ້າງທາງ</th><th className="px-4 py-2 text-right">ຮັບແລ້ວ</th><th className="px-4 py-2 text-right">ຍັງเหลือ</th></tr></thead>
+                          <thead><tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase text-zinc-500 dark:bg-zinc-800/50"><th className="px-4 py-2">ສິນຄ້າ</th><th className="px-4 py-2 text-right">ຂໍ</th><th className="px-4 py-2 text-right">ຈ່າຍແລ້ວ</th><th className="px-4 py-2 text-right">ຄ້າງທາງ</th><th className="px-4 py-2 text-right">ຮັບແລ້ວ</th><th className="px-4 py-2 text-right">ຍັງເຫຼືອ</th></tr></thead>
                           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                             {detailByDoc[d.doc_no].map((ln) => {
                               const rem = Number.parseFloat(ln.remaining) || 0;
@@ -349,7 +349,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
 
   return (
     <div className="space-y-4">
-      <button type="button" onClick={() => { setMode("list"); setEditDoc(null); }} className="text-sm font-semibold text-zinc-500 hover:text-zinc-700">← ກັບໄປລາຍการ</button>
+      <button type="button" onClick={() => { setMode("list"); setEditDoc(null); }} className="text-sm font-semibold text-zinc-500 hover:text-zinc-700">← ກັບໄປລາຍການ</button>
       <section className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         {/* Read-only header: doc_no / date / requester */}
         <div className="mb-3 grid gap-3 rounded-xl bg-zinc-50/60 p-3 sm:grid-cols-3 dark:bg-zinc-950/30">
@@ -373,12 +373,12 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
-            <label className={labelCls}>ວັນທີ່ຕ້ອງการรับสินค้า</label>
+            <label className={labelCls}>ວັນທີ່ຕ້ອງການຮັບສິນຄ້າ</label>
             <input type="date" value={wantDate} min={today} onChange={(e) => setWantDate(e.target.value)} className={`${inputCls} w-full`} />
           </div>
           <div>
-            <label className={labelCls}>ໝາຍເຫດ / ເຫດผล</label>
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="ເຊັ່ນ: ຂໍໂອນเครื่องมือ..." className={`${inputCls} w-full`} />
+            <label className={labelCls}>ໝາຍເຫດ / ເຫດຜົນ</label>
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="ເຊັ່ນ: ຂໍໂອນເຄື່ອງມື..." className={`${inputCls} w-full`} />
           </div>
         </div>
       </section>
@@ -387,7 +387,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
         <section className="shadow-card rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
           <div className="relative mb-4">
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-            <input ref={searchRef} type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ຄົ້ນຫາ ສິນຄ້າ ທີ່ຈะຂໍ (จากสาง source)..." className={`${inputCls} w-full pl-9`} />
+            <input ref={searchRef} type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ຄົ້ນຫາ ສິນຄ້າ ທີ່ຈະຂໍ (ຈາກສາງ source)..." className={`${inputCls} w-full pl-9`} />
             {hits.length > 0 && (
               <div className="absolute inset-x-0 top-[calc(100%+0.3rem)] z-30 max-h-72 overflow-auto rounded-xl bg-white p-1 shadow-2xl ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
                 {hits.map((h) => (

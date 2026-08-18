@@ -143,7 +143,7 @@ export default async function SerialsPage({ searchParams }: { searchParams: Prom
   const statusTabs = [
     { key: "instock", label: "ຄົງເຫຼືອ" },
     { key: "issued", label: "ຈ່າຍອອກ" },
-    { key: "all", label: "ທັງໝົด" },
+    { key: "all", label: "ທັງໝົດ" },
   ];
 
   return (
@@ -214,7 +214,7 @@ export default async function SerialsPage({ searchParams }: { searchParams: Prom
           itemRows.length === 0 ? (
             <Empty
               title="ບໍ່ພົບສິນຄ້າທີ່ມີ serial"
-              sub={status === "instock" ? "ບາງ serial ອາດຈ່າຍອອກໝົດແລ້ວ — ລອງ tab “ທັງໝົด”" : "ລອງປ່ຽນສາງ ຫຼື ຄຳຄົ້ນຫາ"}
+              sub={status === "instock" ? "ບາງ serial ອາດຈ່າຍອອກໝົດແລ້ວ — ລອງ tab “ທັງໝົດ”" : "ລອງປ່ຽນສາງ ຫຼື ຄຳຄົ້ນຫາ"}
             />
           ) : (
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -250,7 +250,7 @@ export default async function SerialsPage({ searchParams }: { searchParams: Prom
           !q && !wh ? (
             <Empty title="ສະແກນ ຫຼື ພິມ ເພື່ອຄົ້ນຫາ serial" sub="ໃສ່ serial, ລະຫັດ/ຊື່ສິນຄ້າ ຫຼື ເລືອກສາງ" />
           ) : searchRows.length === 0 ? (
-            <Empty title="ບໍ່ພົບ serial" sub={status === "instock" ? "ລອງ tab “ທັງໝົด” (ອາດຈ່າຍອອກແລ້ວ) ຫຼື ປ່ຽນຄຳຄົ້ນຫາ" : "ລອງປ່ຽນຄຳຄົ້ນຫາ"} />
+            <Empty title="ບໍ່ພົບ serial" sub={status === "instock" ? "ລອງ tab “ທັງໝົດ” (ອາດຈ່າຍອອກແລ້ວ) ຫຼື ປ່ຽນຄຳຄົ້ນຫາ" : "ລອງປ່ຽນຄຳຄົ້ນຫາ"} />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

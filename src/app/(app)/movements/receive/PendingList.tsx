@@ -212,7 +212,7 @@ export default async function PendingList({
 
   return (
     <div className="space-y-4">
-      {/* Header — same layout as goods-issue: ເລືອກສາງ (ซ้าย) · tabs (ขวา) · ค้นหา (แถวล่าง) */}
+      {/* Header — same layout as goods-issue: ເລືອກສາງ (ຊ້າຍ) · tabs (ຂວາ) · ຄົ້ນຫາ (ແຖວລຸ່ມ) */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <WhSelect value={selWh} options={whList} />
         <div className="inline-flex h-11 items-center rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800/60">

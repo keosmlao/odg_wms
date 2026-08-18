@@ -97,7 +97,7 @@ export default async function ReceivePage({
           })}
         </div>
 
-        {/* ປະຫวัด — ghost */}
+        {/* ປະຫວັດ — ghost */}
         <Link
           href="/movements/receive?tab=history"
           className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${

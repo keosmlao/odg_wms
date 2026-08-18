@@ -6,7 +6,7 @@ import { saveMoveNotes } from "@/lib/moveReasons";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 
 /**
- * Sale return (ຮັບคืนจากลูกค้า) — WMS-stock-only. Books the returned goods back
+ * Sale return (ຮັບຄືນຈາກລູກຄ້າ) — WMS-stock-only. Books the returned goods back
  * into a warehouse location (odg_wms_trans +1) and flips any matching serials
  * back to in-stock. Deliberately does NOT post the ERP credit note (flag 48) nor
  * touch ic_inventory — the financial CN (VAT/AR) is created in SmartBiz. The DP
@@ -14,7 +14,7 @@ import { warehouseSnEnabled } from "@/lib/warehouseConfig";
  *
  * POST { wh, cust_code?, ref_invoice?, location?, reason?, lines:[{item_code, item_name, unit_code, qty, location?, serials?}] }
  */
-const RETURN_FLAG = 48; // ໃບຮັບคืนขาย (credit note) — used as the WMS ledger marker
+const RETURN_FLAG = 48; // ໃບຮັບຄືນຂາຍ (credit note) — used as the WMS ledger marker
 
 function str(v: unknown): string { return typeof v === "string" ? v.trim() : ""; }
 function num(v: unknown): number | null {
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   const accessible = accessibleWarehouses(session);
   if (Array.isArray(accessible) && !accessible.includes(wh)) return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
 
-  if (!Array.isArray(body.lines) || body.lines.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການຮັບคืน" }, { status: 400 });
+  if (!Array.isArray(body.lines) || body.lines.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການຮັບຄືນ" }, { status: 400 });
   // Per-warehouse policy: when the RETURN menu has SN off, return stock only.
   const snOn = await warehouseSnEnabled(wh, "return");
   const lines: { item_code: string; item_name: string | null; unit_code: string | null; qty: number; location: string | null; serials: string[] }[] = [];
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     const serials = snOn && Array.isArray(raw.serials) ? (raw.serials as unknown[]).map(str).filter(Boolean) : [];
     lines.push({ item_code, item_name: str(raw.item_name) || null, unit_code: str(raw.unit_code) || null, qty, location: str(raw.location) || docLoc, serials });
   }
-  if (lines.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການຮັບคืน" }, { status: 400 });
+  if (lines.length === 0) return NextResponse.json({ error: "ບໍ່ມີລາຍການຮັບຄືນ" }, { status: 400 });
 
   const client = await pool.connect();
   try {
