@@ -20,6 +20,10 @@
 # production
 /build
 
+# uploaded files (defect photos) — the DB stores only the filename, the bytes
+# live here. Created on first upload; never committed.
+/uploads/
+
 # misc
 .DS_Store
 *.pem
@@ -39,3 +43,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ISN type-digit work — planned, on hold pending sign-off. Not part of the repo
+# until the plan is approved.
+/migrations/027_sn_type_and_isn_log.sql
+/docs/isn-analysis.html
