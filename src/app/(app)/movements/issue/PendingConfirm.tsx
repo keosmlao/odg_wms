@@ -17,15 +17,11 @@ type DraftDoc = {
 type Unit = { sn: string | null; isn: string | null; rack: string; location: string; pallet: string };
 /** A bin in this warehouse that still holds the item — a re-point target. */
 type LocOption = { rack: string; location: string; pallet: string; qty: string; sn_qty: number };
-<<<<<<< HEAD
 /** erp_department_list — chosen fresh at every trans_flag=56 confirm. */
 type DeptOption = { code: string; name: string | null };
 /** erp_doc_format (screen_code 'IO'), filtered to the 122 request's own branch. */
 type DocFormatOption = { code: string; name: string | null; format: string | null; branch: string | null };
-type DraftLine = { roworder: number; item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; serials: string[]; units?: Unit[]; loc_options?: LocOption[]; serial_required?: boolean; dual_required?: boolean };
-=======
 type DraftLine = { roworder: number; item_code: string; item_name: string | null; unit_code: string | null; qty: string; rack: string; location: string; pallet: string; /** ບິນຕົ້ນທາງຂອງແຖວ (ໃບຖ້ຽວ: 1 ໃບ ຫຼາຍບິນ). */ ref_doc_no?: string | null; serials: string[]; units?: Unit[]; loc_options?: LocOption[]; serial_required?: boolean; dual_required?: boolean };
->>>>>>> efc01027f3afc51e1e035d7b5d4bf2a26404ca3c
 /** Where a line's goods were actually taken from, when it differs from the plan. */
 type NodeRef = { rack: string; location: string; pallet: string };
 /** One entry in the confirm-step audit trail (odg_wms_pick_scan_log). */

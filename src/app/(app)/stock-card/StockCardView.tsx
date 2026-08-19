@@ -27,7 +27,7 @@ type Breakdown = {
   nodes: NodeRow[]; entries: EntryRow[];
 };
 
-const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
 /** Negative stock is a real state here (see the API note on why no over-issue
  *  check exists) — it must read as a warning, not as an ordinary number. */
@@ -140,7 +140,7 @@ export default function StockCardView({ warehouses }: { warehouses: WarehouseOpt
             ເຊື່ອງລາຍການທີ່ຄົງເຫຼືອ = 0
           </label>
           <button type="button" onClick={() => void load()} disabled={!wh || loading}
-            className="rounded-lg bg-gradient-to-r from-indigo-500 to-blue-600 px-5 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-50">
+            className="rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-5 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-50">
             {loading ? "ກຳລັງໂຫຼດ..." : "ສະແດງ"}
           </button>
         </div>
@@ -148,11 +148,11 @@ export default function StockCardView({ warehouses }: { warehouses: WarehouseOpt
 
       {totals && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <KpiCard icon={<PackageIcon className="h-4 w-4" />} label="ລາຍການ" value={String(totals.items)} tone="indigo" compact />
+          <KpiCard icon={<PackageIcon className="h-4 w-4" />} label="ລາຍການ" value={String(totals.items)} tone="brand" compact />
           <KpiCard icon={<LayersIcon className="h-4 w-4" />} label="ຍອດຕັ້ງຕົ້ນ" value={fmtQty(totals.opening)} tone="neutral" compact />
           <KpiCard icon={<TrendIcon className="h-4 w-4" />} label="ຂາເຂົ້າ" value={`+${fmtQty(totals.in_qty)}`} tone="emerald" compact />
           <KpiCard icon={<TrendIcon className="h-4 w-4" />} label="ຂາອອກ" value={`−${fmtQty(totals.out_qty)}`} tone="red" compact />
-          <KpiCard icon={<PackageIcon className="h-4 w-4" />} label="ຄົງເຫຼືອ" value={fmtQty(totals.remaining)} tone="blue" highlight compact />
+          <KpiCard icon={<PackageIcon className="h-4 w-4" />} label="ຄົງເຫຼືອ" value={fmtQty(totals.remaining)} tone="navy" highlight compact />
         </div>
       )}
 
@@ -183,12 +183,12 @@ export default function StockCardView({ warehouses }: { warehouses: WarehouseOpt
                   return (
                     <Fragment key={r.item_code}>
                       <tr onClick={() => void toggleItem(r.item_code)}
-                        className="cursor-pointer transition hover:bg-indigo-50/40 dark:hover:bg-indigo-950/10">
+                        className="cursor-pointer transition hover:bg-aqua-50/40 dark:hover:bg-aqua-950/10">
                         <td className="px-4 py-2">
                           <div className="flex items-center gap-1.5">
                             <span className={`shrink-0 text-zinc-400 transition-transform ${openItem === r.item_code ? "rotate-90" : ""}`}>›</span>
                             <span className="min-w-0">
-                              <span className="block font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{r.item_code}</span>
+                              <span className="block font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{r.item_code}</span>
                               <span className="block max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{r.item_name ?? "—"}</span>
                             </span>
                           </div>

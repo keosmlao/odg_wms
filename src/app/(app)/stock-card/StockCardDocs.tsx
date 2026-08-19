@@ -81,7 +81,7 @@ export default async function StockCardDocs({
           <summary className="flex cursor-pointer flex-wrap items-center gap-3 p-3.5">
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-sm font-bold text-indigo-600 dark:text-indigo-400">{d.doc_no}</span>
+                <span className="font-mono text-sm font-bold text-brand-600 dark:text-brand-400">{d.doc_no}</span>
                 <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{d.wh_code}{d.wh_name ? ` · ${d.wh_name}` : ""}</span>
                 <span className="text-[11px] text-zinc-400">{d.doc_date} {d.doc_time}</span>
               </span>
@@ -109,7 +109,7 @@ export default async function StockCardDocs({
                 {(byDoc.get(d.doc_no) ?? []).map((l, i) => (
                   <tr key={`${l.item_code}-${i}`}>
                     <td className={`px-4 py-2 text-xs font-bold ${l.calc_flag === 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{directionLabel(l.calc_flag)}</td>
-                    <td className="px-4 py-2 font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{l.item_code}</td>
+                    <td className="px-4 py-2 font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{l.item_code}</td>
                     <td className="px-4 py-2 max-w-sm truncate text-[13px] text-zinc-700 dark:text-zinc-300">{l.item_name ?? "—"}</td>
                     <td className="px-4 py-2 font-mono text-[11px] text-zinc-500">{l.rack_code ? `${l.rack_code}${l.location_code ? ` / ${l.location_code}` : ""}` : <span className="text-amber-600 dark:text-amber-400">ບໍ່ໄດ້ລະບຸ</span>}</td>
                     <td className={`px-4 py-2 text-right font-mono font-bold tabular-nums ${l.calc_flag === 1 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>

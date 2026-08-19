@@ -49,7 +49,7 @@ export default async function StockCardPage({ searchParams }: { searchParams: Pr
            WHERE code = ANY($1) ORDER BY code`, [accessible]);
 
   const tabBase = "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition";
-  const tabActive = "bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-md shadow-indigo-500/20";
+  const tabActive = "bg-gradient-to-r from-brand-500 to-aqua-600 text-white shadow-md shadow-brand-500/20";
   const tabIdle = "bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800";
   const link = (t: Tab, label: string, icon: React.ReactNode) => (
     <Link href={t === "card" ? "/stock-card" : `/stock-card?tab=${t}`} className={`${tabBase} ${tab === t ? tabActive : tabIdle}`}>
@@ -63,7 +63,7 @@ export default async function StockCardPage({ searchParams }: { searchParams: Pr
         title="ບັດສະຕັອກ (Stock card)"
         description="ຍອດຕັ້ງຕົ້ນ + ເຄື່ອນໄຫວເຂົ້າ-ອອກ = ຄົງເຫຼືອ · ບັນທຶກດ້ວຍມື ຮອດລະດັບ rack → location"
         icon={<LayersIcon className="h-6 w-6" />}
-        tone="indigo"
+        tone="brand"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
 

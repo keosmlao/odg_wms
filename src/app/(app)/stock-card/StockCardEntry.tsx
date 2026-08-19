@@ -18,7 +18,7 @@ type Line = {
   calc_flag: CalcFlag; qty: string; rack_code: string; location_code: string;
 };
 
-const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+const inputCls = "rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
 
 export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOption[] }) {
   const [wh, setWh] = useState(warehouses.length === 1 ? warehouses[0].code : "");
@@ -158,7 +158,7 @@ export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOp
         </div>
       )}
       {saved && (
-        <div className="flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-sm text-indigo-800 ring-1 ring-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300">
+        <div className="flex items-center gap-2 rounded-xl bg-brand-50 px-4 py-2.5 text-sm text-brand-800 ring-1 ring-brand-200 dark:bg-brand-950/30 dark:text-brand-300">
           <CheckIcon className="h-4 w-4" />
           ບັນທຶກເປັນໃບ <span className="font-mono font-bold">{saved.doc_no}</span> ({saved.lines} ລາຍການ)
         </div>
@@ -207,7 +207,7 @@ export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOp
             </div>
           </div>
           <button type="button" onClick={() => void search()} disabled={searching}
-            className="rounded-lg bg-gradient-to-r from-indigo-500 to-blue-600 px-5 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-50">
+            className="rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-5 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-50">
             {searching ? "ກຳລັງຄົ້ນຫາ..." : "ຄົ້ນຫາ"}
           </button>
         </div>
@@ -219,7 +219,7 @@ export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOp
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-xs text-zinc-500">
-                  ພົບ {hits.length} ລາຍການ · ເລືອກແລ້ວ <span className="font-bold text-indigo-600 dark:text-indigo-400">{picked.size}</span>
+                  ພົບ {hits.length} ລາຍການ · ເລືອກແລ້ວ <span className="font-bold text-brand-600 dark:text-brand-400">{picked.size}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => setPicked(new Set(hits.map((h) => h.item_code)))}
@@ -227,7 +227,7 @@ export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOp
                   <button type="button" onClick={() => setPicked(new Set())}
                     className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800">ລ້າງ</button>
                   <button type="button" onClick={addPicked} disabled={picked.size === 0}
-                    className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-40">
+                    className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-40">
                     <PlusIcon className="h-3.5 w-3.5" /> ເພີ່ມເຂົ້າລາຍການ
                   </button>
                 </div>
@@ -237,15 +237,15 @@ export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOp
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                     {hits.map((h) => (
                       <tr key={h.item_code} onClick={() => setPicked((p) => { const n = new Set(p); if (n.has(h.item_code)) n.delete(h.item_code); else n.add(h.item_code); return n; })}
-                        className={`cursor-pointer transition ${picked.has(h.item_code) ? "bg-indigo-50 dark:bg-indigo-950/20" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/40"}`}>
+                        className={`cursor-pointer transition ${picked.has(h.item_code) ? "bg-brand-50 dark:bg-brand-950/20" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/40"}`}>
                         <td className="w-10 px-3 py-2"><input type="checkbox" readOnly checked={picked.has(h.item_code)} className="h-4 w-4 rounded" /></td>
                         <td className="px-3 py-2">
-                          <span className="block font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{h.item_code}</span>
+                          <span className="block font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{h.item_code}</span>
                           <span className="block max-w-lg truncate text-[13px] text-zinc-700 dark:text-zinc-300">{h.item_name ?? "—"}</span>
                         </td>
                         <td className="px-3 py-2 text-[10px] text-zinc-400">{[h.group_main, h.item_brand, h.item_category].filter(Boolean).join(" · ")}</td>
                         <td className="px-3 py-2 text-right">
-                          {h.on_card && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">ມີໃນບັດແລ້ວ</span>}
+                          {h.on_card && <span className="rounded bg-aqua-50 px-1.5 py-0.5 text-[9px] font-bold text-aqua-800 dark:bg-aqua-950/40 dark:text-aqua-300">ມີໃນບັດແລ້ວ</span>}
                         </td>
                         <td className="px-3 py-2 text-[11px] text-zinc-400">{h.unit_code ?? "—"}</td>
                       </tr>
@@ -330,7 +330,7 @@ export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOp
                       </div>
                     </td>
                     <td className="px-4 py-2">
-                      <span className="block font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{l.item_code}</span>
+                      <span className="block font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{l.item_code}</span>
                       <span className="block max-w-xs truncate text-[13px] text-zinc-700 dark:text-zinc-300">{l.item_name ?? "—"}</span>
                     </td>
                     <td className="px-4 py-2">
@@ -372,7 +372,7 @@ export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOp
               placeholder="ເຫດຜົນ / ອ້າງອີງ …" className={`${inputCls} w-full`} />
           </div>
           <button type="button" onClick={() => void submit()} disabled={busy}
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-600 px-7 py-3 text-sm font-bold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-aqua-600 px-7 py-3 text-sm font-bold text-white shadow-md transition hover:shadow-lg disabled:opacity-50">
             <CheckIcon className="h-4 w-4" />
             {busy ? "ກຳລັງບັນທຶກ..." : `ບັນທຶກ ${lines.length} ລາຍການ`}
           </button>

@@ -242,14 +242,16 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ doc: stri
     if (Array.isArray(accessible) && hdr.warehouse_code && !accessible.includes(hdr.warehouse_code)) {
       await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າเຖິງສาງนี้" }, { status: 403 });
     }
-<<<<<<< HEAD
 
     if (removeItem) {
       await client.query(`DELETE FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1 AND item_code = $2`, [docNo, removeItem]);
       await client.query(`DELETE FROM public.wms_product_out_detail WHERE doc_no = $1 AND item_code = $2`, [docNo, removeItem]);
       const left = (await client.query<{ n: string }>(`SELECT count(*)::text AS n FROM public.wms_product_out_detail WHERE doc_no = $1`, [docNo])).rows[0];
       const emptied = (Number.parseInt(left?.n ?? "0", 10) || 0) === 0;
-      if (emptied) await client.query(`DELETE FROM public.wms_product_out WHERE doc_no = $1`, [docNo]);
+      if (emptied) {
+        await client.query(`DELETE FROM public.wms_product_out WHERE doc_no = $1`, [docNo]);
+        await client.query(`DELETE FROM public.wms_pick_trip WHERE doc_no = $1`, [docNo]);
+      }
       await client.query("COMMIT");
       return NextResponse.json({ ok: true, doc_no: docNo, emptied });
     }
@@ -304,16 +306,6 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ doc: stri
       [docNo, row.item_code, total],
     )).rows;
 
-=======
-    await client.query(`DELETE FROM public.wms_product_out_serial_detail WHERE ref_out_doc = $1 AND item_code = $2`, [docNo, removeItem]);
-    await client.query(`DELETE FROM public.wms_product_out_detail WHERE doc_no = $1 AND item_code = $2`, [docNo, removeItem]);
-    const left = (await client.query<{ n: string }>(`SELECT count(*)::text AS n FROM public.wms_product_out_detail WHERE doc_no = $1`, [docNo])).rows[0];
-    const emptied = (Number.parseInt(left?.n ?? "0", 10) || 0) === 0;
-    if (emptied) {
-      await client.query(`DELETE FROM public.wms_product_out WHERE doc_no = $1`, [docNo]);
-      await client.query(`DELETE FROM public.wms_pick_trip WHERE doc_no = $1`, [docNo]);
-    }
->>>>>>> efc01027f3afc51e1e035d7b5d4bf2a26404ca3c
     await client.query("COMMIT");
     return NextResponse.json({ ok: true, doc_no: docNo, qty: newQty, trimmed_serials: trimmed.map((r) => r.serial_number) });
   } catch (err) {
@@ -528,17 +520,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
     // ໜຶ່ງບິນ = ໜຶ່ງໃບຈ່າຍ ERP. ໃບປົກກະຕິມີກຸ່ມດຽວ (ref ຂອງ header) ຈຶ່ງເປັນ
     // ພຶດຕິກຳເກົ່າທຸກປະການ; ໃບຖ້ຽວຈະ post ຫຼາຍໃບພາຍໃນ transaction ດຽວ.
     const sourceType = SRC_TYPE[hdr.doc_type ?? 0] ?? "";
-<<<<<<< HEAD
+    // ໃບເບີກ (trans_flag=56) ຕ້ອງເລືອກພະແນກ ແລະ ຫົວເອກະສານທຸກຄັ້ງ — ກວດກ່ອນ
+    // ຈະ post ໃບໃດໜຶ່ງ, ບໍ່ດັ່ງນັ້ນບິນທຳອິດຈະຜ່ານແລ້ວບິນຕໍ່ໄປຈຶ່ງລົ້ມ.
     if (sourceType === "req" && (!erpFormat || !department)) {
       await client.query("ROLLBACK");
       return NextResponse.json({ error: "ກະລຸນາເລືອກພະແນກ ແລະ ຫົວເອກະສານເບີກ ກ່ອນຢືນຢັນ" }, { status: 400 });
     }
-    const result = await executeIssue(client, {
-      wh, docRef: hdr.ref_doc_no, sourceType,
-      location: lines[0]?.location ?? null, user: session.employee_code, lines,
-      erpFormat, department,
-    });
-=======
     // ໃບນີ້ມາຈາກໃບຈັດຖ້ຽວບໍ່? (ໃຊ້ຜູກ DP ທີ່ post ອອກ ກັບຖ້ຽວ ສຳລັບປະຫວັດ)
     const tripNo = (
       await client.query<{ trip_doc_no: string }>(
@@ -553,6 +540,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       const res = await executeIssue(client, {
         wh, docRef: bill || hdr.ref_doc_no, sourceType,
         location: posted[0]?.location ?? null, user: session.employee_code, lines: posted,
+        erpFormat, department,
       });
       results.push(res);
       if (tripNo) {
@@ -572,7 +560,6 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
       erpDoc: results.map((r) => r.erpDoc).filter(Boolean).join(", ") || null,
       serials: results.reduce((s, r) => s + r.serials, 0),
     };
->>>>>>> efc01027f3afc51e1e035d7b5d4bf2a26404ca3c
 
     // Record short-pick reasons (best-effort).
     if (shortNotes.length > 0) {

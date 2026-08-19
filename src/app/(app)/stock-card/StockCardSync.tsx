@@ -90,7 +90,7 @@ export default function StockCardSync() {
                       <div className="flex items-center gap-2">
                         <BuildingIcon className="h-4 w-4 text-zinc-400" />
                         <span>
-                          <span className="block font-mono text-[12px] font-bold text-indigo-600 dark:text-indigo-400">{w.code}</span>
+                          <span className="block font-mono text-[12px] font-bold text-brand-600 dark:text-brand-400">{w.code}</span>
                           <span className="block text-[12px] text-zinc-600 dark:text-zinc-400">{w.name ?? "—"}</span>
                         </span>
                       </div>
@@ -102,7 +102,7 @@ export default function StockCardSync() {
                     <td className="px-4 py-2.5 text-[11px] text-zinc-400">{w.user_created ?? "—"}</td>
                     <td className="px-4 py-2.5 text-right">
                       <button type="button" onClick={() => void sync(w)} disabled={!canSync || busyWh !== null}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-40">
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-aqua-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-40">
                         <LayersIcon className="h-3.5 w-3.5" />
                         {busyWh === w.code ? "ກຳລັງ sync..." : w.items ? "Sync ໃໝ່" : "Sync"}
                       </button>
