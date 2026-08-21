@@ -215,6 +215,21 @@ const groups: Group[] = [
         icon: <AlertIcon className="h-3.5 w-3.5" />,
       },
       {
+        label: "ຄວາມພຽງພໍ (Coverage)",
+        href: "/movements/coverage",
+        icon: <TrendIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ຂໍ້ສະເໜີການໂອນ",
+        href: "/movements/rebalance",
+        icon: <ArrowLeftRightIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ໃບສະເໜີສັ່ງຊື້",
+        href: "/movements/purchase",
+        icon: <ArrowDownIcon className="h-3.5 w-3.5" />,
+      },
+      {
         label: "ສິນຄ້າເຄື່ອນໄຫວ (Movers)",
         href: "/movements/movers",
         icon: <ListIcon className="h-3.5 w-3.5" />,
