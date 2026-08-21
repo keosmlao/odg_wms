@@ -446,6 +446,7 @@ export default function CoverageClient({ warehouses }: { warehouses: WarehouseOp
           </div>
         ) : active.summary ? (
           <WarehousePanel
+            warehouses={warehouses}
             summary={active.summary}
             items={active.items}
             days={shownDays}
@@ -497,6 +498,7 @@ function verdict(rate: number, selling: number) {
 type SortKey = "risk" | "shortfall" | "sold" | "cover" | "excess";
 
 function WarehousePanel({
+  warehouses,
   summary,
   items,
   days,
@@ -514,6 +516,7 @@ function WarehousePanel({
   trend,
   setTrend,
 }: {
+  warehouses: WarehouseOption[];
   summary: WarehouseSummary;
   items: CoverageItem[];
   days: number;
@@ -531,6 +534,25 @@ function WarehousePanel({
   trend: DemandTrend | "all";
   setTrend: (v: DemandTrend | "all") => void;
 }) {
+  /** ຕາຕະລາງ ຫຼື ຕົ້ນໄມ້ຕາມໝວດສິນຄ້າ. */
+  const [view, setView] = useState<"table" | "tree">("table");
+  const [treeLevels, setTreeLevels] = useState<TreeLevelKey[]>([
+    "group_name",
+    "group_sub_name",
+    "brand_name",
+  ]);
+  const [openNodes, setOpenNodes] = useState<Set<string>>(new Set());
+
+  /** ລາຍການທີ່ຕິກໄວ້ເພື່ອສ້າງໃບຂໍໂອນ. */
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const togglePick = (code: string) =>
+    setPicked((s) => {
+      const n = new Set(s);
+      if (n.has(code)) n.delete(code);
+      else n.add(code);
+      return n;
+    });
+
   const v = verdict(summary.service_rate, summary.selling_items);
   const risky = summary.counts.out + summary.counts.critical + summary.counts.low;
 
@@ -551,6 +573,18 @@ function WarehousePanel({
         (i.brand_name ?? "").toLowerCase().includes(needle)
       );
     });
+    /**
+     * "ຕ້ອງເຕີມ" ແລະ "ເງິນຈົມ" **ກອງນຳ ບໍ່ແມ່ນຮຽງຢ່າງດຽວ**.
+     *
+     * ຖ້າຮຽງຢ່າງດຽວ ລາຍການທີ່ບໍ່ຕ້ອງເຕີມ (ລວມທັງຕົວທີ່ເກີນ) ຈະຍັງລອຍຢູ່ໃນ
+     * ບັນຊີ ພຽງແຕ່ຢູ່ລຸ່ມ — ຄົນເລືອກ "ຕ້ອງເຕີມ" ຕ້ອງການເຫັນສະເພາະຕົວທີ່ຕ້ອງເຕີມ.
+     */
+    const relevant = filtered.filter((i) => {
+      if (sort === "shortfall") return i.shortfall > 0;
+      if (sort === "excess") return i.excess > 0;
+      return true;
+    });
+
     const cmp: Record<SortKey, (a: CoverageItem, b: CoverageItem) => number> = {
       risk: (a, b) => rank[a.status] - rank[b.status] || b.shortfall * b.avg_cost - a.shortfall * a.avg_cost,
       shortfall: (a, b) => b.shortfall * b.avg_cost - a.shortfall * a.avg_cost,
@@ -558,8 +592,31 @@ function WarehousePanel({
       cover: (a, b) => (a.days_cover ?? Infinity) - (b.days_cover ?? Infinity),
       excess: (a, b) => b.excess * b.avg_cost - a.excess * a.avg_cost,
     };
-    return [...filtered].sort(cmp[sort]).slice(0, 300);
+    return [...relevant].sort(cmp[sort]).slice(0, 300);
   }, [items, status, q, sort, abc, pattern, trend]);
+
+  /**
+   * ຕົ້ນໄມ້ໃຊ້ຜົນທີ່ **ກອງແລ້ວ ແຕ່ບໍ່ຕັດ 300 ແຖວ** — ຕົວເລກສະຫຼຸບຂອງແຕ່ລະໝວດ
+   * ຕ້ອງນັບຄົບ ບໍ່ດັ່ງນັ້ນຍອດຂອງໝວດຈະໜ້ອຍກວ່າຄວາມຈິງແບບງຽບໆ.
+   */
+  const tree = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const base = items.filter((i) => {
+      if (status !== "all" && i.status !== status) return false;
+      if (abc !== "all" && i.abc !== abc) return false;
+      if (pattern !== "all" && i.pattern !== pattern) return false;
+      if (trend !== "all" && i.trend !== trend) return false;
+      if (sort === "shortfall" && i.shortfall <= 0) return false;
+      if (sort === "excess" && i.excess <= 0) return false;
+      if (!needle) return true;
+      return (
+        i.item_code.toLowerCase().includes(needle) ||
+        (i.item_name ?? "").toLowerCase().includes(needle) ||
+        (i.brand_name ?? "").toLowerCase().includes(needle)
+      );
+    });
+    return buildTree(base, treeLevels);
+  }, [items, status, q, sort, abc, pattern, trend, treeLevels]);
 
   return (
     <div className="space-y-4">
@@ -618,6 +675,37 @@ function WarehousePanel({
             </h3>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {/* ຕາຕະລາງ ຫຼື ຕົ້ນໄມ້ຕາມໝວດສິນຄ້າ */}
+            <div className="flex gap-1 rounded-lg bg-zinc-100 p-0.5 text-[11px] dark:bg-zinc-800">
+              {([["table", "ຕາຕະລາງ"], ["tree", "ຕົ້ນໄມ້ໝວດ"]] as const).map(([k, l]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setView(k)}
+                  className={`rounded-md px-2.5 py-1 font-semibold transition ${
+                    view === k
+                      ? "bg-white text-brand-600 shadow-sm dark:bg-zinc-950 dark:text-brand-400"
+                      : "text-zinc-500"
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            {view === "tree" && (
+              <select
+                value={treeLevels.join(">")}
+                onChange={(e) => setTreeLevels(e.target.value.split(">") as TreeLevelKey[])}
+                title="ຈັດຊັ້ນຕາມ"
+                className={`${inputCls} py-1.5 text-[12px]`}
+              >
+                <option value="group_name>group_sub_name>brand_name">ໝວດໃຫຍ່ › ໝວດຍ່ອຍ › ຍີ່ຫໍ້</option>
+                <option value="group_name>group_sub_name>group_sub2_name>brand_name">ໝວດໃຫຍ່ › ຍ່ອຍ › ຍ່ອຍ2 › ຍີ່ຫໍ້</option>
+                <option value="group_name>group_sub_name>group_sub2_name">ໝວດໃຫຍ່ › ຍ່ອຍ › ຍ່ອຍ2</option>
+                <option value="brand_name">ຍີ່ຫໍ້ ຢ່າງດຽວ</option>
+                <option value="brand_name>group_sub_name">ຍີ່ຫໍ້ › ໝວດຍ່ອຍ</option>
+              </select>
+            )}
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -685,10 +773,62 @@ function WarehousePanel({
           </div>
         </div>
 
+        {picked.size > 0 && (
+          <TransferBar
+            summary={summary}
+            picked={[...picked]
+              .map((c) => items.find((i) => i.item_code === c))
+              .filter((i): i is CoverageItem => Boolean(i))}
+            warehouses={warehouses}
+            onClear={() => setPicked(new Set())}
+          />
+        )}
+
+        {view === "tree" ? (
+          <div className="max-h-[70vh] overflow-y-auto">
+            {tree.length === 0 ? (
+              <div className="py-12 text-center text-sm text-zinc-400">ບໍ່ມີລາຍການ</div>
+            ) : (
+              tree.map((n) => (
+                <TreeRow
+                  key={n.key}
+                  node={n}
+                  open={openNodes}
+                  onToggle={(k) =>
+                    setOpenNodes((s) => {
+                      const x = new Set(s);
+                      if (x.has(k)) x.delete(k);
+                      else x.add(k);
+                      return x;
+                    })
+                  }
+                  onPick={(list) =>
+                    setPicked((s) => new Set([...s, ...list.map((i) => i.item_code)]))
+                  }
+                />
+              ))
+            )}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/50">
+                <th className="px-2 py-2.5">
+                  <input
+                    type="checkbox"
+                    title="ເລືອກທັງໝົດທີ່ເຫັນ"
+                    className="h-3.5 w-3.5 accent-brand-500"
+                    checked={shown.length > 0 && shown.every((i) => picked.has(i.item_code))}
+                    onChange={(e) =>
+                      setPicked(
+                        e.target.checked
+                          ? new Set([...picked, ...shown.map((i) => i.item_code)])
+                          : new Set([...picked].filter((c) => !shown.some((i) => i.item_code === c))),
+                      )
+                    }
+                  />
+                </th>
                 <th className="px-3 py-2.5">ສະຖານະ</th>
                 <th className="px-3 py-2.5">ສິນຄ້າ</th>
                 <th className="px-3 py-2.5 text-right">ຄົງເຫຼືອ</th>
@@ -702,7 +842,7 @@ function WarehousePanel({
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {shown.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-zinc-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-zinc-400">
                     ບໍ່ມີລາຍການ
                   </td>
                 </tr>
@@ -712,8 +852,18 @@ function WarehousePanel({
                 return (
                   <tr
                     key={i.item_code}
-                    className="transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
+                    className={`transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40 ${
+                      picked.has(i.item_code) ? "bg-brand-50/60 dark:bg-brand-950/20" : ""
+                    }`}
                   >
+                    <td className="px-2 py-2.5">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 accent-brand-500"
+                        checked={picked.has(i.item_code)}
+                        onChange={() => togglePick(i.item_code)}
+                      />
+                    </td>
                     <td className="px-3 py-2.5">
                       <span
                         className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${sv?.chip ?? ""}`}
@@ -859,7 +1009,311 @@ function WarehousePanel({
             </tbody>
           </table>
         </div>
+        )}
       </section>
+    </div>
+  );
+}
+
+/** ຊັ້ນຂອງຕົ້ນໄມ້ໝວດສິນຄ້າ ຕາມ ic_inventory. */
+const TREE_LEVELS = [
+  { key: "group_name", label: "ໝວດໃຫຍ່" },
+  { key: "group_sub_name", label: "ໝວດຍ່ອຍ" },
+  { key: "group_sub2_name", label: "ໝວດຍ່ອຍ 2" },
+  { key: "brand_name", label: "ຍີ່ຫໍ້" },
+] as const;
+
+type TreeLevelKey = (typeof TREE_LEVELS)[number]["key"];
+
+type TreeNode = {
+  key: string;
+  label: string;
+  depth: number;
+  items: CoverageItem[];
+  children: TreeNode[];
+};
+
+/** ຈັດເປັນຕົ້ນໄມ້ຕາມຊັ້ນທີ່ເລືອກ — ບໍ່ມີຄ່າ = ຈັດເຂົ້າ "(ບໍ່ລະບຸ)". */
+function buildTree(items: CoverageItem[], levels: TreeLevelKey[], depth = 0): TreeNode[] {
+  if (depth >= levels.length) return [];
+  const key = levels[depth];
+  const buckets = new Map<string, CoverageItem[]>();
+  for (const it of items) {
+    const v = (it[key] ?? "").toString().trim() || "(ບໍ່ລະບຸ)";
+    const arr = buckets.get(v);
+    if (arr) arr.push(it);
+    else buckets.set(v, [it]);
+  }
+  return [...buckets.entries()]
+    .map(([label, group]) => ({
+      key: `${depth}|${label}`,
+      label,
+      depth,
+      items: group,
+      children: buildTree(group, levels, depth + 1),
+    }))
+    // ໝວດທີ່ຕ້ອງເຕີມມູນຄ່າສູງສຸດຢູ່ເທິງ — ບ່ອນທີ່ຄວນເບິ່ງກ່ອນ
+    .sort((a, b) => sumShortfall(b.items) - sumShortfall(a.items));
+}
+
+const sumShortfall = (items: CoverageItem[]) =>
+  items.reduce((s, i) => s + i.shortfall * i.avg_cost, 0);
+
+/** ນັບສະຖານະຂອງກຸ່ມໜຶ່ງ. */
+function countStatuses(items: CoverageItem[]) {
+  let out = 0, critical = 0, low = 0, over = 0, idle = 0;
+  for (const i of items) {
+    if (i.status === "out") out++;
+    else if (i.status === "critical") critical++;
+    else if (i.status === "low") low++;
+    else if (i.status === "over") over++;
+    else if (i.status === "idle") idle++;
+  }
+  return { out, critical, low, over, idle };
+}
+
+/** ໜຶ່ງແຖວຂອງຕົ້ນໄມ້ — ພັບ/ຄີ່ໄດ້ ພ້ອມສະຫຼຸບຂອງກຸ່ມ. */
+function TreeRow({
+  node,
+  open,
+  onToggle,
+  onPick,
+}: {
+  node: TreeNode;
+  open: Set<string>;
+  onToggle: (k: string) => void;
+  onPick: (items: CoverageItem[]) => void;
+}) {
+  const isOpen = open.has(node.key);
+  const c = countStatuses(node.items);
+  const need = sumShortfall(node.items);
+  const risky = c.out + c.critical + c.low;
+
+  return (
+    <>
+      <div
+        className="flex cursor-pointer items-center gap-2 border-b border-zinc-100 py-2 pr-3 transition hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/40"
+        style={{ paddingLeft: `${node.depth * 18 + 12}px` }}
+        onClick={() => onToggle(node.key)}
+      >
+        <span className="w-3 shrink-0 text-[10px] text-zinc-400">
+          {node.children.length > 0 || node.items.length > 0 ? (isOpen ? "▾" : "▸") : ""}
+        </span>
+        <span
+          className={`truncate text-[13px] ${node.depth === 0 ? "font-bold text-zinc-800 dark:text-zinc-100" : "text-zinc-700 dark:text-zinc-300"}`}
+          title={node.label}
+        >
+          {node.label}
+        </span>
+        <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[9px] font-bold text-zinc-500 dark:bg-zinc-800">
+          {node.items.length}
+        </span>
+
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-[10px]">
+          {risky > 0 && (
+            <span className="rounded-full bg-red-100 px-1.5 py-0.5 font-black text-red-700 dark:bg-red-950/60 dark:text-red-300">
+              ຕ້ອງເຕີມ {risky}
+            </span>
+          )}
+          {c.over + c.idle > 0 && (
+            <span className="rounded-full bg-sky-50 px-1.5 py-0.5 font-bold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+              ເກີນ/ນອນ {c.over + c.idle}
+            </span>
+          )}
+          {need > 0 && (
+            <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
+              {money(need)} ກີບ
+            </span>
+          )}
+          {risky > 0 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPick(node.items.filter((i) => i.shortfall > 0));
+              }}
+              className="rounded-md bg-brand-500 px-2 py-0.5 text-[10px] font-semibold text-white transition hover:bg-brand-600"
+            >
+              ຕິກທັງໝວດ
+            </button>
+          )}
+        </span>
+      </div>
+
+      {isOpen &&
+        (node.children.length > 0 ? (
+          node.children.map((ch) => (
+            <TreeRow key={ch.key} node={ch} open={open} onToggle={onToggle} onPick={onPick} />
+          ))
+        ) : (
+          // ຊັ້ນລຸ່ມສຸດ — ສະແດງລາຍການສິນຄ້າ
+          <div style={{ paddingLeft: `${(node.depth + 1) * 18 + 12}px` }}>
+            {node.items.slice(0, 100).map((i) => (
+              <div
+                key={i.item_code}
+                className="flex items-center gap-2 border-b border-zinc-50 py-1.5 pr-3 text-[12px] dark:border-zinc-800/60"
+              >
+                <span className="font-mono text-[10px] font-bold text-brand-600 dark:text-brand-400">
+                  {i.item_code}
+                </span>
+                <span className="truncate text-zinc-600 dark:text-zinc-400" title={i.item_name ?? ""}>
+                  {i.item_name}
+                </span>
+                <span className="ml-auto shrink-0 font-mono text-[11px] text-zinc-500">
+                  ມີ {fmt(i.on_hand, 0)}
+                </span>
+                {i.shortfall > 0 && (
+                  <span className="shrink-0 font-mono text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                    ຕ້ອງເຕີມ {fmt(i.shortfall, 0)}
+                  </span>
+                )}
+              </div>
+            ))}
+            {node.items.length > 100 && (
+              <div className="py-1.5 text-[11px] text-zinc-400">
+                … ອີກ {node.items.length - 100} ລາຍການ (ໃຊ້ມຸມມອງຕາຕະລາງເພື່ອເບິ່ງທັງໝົດ)
+              </div>
+            )}
+          </div>
+        ))}
+    </>
+  );
+}
+
+/**
+ * ແຖບ "ເອົາລາຍການທີ່ຕິກ ໄປສ້າງໃບຂໍໂອນ (124)".
+ *
+ * ປາຍທາງ = ສາງທີ່ກຳລັງເບິ່ງ. ໃນໂໝດລວມກຸ່ມ ລະຫັດເປັນຫຼາຍສາງຕໍ່ກັນ ຈຶ່ງ**ຕ້ອງ
+ * ໃຫ້ເລືອກວ່າຈະໃຫ້ຂອງລົງສາງໃດ** — ໃບຂໍໂອນໜຶ່ງໃບມີປາຍທາງດຽວເທົ່ານັ້ນ.
+ *
+ * ຈຳນວນທີ່ສົ່ງໄປຄື `shortfall` (ຂາດອີກເທົ່າໃດຈຶ່ງພໍໃຊ້ເຖິງຂີດຕ່ຳ) ປັດຂຶ້ນເປັນ
+ * ຈຳນວນເຕັມ — ໃບຂໍໂອນຂອງຈິງບໍ່ຂໍເປັນເສດ.
+ */
+function TransferBar({
+  summary,
+  picked,
+  warehouses,
+  onClear,
+}: {
+  summary: WarehouseSummary;
+  picked: CoverageItem[];
+  warehouses: WarehouseOption[];
+  onClear: () => void;
+}) {
+  // ໂໝດລວມກຸ່ມ: `wh_code` ເປັນ "1301+1302+…" ຈຶ່ງບໍ່ແມ່ນສາງດຽວ
+  const destChoices = summary.wh_code.includes("+")
+    ? summary.wh_code.split("+")
+    : [summary.wh_code];
+  const [to, setTo] = useState(destChoices[0]);
+  const [from, setFrom] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const lines = picked
+    .map((i) => ({ item: i, qty: Math.ceil(i.shortfall > 0 ? i.shortfall : 0) }))
+    .filter((l) => l.qty > 0);
+  const skipped = picked.length - lines.length;
+
+  async function create() {
+    if (!from) return setMsg({ ok: false, text: "ກະລຸນາເລືອກສາງຕົ້ນທາງ" });
+    if (from === to) return setMsg({ ok: false, text: "ຕົ້ນທາງ ແລະ ປາຍທາງ ຕ້ອງຕ່າງກັນ" });
+    if (lines.length === 0) return setMsg({ ok: false, text: "ລາຍການທີ່ຕິກ ບໍ່ມີຈຳນວນທີ່ຕ້ອງເຕີມ" });
+
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/movements/transfer-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wh_from: from,
+          wh_to: to,
+          remark: "ຈາກໜ້າວິເຄາະຄວາມພຽງພໍ",
+          lines: lines.map((l) => ({
+            item_code: l.item.item_code,
+            item_name: l.item.item_name,
+            unit_code: l.item.unit_code,
+            qty: l.qty,
+          })),
+        }),
+      });
+      const json = (await res.json()) as { doc_no?: string; error?: string };
+      if (!res.ok) {
+        setMsg({ ok: false, text: json.error ?? "ສ້າງໃບຂໍໂອນບໍ່ສຳເລັດ" });
+      } else {
+        setMsg({ ok: true, text: `ສ້າງໃບຂໍໂອນແລ້ວ ${json.doc_no ?? ""} (${lines.length} ລາຍການ)` });
+        onClear();
+      }
+    } catch {
+      setMsg({ ok: false, text: "ຕິດຕໍ່ເຊີບເວີບໍ່ໄດ້" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const sel =
+    "rounded-lg bg-white px-2.5 py-1.5 text-[12px] text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800";
+
+  return (
+    <div className="border-b border-brand-100 bg-brand-50/70 px-4 py-3 dark:border-brand-900 dark:bg-brand-950/30">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className="text-[12px] font-bold text-brand-700 dark:text-brand-300">
+          ຕິກໄວ້ {picked.length} ລາຍການ
+        </span>
+        <span className="text-[11px] text-zinc-500">ຈາກສາງ</span>
+        <select value={from} onChange={(e) => setFrom(e.target.value)} className={sel}>
+          <option value="">— ເລືອກຕົ້ນທາງ —</option>
+          {warehouses
+            .filter((w) => !destChoices.includes(w.code))
+            .map((w) => (
+              <option key={w.code} value={w.code}>
+                {w.code} {w.name}
+              </option>
+            ))}
+        </select>
+        <span className="text-[11px] text-zinc-500">ໄປສາງ</span>
+        {destChoices.length > 1 ? (
+          <select value={to} onChange={(e) => setTo(e.target.value)} className={sel}>
+            {destChoices.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        ) : (
+          <span className="rounded-lg bg-white px-2.5 py-1.5 font-mono text-[12px] font-bold ring-1 ring-zinc-200 dark:bg-zinc-950 dark:ring-zinc-800">
+            {to}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => void create()}
+          disabled={busy}
+          className="rounded-lg bg-brand-600 px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+        >
+          {busy ? "ກຳລັງສ້າງ..." : `ສ້າງໃບຂໍໂອນ (${lines.length})`}
+        </button>
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-[11px] font-semibold text-zinc-500 underline-offset-2 hover:underline"
+        >
+          ລ້າງ
+        </button>
+      </div>
+
+      {skipped > 0 && (
+        <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+          ຂ້າມ {skipped} ລາຍການ ຍ້ອນບໍ່ມີຈຳນວນທີ່ຕ້ອງເຕີມ (ຂອງພຽງພໍ ຫຼື ເກີນຢູ່ແລ້ວ)
+        </p>
+      )}
+      {msg && (
+        <p
+          className={`mt-1.5 text-[11px] font-semibold ${
+            msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+          }`}
+        >
+          {msg.text}
+        </p>
+      )}
     </div>
   );
 }

@@ -230,6 +230,11 @@ const groups: Group[] = [
         icon: <ArrowDownIcon className="h-3.5 w-3.5" />,
       },
       {
+        label: "ຊ່ອງຫວ່າງລາຍການ",
+        href: "/movements/assortment",
+        icon: <SearchIcon className="h-3.5 w-3.5" />,
+      },
+      {
         label: "ສິນຄ້າເຄື່ອນໄຫວ (Movers)",
         href: "/movements/movers",
         icon: <ListIcon className="h-3.5 w-3.5" />,

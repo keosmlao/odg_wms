@@ -119,6 +119,10 @@ export type CoverageItem = {
   item_name: string | null;
   unit_code: string | null;
   group_name: string | null;
+  /** ໝວດຍ່ອຍ (ic_group_sub). */
+  group_sub_name: string | null;
+  /** ໝວດຍ່ອຍຊັ້ນ 2 (group_sub2) — ຊື່ຈາກ ic_category ຫຼື ລະຫັດດິບ. */
+  group_sub2_name: string | null;
   brand_name: string | null;
   /** ຄົງເຫຼືອ ERP (`stock_balance`) — ຕົວຕັ້ງຂອງການວິເຄາະ. */
   on_hand: number;
@@ -212,6 +216,8 @@ type ErpRow = {
   item_name: string | null;
   unit_code: string | null;
   group_name: string | null;
+  group_sub_name: string | null;
+  group_sub2_name: string | null;
   brand_name: string | null;
   on_hand: string | null;
   avg_cost: string | null;
@@ -230,6 +236,10 @@ type SaleRow = {
   prior_qty: string | null;
   sale_amount: string | null;
   master_cost: string | null;
+  group_name: string | null;
+  group_sub_name: string | null;
+  group_sub2_name: string | null;
+  brand_name: string | null;
 };
 
 type WmsRow = { wh_code: string; item_code: string; on_hand: string | null };
@@ -251,12 +261,17 @@ const ERP_SQL = `
          COALESCE(NULLIF(TRIM(b.ic_name), ''), inv.name_1) AS item_name,
          NULLIF(TRIM(b.ic_unit_code), '')               AS unit_code,
          g.name_1                                       AS group_name,
+         gs.name_1                                      AS group_sub_name,
+         COALESCE(cat.name_1, NULLIF(TRIM(inv.group_sub2), '')) AS group_sub2_name,
          br.name_1                                      AS brand_name,
          b.balance_qty::text                            AS on_hand,
          COALESCE(NULLIF(b.average_cost, 0), b.average_cost_end, 0)::text AS avg_cost
   FROM sml_ic_function_stock_balance_warehouse(date(timezone('WAST', now())), '', $1) b
   LEFT JOIN public.ic_inventory inv ON inv.code = b.ic_code
   LEFT JOIN public.ic_group g       ON g.code   = inv.group_main
+  LEFT JOIN public.ic_group_sub gs  ON gs.code  = inv.group_sub
+  -- group_sub2 ເປັນລະຫັດ (ເຊັ່ນ 130102) — ຫາຊື່ຈາກ ic_category, ບໍ່ພົບກໍ່ໃຊ້ລະຫັດ
+  LEFT JOIN public.ic_category cat   ON cat.code = inv.group_sub2
   LEFT JOIN public.ic_brand br      ON br.code  = inv.item_brand
   WHERE b.balance_qty <> 0
     AND b.ic_code IS NOT NULL AND b.ic_code <> ''
@@ -316,10 +331,19 @@ const SALES_SQL = `
          s.sale_amount::text                                AS sale_amount,
          -- ຕົ້ນທຶນສະເລ່ຍລວມຂອງບໍລິສັດ ຈາກທະບຽນສິນຄ້າ — ໃຊ້ເມື່ອສາງນີ້ບໍ່ມີຂອງ
          -- ຈຶ່ງບໍ່ມີຕົ້ນທຶນສະເພາະສາງ (ຄອບຄຸມ ~99% ຂອງສິນຄ້າທີ່ຂາຍຢູ່)
-         COALESCE(inv2.average_cost, 0)::text               AS master_cost
+         COALESCE(inv2.average_cost, 0)::text               AS master_cost,
+         -- ໝວດສິນຄ້າ — ຕ້ອງມີຢູ່ຂານີ້ນຳ ເພາະສິນຄ້າທີ່ໝົດ ບໍ່ມີແຖວຄົງເຫຼືອ ERP
+         g2.name_1                                          AS group_name,
+         gs2.name_1                                         AS group_sub_name,
+         COALESCE(cat2.name_1, NULLIF(TRIM(inv2.group_sub2), '')) AS group_sub2_name,
+         br2.name_1                                         AS brand_name
   FROM sales s
   LEFT JOIN ret r ON r.wh_code = s.wh_code AND r.item_code = s.item_code
-  LEFT JOIN public.ic_inventory inv2 ON inv2.code = s.item_code`;
+  LEFT JOIN public.ic_inventory inv2 ON inv2.code = s.item_code
+  LEFT JOIN public.ic_group g2       ON g2.code   = inv2.group_main
+  LEFT JOIN public.ic_group_sub gs2  ON gs2.code  = inv2.group_sub
+  LEFT JOIN public.ic_category cat2  ON cat2.code = inv2.group_sub2
+  LEFT JOIN public.ic_brand br2      ON br2.code  = inv2.item_brand`;
 
 /**
  * ລາຄາຊື້ຄັ້ງລ້າສຸດ — ຂັ້ນສຸດທ້າຍຂອງລູກໂສ້ຕົ້ນທຶນ.
@@ -359,6 +383,10 @@ type Row = {
   item_name: string | null;
   unit_code: string | null;
   group_name: string | null;
+  /** ໝວດຍ່ອຍ (ic_group_sub). */
+  group_sub_name: string | null;
+  /** ໝວດຍ່ອຍຊັ້ນ 2 (group_sub2) — ຊື່ຈາກ ic_category ຫຼື ລະຫັດດິບ. */
+  group_sub2_name: string | null;
   brand_name: string | null;
   on_hand: number;
   wms_on_hand: number;
@@ -437,7 +465,7 @@ async function loadRows(whCode: string, days: number, refresh: boolean): Promise
   const merged = new Map<string, Row>();
   const blank = (wh_code: string, item_code: string): Row => ({
     wh_code, item_code, item_name: null, unit_code: null,
-    group_name: null, brand_name: null,
+    group_name: null, group_sub_name: null, group_sub2_name: null, brand_name: null,
     on_hand: 0, wms_on_hand: 0, sold: 0, bills: 0, sale_days: 0,
     last_sale: null, avg_cost: 0, cost_source: "none", last_buy_date: null,
     recent_qty: 0, prior_qty: 0, sale_amount: 0,
@@ -455,6 +483,8 @@ async function loadRows(whCode: string, days: number, refresh: boolean): Promise
     row.item_name = e.item_name;
     row.unit_code = e.unit_code;
     row.group_name = e.group_name;
+    row.group_sub_name = e.group_sub_name;
+    row.group_sub2_name = e.group_sub2_name;
     row.brand_name = e.brand_name;
     row.avg_cost = num(e.avg_cost);
     if (row.avg_cost > 0) row.cost_source = "warehouse";
@@ -470,6 +500,10 @@ async function loadRows(whCode: string, days: number, refresh: boolean): Promise
     row.sale_amount = num(s.sale_amount);
     row.item_name ??= s.item_name;
     row.unit_code ??= s.unit_code;
+    row.group_name ??= s.group_name;
+    row.group_sub_name ??= s.group_sub_name;
+    row.group_sub2_name ??= s.group_sub2_name;
+    row.brand_name ??= s.brand_name;
     // ຂັ້ນ 2 ຂອງລູກໂສ້ຕົ້ນທຶນ: ຕົ້ນທຶນລວມຈາກທະບຽນສິນຄ້າ
     if (row.avg_cost <= 0) {
       const master = num(s.master_cost);
@@ -597,6 +631,8 @@ function computeItems(rows: Row[], span: number, thresholds: Thresholds): Covera
       item_name: r.item_name,
       unit_code: r.unit_code,
       group_name: r.group_name,
+      group_sub_name: r.group_sub_name,
+      group_sub2_name: r.group_sub2_name,
       brand_name: r.brand_name,
       on_hand,
       wms_on_hand,
@@ -760,6 +796,8 @@ export async function loadCoverageGroup(
           item_name: r.item_name,
           unit_code: r.unit_code,
           group_name: r.group_name,
+          group_sub_name: r.group_sub_name,
+          group_sub2_name: r.group_sub2_name,
           brand_name: r.brand_name,
           on_hand: 0, wms_on_hand: 0, sold: 0, bills: 0, sale_days: 0,
           last_sale: null, avg_cost: 0, cost_source: "none", last_buy_date: null,
@@ -780,6 +818,8 @@ export async function loadCoverageGroup(
       g.item_name ??= r.item_name;
       g.unit_code ??= r.unit_code;
       g.group_name ??= r.group_name;
+      g.group_sub_name ??= r.group_sub_name;
+      g.group_sub2_name ??= r.group_sub2_name;
       g.brand_name ??= r.brand_name;
 
       const w = costWeight.get(r.item_code) ?? { sum: 0, qty: 0, fallback: 0 };
