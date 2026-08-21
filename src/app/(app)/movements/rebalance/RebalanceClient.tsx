@@ -301,6 +301,51 @@ function PairBlock({
   onToggle: () => void;
 }) {
   const internal = pair.scope === "internal";
+
+  /**
+   * ຈຳນວນທີ່ຜູ້ໃຊ້ແກ້ເອງ — ເກັບແຕ່ຕົວທີ່ຖືກແກ້ ສ່ວນທີ່ເຫຼືອໃຊ້ `move_qty` ທີ່ຄິດໃຫ້.
+   * ຕັ້ງເປັນ 0 ເພື່ອຂ້າມແຖວນັ້ນ.
+   */
+  const [edited, setEdited] = useState<Record<string, number>>({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const qtyOf = (s: Suggestion) => edited[s.item_code] ?? Math.ceil(s.move_qty);
+  const sendable = lines.map((s) => ({ s, qty: qtyOf(s) })).filter((l) => l.qty > 0);
+
+  async function createDoc() {
+    if (sendable.length === 0) {
+      setMsg({ ok: false, text: "ບໍ່ມີແຖວທີ່ມີຈຳນວນ" });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/movements/transfer-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wh_from: pair.from_wh,
+          wh_to: pair.to_wh,
+          remark: internal ? "ຍ້າຍພາຍໃນກຸ່ມ (ຈາກຂໍ້ສະເໜີການໂອນ)" : "ຈາກຂໍ້ສະເໜີການໂອນ",
+          lines: sendable.map((l) => ({
+            item_code: l.s.item_code,
+            item_name: l.s.item_name,
+            unit_code: l.s.unit_code,
+            qty: l.qty,
+          })),
+        }),
+      });
+      const json = (await res.json()) as { doc_no?: string; error?: string };
+      if (!res.ok) setMsg({ ok: false, text: json.error ?? "ສ້າງໃບຂໍໂອນບໍ່ສຳເລັດ" });
+      else setMsg({ ok: true, text: `ສ້າງແລ້ວ ${json.doc_no ?? ""} (${sendable.length} ລາຍການ)` });
+    } catch {
+      setMsg({ ok: false, text: "ຕິດຕໍ່ເຊີບເວີບໍ່ໄດ້" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section
       className={`shadow-card overflow-hidden rounded-2xl bg-white ring-1 dark:bg-zinc-900 ${
@@ -354,15 +399,35 @@ function PairBlock({
                 ? `ຂອງມີຢູ່ໃນກຸ່ມແລ້ວ — ຍ້າຍຈາກ ${pair.from_wh} ໄປ ${pair.to_wh} ພາຍໃນບ່ອນດຽວກັນ`
                 : `ເອົາລາຍການລຸ່ມນີ້ໄປເປີດ ໃບຂໍໂອນ (124) ຈາກສາງ ${pair.from_wh} ໄປ ${pair.to_wh}`}
             </span>
-            <Link
-              href={internal ? "/movements/transfer-request" : "/movements/transfer-request"}
-              className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white transition ${
-                internal ? "bg-amber-500 hover:bg-amber-600" : "bg-brand-500 hover:bg-brand-600"
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void createDoc()}
+                disabled={busy || sendable.length === 0}
+                className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white transition disabled:opacity-50 ${
+                  internal ? "bg-amber-500 hover:bg-amber-600" : "bg-brand-500 hover:bg-brand-600"
+                }`}
+              >
+                {busy ? "ກຳລັງສ້າງ..." : `ສ້າງໃບຂໍໂອນ (${sendable.length})`}
+              </button>
+              <Link
+                href="/movements/transfer-request"
+                className="text-[11px] font-semibold text-zinc-500 underline-offset-2 hover:underline"
+              >
+                ເປີດໜ້າໃບຂໍໂອນ
+              </Link>
+            </div>
+          </div>
+
+          {msg && (
+            <p
+              className={`px-4 pb-2 text-[11px] font-semibold ${
+                msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
               }`}
             >
-              {internal ? "ເປີດໃບໂອນພາຍໃນ" : "ເປີດໃບຂໍໂອນ"}
-            </Link>
-          </div>
+              {msg.text}
+            </p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -411,11 +476,25 @@ function PairBlock({
                         {s.to_avg_daily.toFixed(2)}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono tabular-nums">
-                        <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
-                          {fmt(s.move_qty, 2)}
-                        </span>
+                        {/* ຈຳນວນທີ່ຈະຂໍຈິງ — ແກ້ໄດ້, ຕັ້ງ 0 ເພື່ອຂ້າມແຖວນີ້ */}
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={qtyOf(s)}
+                          onChange={(e) =>
+                            setEdited((m) => ({
+                              ...m,
+                              [s.item_code]: Math.max(0, Number(e.target.value) || 0),
+                            }))
+                          }
+                          title="ຈຳນວນທີ່ຈະຂໍ — ແກ້ໄດ້ (0 = ບໍ່ເອົາ)"
+                          className="w-24 rounded-lg bg-white px-2 py-1 text-right font-mono text-[13px] font-black text-emerald-700 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-emerald-400 dark:ring-zinc-700"
+                        />
                         <span className="ml-1 text-[10px] text-zinc-400">{s.unit_code}</span>
-                        <div className="text-[10px] text-zinc-400">{money(s.move_value)} ກີບ</div>
+                        <div className="text-[10px] text-zinc-400">
+                          ແນະນຳ {fmt(s.move_qty, 2)} · {money(s.move_value)} ກີບ
+                        </div>
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-[11px] tabular-nums">
                         <span className="font-bold text-emerald-600 dark:text-emerald-400">

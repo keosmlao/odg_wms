@@ -781,6 +781,13 @@ function WarehousePanel({
               .filter((i): i is CoverageItem => Boolean(i))}
             warehouses={warehouses}
             onClear={() => setPicked(new Set())}
+            onRemove={(code) =>
+              setPicked((s) => {
+                const n = new Set(s);
+                n.delete(code);
+                return n;
+              })
+            }
           />
         )}
 
@@ -1186,19 +1193,22 @@ function TreeRow({
  * ປາຍທາງ = ສາງທີ່ກຳລັງເບິ່ງ. ໃນໂໝດລວມກຸ່ມ ລະຫັດເປັນຫຼາຍສາງຕໍ່ກັນ ຈຶ່ງ**ຕ້ອງ
  * ໃຫ້ເລືອກວ່າຈະໃຫ້ຂອງລົງສາງໃດ** — ໃບຂໍໂອນໜຶ່ງໃບມີປາຍທາງດຽວເທົ່ານັ້ນ.
  *
- * ຈຳນວນທີ່ສົ່ງໄປຄື `shortfall` (ຂາດອີກເທົ່າໃດຈຶ່ງພໍໃຊ້ເຖິງຂີດຕ່ຳ) ປັດຂຶ້ນເປັນ
- * ຈຳນວນເຕັມ — ໃບຂໍໂອນຂອງຈິງບໍ່ຂໍເປັນເສດ.
+ * ຈຳນວນຕັ້ງຕົ້ນຄື `shortfall` (ຂາດອີກເທົ່າໃດຈຶ່ງພໍໃຊ້ເຖິງຂີດຕ່ຳ) ປັດຂຶ້ນເປັນ
+ * ຈຳນວນເຕັມ — ໃບຂໍໂອນຂອງຈິງບໍ່ຂໍເປັນເສດ — ແຕ່ **ຜູ້ໃຊ້ແກ້ໄດ້ທຸກແຖວ** ກ່ອນສ້າງ
+ * ແລະ ຕັ້ງເປັນ 0 ເພື່ອຂ້າມແຖວນັ້ນກໍ່ໄດ້.
  */
 function TransferBar({
   summary,
   picked,
   warehouses,
   onClear,
+  onRemove,
 }: {
   summary: WarehouseSummary;
   picked: CoverageItem[];
   warehouses: WarehouseOption[];
   onClear: () => void;
+  onRemove: (code: string) => void;
 }) {
   // ໂໝດລວມກຸ່ມ: `wh_code` ເປັນ "1301+1302+…" ຈຶ່ງບໍ່ແມ່ນສາງດຽວ
   const destChoices = summary.wh_code.includes("+")
@@ -1209,10 +1219,20 @@ function TransferBar({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  /**
+   * ຈຳນວນທີ່ຜູ້ໃຊ້ພິມແກ້ເອງ — ເກັບແຕ່ **ຕົວທີ່ຖືກແກ້** ສ່ວນທີ່ເຫຼືອຄິດຈາກ
+   * `shortfall` ສົດໆ. ເຮັດແບບນີ້ຈຶ່ງບໍ່ຕ້ອງ sync state ເມື່ອຕິກລາຍການເພີ່ມ
+   * ຫຼື ເມື່ອຜົນວິເຄາະໂຫຼດໃໝ່.
+   */
+  const [edited, setEdited] = useState<Record<string, number>>({});
+  const qtyOf = (i: CoverageItem) =>
+    edited[i.item_code] ?? Math.ceil(i.shortfall > 0 ? i.shortfall : 0);
+
   const lines = picked
-    .map((i) => ({ item: i, qty: Math.ceil(i.shortfall > 0 ? i.shortfall : 0) }))
+    .map((i) => ({ item: i, qty: qtyOf(i) }))
     .filter((l) => l.qty > 0);
   const skipped = picked.length - lines.length;
+  const totalValue = lines.reduce((s, l) => s + l.qty * l.item.avg_cost, 0);
 
   async function create() {
     if (!from) return setMsg({ ok: false, text: "ກະລຸນາເລືອກສາງຕົ້ນທາງ" });
@@ -1256,10 +1276,76 @@ function TransferBar({
 
   return (
     <div className="border-b border-brand-100 bg-brand-50/70 px-4 py-3 dark:border-brand-900 dark:bg-brand-950/30">
+      {/* ── ລາຍການທີ່ຈະຂໍໂອນ ພ້ອມຈຳນວນ (ແກ້ໄດ້) ─────────────────── */}
+      <div className="mb-3 overflow-hidden rounded-xl bg-white ring-1 ring-brand-200 dark:bg-zinc-900 dark:ring-brand-900">
+        <div className="flex items-center justify-between border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
+          <span className="text-[12px] font-bold text-zinc-700 dark:text-zinc-200">
+            ລາຍການທີ່ຈະຂໍໂອນ
+            <span className="ml-1.5 text-[11px] font-normal text-zinc-400">
+              {lines.length} ລາຍການ · ປະມານ {money(totalValue)} ກີບ
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-[11px] font-semibold text-zinc-500 underline-offset-2 hover:underline"
+          >
+            ລ້າງທັງໝົດ
+          </button>
+        </div>
+
+        <div className="max-h-56 overflow-y-auto">
+          {picked.map((i) => {
+            const q = qtyOf(i);
+            return (
+              <div
+                key={i.item_code}
+                className={`flex items-center gap-2 border-b border-zinc-50 px-3 py-1.5 last:border-0 dark:border-zinc-800/60 ${
+                  q <= 0 ? "opacity-45" : ""
+                }`}
+              >
+                <span className="font-mono text-[10px] font-bold text-brand-600 dark:text-brand-400">
+                  {i.item_code}
+                </span>
+                <span
+                  className="min-w-0 flex-1 truncate text-[12px] text-zinc-700 dark:text-zinc-300"
+                  title={i.item_name ?? ""}
+                >
+                  {i.item_name}
+                </span>
+                <span className="shrink-0 text-[10px] text-zinc-400" title="ຄົງເຫຼືອປັດຈຸບັນ">
+                  ມີ {fmt(i.on_hand, 0)}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={q}
+                  onChange={(e) =>
+                    setEdited((s) => ({
+                      ...s,
+                      [i.item_code]: Math.max(0, Number(e.target.value) || 0),
+                    }))
+                  }
+                  title="ຈຳນວນທີ່ຈະຂໍ — ແກ້ໄດ້"
+                  className="w-20 shrink-0 rounded-lg bg-white px-2 py-1 text-right font-mono text-[12px] font-bold text-zinc-900 ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-700"
+                />
+                <span className="w-10 shrink-0 text-[10px] text-zinc-400">{i.unit_code}</span>
+                <button
+                  type="button"
+                  onClick={() => onRemove(i.item_code)}
+                  title="ເອົາອອກຈາກລາຍການ"
+                  className="shrink-0 rounded px-1.5 text-[13px] font-bold text-zinc-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center gap-2.5">
-        <span className="text-[12px] font-bold text-brand-700 dark:text-brand-300">
-          ຕິກໄວ້ {picked.length} ລາຍການ
-        </span>
         <span className="text-[11px] text-zinc-500">ຈາກສາງ</span>
         <select value={from} onChange={(e) => setFrom(e.target.value)} className={sel}>
           <option value="">— ເລືອກຕົ້ນທາງ —</option>
@@ -1291,18 +1377,11 @@ function TransferBar({
         >
           {busy ? "ກຳລັງສ້າງ..." : `ສ້າງໃບຂໍໂອນ (${lines.length})`}
         </button>
-        <button
-          type="button"
-          onClick={onClear}
-          className="text-[11px] font-semibold text-zinc-500 underline-offset-2 hover:underline"
-        >
-          ລ້າງ
-        </button>
       </div>
 
       {skipped > 0 && (
         <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">
-          ຂ້າມ {skipped} ລາຍການ ຍ້ອນບໍ່ມີຈຳນວນທີ່ຕ້ອງເຕີມ (ຂອງພຽງພໍ ຫຼື ເກີນຢູ່ແລ້ວ)
+          ຂ້າມ {skipped} ລາຍການ ທີ່ຈຳນວນເປັນ 0 — ພິມຈຳນວນໃສ່ ຖ້າຢາກໃຫ້ຢູ່ໃນໃບ
         </p>
       )}
       {msg && (
