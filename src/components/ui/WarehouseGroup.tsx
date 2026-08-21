@@ -16,6 +16,7 @@ const toneRing: Record<AccentTone, string> = {
   aqua: "text-aqua-700 bg-aqua-50 dark:bg-aqua-950/40 dark:text-aqua-300",
   navy: "text-brand-900 bg-brand-100 dark:bg-brand-900/50 dark:text-brand-300",
   amber: "text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300",
+  violet: "text-violet-700 bg-violet-50 dark:bg-violet-950/40 dark:text-violet-300",
   brand: "text-brand-700 bg-brand-50 dark:bg-brand-950/40 dark:text-brand-300",
 };
 
