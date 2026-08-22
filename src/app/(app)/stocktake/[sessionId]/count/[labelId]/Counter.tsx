@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import BarcodeScanner from "./BarcodeScanner";
+import BarcodeScanner from "@/components/BarcodeScanner";
 import {
   enqueue,
   flush,

@@ -225,11 +225,6 @@ const groups: Group[] = [
         icon: <ArrowLeftRightIcon className="h-3.5 w-3.5" />,
       },
       {
-        label: "ໃບສະເໜີສັ່ງຊື້",
-        href: "/movements/purchase",
-        icon: <ArrowDownIcon className="h-3.5 w-3.5" />,
-      },
-      {
         label: "ຊ່ອງຫວ່າງລາຍການ",
         href: "/movements/assortment",
         icon: <SearchIcon className="h-3.5 w-3.5" />,

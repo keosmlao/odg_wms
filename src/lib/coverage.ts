@@ -85,6 +85,27 @@ export type DemandTrend = "rising" | "flat" | "falling" | "stopped" | "none";
 /** ການຈັດກຸ່ມ ABC ຕາມມູນຄ່າຂາຍ (ພາຍໃນຂອບເຂດທີ່ວິເຄາະ). */
 export type AbcClass = "A" | "B" | "C" | "none";
 
+/**
+ * FSN — ຈັດຕາມ **ຄວາມຖີ່ການເຄື່ອນໄຫວ** ບໍ່ແມ່ນມູນຄ່າ (ນັ້ນຄື ABC).
+ *
+ *   F (Fast)        ເຄື່ອນໄຫວໄວ — ຢູ່ໃນກຸ່ມທີ່ລວມກັນເປັນ 70% ທຳອິດຂອງຈຳນວນບິນ
+ *   S (Slow)        ເຄື່ອນໄຫວຊ້າ — ຂາຍຢູ່ ແຕ່ຖີ່ໜ້ອຍ
+ *   N (Non-moving)  ບໍ່ເຄື່ອນໄຫວເລີຍໃນຊ່ວງ — ນີ້ຄືເງິນຈົມແທ້
+ *
+ * ໃຊ້ **ຈຳນວນບິນ** ເປັນຕົວວັດຄວາມຖີ່ (ບໍ່ແມ່ນຈຳນວນຫົວໜ່ວຍ) ເພາະ FSN ຖາມວ່າ
+ * "ຖືກຢິບເລື້ອຍປານໃດ" ບໍ່ແມ່ນ "ອອກໄປຫຼາຍປານໃດ" — ຂາຍລ໋ອດໃຫຍ່ເທື່ອດຽວ ບໍ່ຄວນ
+ * ນັບເປັນເຄື່ອນໄຫວໄວ. ຄູ່ກັບ ABC ແລ້ວໃຊ້ຕັດສິນໃຈໄດ້ໄວ:
+ *
+ *   A-F ສຳຄັນ+ໄວ → ຢ່າໃຫ້ຂາດ, ວາງໃກ້ບ່ອນຈ່າຍ    C-N ບໍ່ສຳຄັນ+ບໍ່ຍ້າຍ → ພິຈາລະນາລ້າງ
+ */
+export type FsnClass = "F" | "S" | "N";
+
+export const FSN_LABEL_LO: Record<FsnClass, string> = {
+  F: "ໄວ",
+  S: "ຊ້າ",
+  N: "ບໍ່ເຄື່ອນໄຫວ",
+};
+
 export const PATTERN_LABEL_LO: Record<DemandPattern, string> = {
   steady: "ສະໝ່ຳສະເໝີ",
   intermittent: "ຂາດໆ",
@@ -168,6 +189,12 @@ export type CoverageItem = {
   /** ມູນຄ່າຂາຍໃນຊ່ວງ — ຖານຂອງ ABC. */
   sale_amount: number;
   abc: AbcClass;
+  /** ຫົວໜ່ວຍໃຫຍ່ (ຫີບ/ມັດ/ຖົງ) — ໃຊ້ປັດຈຳນວນຕອນຂໍໂອນ. `null` = ບໍ່ໄດ້ຕັ້ງ. */
+  pack: PackUnit | null;
+  /** FSN — ຄວາມຖີ່ການເຄື່ອນໄຫວ (ຄິດຈາກຈຳນວນບິນ). */
+  fsn: FsnClass;
+  /** ບໍ່ໄດ້ຂາຍມາແລ້ວກີ່ມື້ — `null` ເມື່ອບໍ່ເຄີຍຂາຍເລີຍໃນຊ່ວງ. */
+  days_since_sale: number | null;
 };
 
 export type WarehouseSummary = {
@@ -373,6 +400,47 @@ const WMS_SQL = `
   WHERE t.wh_code = ANY($1) AND t.item_code IS NOT NULL AND t.item_code <> ''
   GROUP BY 1, 2`;
 
+/**
+ * ຫົວໜ່ວຍໃຫຍ່ຂອງສິນຄ້າ (ຫີບ / ມັດ / ຖົງ) ຈາກ `ic_unit_use`.
+ *
+ * ໃຊ້ຕອນຂໍໂອນ — ສາງບໍ່ແຕກມັດເພື່ອສົ່ງ 13 ເສັ້ນ, ຕ້ອງສົ່ງເປັນມັດເຕັມ.
+ * ເອົາ `ratio` ໃຫຍ່ສຸດຂອງແຕ່ລະສິນຄ້າ (ບາງອັນມີຫຼາຍຊັ້ນ).
+ *
+ * ຕາຕະລາງນີ້ນ້ອຍ (~2,100 ສິນຄ້າມີຫົວໜ່ວຍໃຫຍ່) ແລະ ເປັນຂໍ້ມູນຫຼັກທີ່ບໍ່ຄ່ອຍປ່ຽນ
+ * ຈຶ່ງໂຫຼດເທື່ອດຽວແລ້ວເກັບໄວ້ຍາວ — ບໍ່ຕ້ອງ join ໃນທຸກຄຳຮ້ອງ.
+ */
+export type PackUnit = { unit: string; size: number };
+
+const PACK_TTL_MS = 60 * 60_000;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __packUnits: { at: number; map: Map<string, PackUnit> } | undefined;
+}
+
+async function packUnits(): Promise<Map<string, PackUnit>> {
+  const hit = globalThis.__packUnits;
+  if (hit && Date.now() - hit.at < PACK_TTL_MS) return hit.map;
+  const map = new Map<string, PackUnit>();
+  try {
+    const rows = await query<{ ic_code: string; code: string | null; ratio: string | null }>(
+      `SELECT DISTINCT ON (u.ic_code) u.ic_code, u.code, u.ratio::text AS ratio
+       FROM public.ic_unit_use u
+       WHERE u.ratio > 1 AND COALESCE(u.status, 1) = 1
+         AND u.ic_code IS NOT NULL AND NULLIF(TRIM(u.code), '') IS NOT NULL
+       ORDER BY u.ic_code, u.ratio DESC`,
+    );
+    for (const r of rows) {
+      const size = num(r.ratio);
+      if (size > 1 && r.code) map.set(r.ic_code, { unit: r.code.trim(), size });
+    }
+  } catch {
+    // ຕາຕະລາງບໍ່ມີ / ອ່ານບໍ່ໄດ້ — ຖືວ່າບໍ່ມີຫົວໜ່ວຍໃຫຍ່ ໜ້າຈໍຍັງໃຊ້ໄດ້
+  }
+  globalThis.__packUnits = { at: Date.now(), map };
+  return map;
+}
+
 /** ກະແຈລວມ — ສາງ + ສິນຄ້າ. */
 const key = (wh: string, item: string) => `${wh}::${item}`;
 
@@ -401,6 +469,8 @@ type Row = {
   recent_qty: number;
   prior_qty: number;
   sale_amount: number;
+  /** ຫົວໜ່ວຍໃຫຍ່ (ຫີບ/ມັດ/ຖົງ) — `null` ເມື່ອສິນຄ້ານີ້ບໍ່ໄດ້ຕັ້ງໄວ້. */
+  pack: PackUnit | null;
   /** ໃສ່ສະເພາະຕອນລວມກຸ່ມ — ບອກວ່າຍອດລວມນັ້ນມາຈາກສາງໃດແດ່. */
   by_wh?: WarehouseSplit[];
 };
@@ -424,7 +494,7 @@ const CACHE_TTL_MS = 10 * 60_000;
  * cache ຜູກກັບ `globalThis` ຈຶ່ງລອດ HMR ຕອນ dev — ຖ້າບໍ່ມີຮຸ່ນ ແຖວເກົ່າທີ່ຍັງ
  * ບໍ່ມີຊ່ອງໃໝ່ຈະຖືກໃຊ້ຕໍ່ ແລ້ວຊ່ອງນັ້ນຈະເປັນ undefined ແບບງຽບໆ.
  */
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -468,7 +538,7 @@ async function loadRows(whCode: string, days: number, refresh: boolean): Promise
     group_name: null, group_sub_name: null, group_sub2_name: null, brand_name: null,
     on_hand: 0, wms_on_hand: 0, sold: 0, bills: 0, sale_days: 0,
     last_sale: null, avg_cost: 0, cost_source: "none", last_buy_date: null,
-    recent_qty: 0, prior_qty: 0, sale_amount: 0,
+    recent_qty: 0, prior_qty: 0, sale_amount: 0, pack: null,
   });
   const at = (wh: string, item: string): Row => {
     const k = key(wh, item);
@@ -549,6 +619,10 @@ async function loadRows(whCode: string, days: number, refresh: boolean): Promise
       // ຫາລາຄາຊື້ບໍ່ໄດ້ ກໍ່ບໍ່ເປັນຫຍັງ — ຕົກເປັນ "ບໍ່ຮູ້ຕົ້ນທຶນ" ຕາມເດີມ
     }
   }
+
+  // ── ຫົວໜ່ວຍໃຫຍ່ (ຫີບ/ມັດ/ຖົງ) — ໃຊ້ຕອນຂໍໂອນ ──────────────────────
+  const packs = await packUnits();
+  for (const r of merged.values()) r.pack = packs.get(r.item_code) ?? null;
 
   const entry: CachedRows = {
     at: Date.now(),
@@ -656,8 +730,14 @@ function computeItems(rows: Row[], span: number, thresholds: Thresholds): Covera
       recent_avg_daily: Math.round(recentRate * 1e6) / 1e6,
       pattern,
       trend,
+      pack: r.pack,
       sale_amount: num(r.sale_amount),
       abc: "none",
+      // N ຕັ້ງແຕ່ຕົ້ນ — ຕົວທີ່ຂາຍຢູ່ຈະຖືກຈັດເປັນ F/S ໃນຮອບລຸ່ມ
+      fsn: "N",
+      days_since_sale: r.last_sale
+        ? Math.max(0, Math.round((Date.now() - Date.parse(`${r.last_sale}T00:00:00Z`)) / 864e5))
+        : null,
     };
   });
 
@@ -673,6 +753,20 @@ function computeItems(rows: Row[], span: number, thresholds: Thresholds): Covera
       cum += i.sale_amount;
       const share = cum / totalAmount;
       i.abc = share <= 0.8 ? "A" : share <= 0.95 ? "B" : "C";
+    }
+  }
+
+  // ── FSN ຕາມຄວາມຖີ່ (ຈຳນວນບິນ) ─────────────────────────────────────
+  //
+  // N = ບໍ່ມີການເຄື່ອນໄຫວເລີຍ (ຕັ້ງໄວ້ແລ້ວຂ້າງເທິງ). ໃນບັນດາຕົວທີ່ຂາຍຢູ່
+  // ຈັດ F ໃຫ້ກຸ່ມທີ່ລວມກັນເປັນ 70% ທຳອິດຂອງຈຳນວນບິນທັງໝົດ ທີ່ເຫຼືອເປັນ S.
+  const moving = items.filter((i) => i.bills > 0).sort((a, b) => b.bills - a.bills);
+  const totalBills = moving.reduce((s, i) => s + i.bills, 0);
+  if (totalBills > 0) {
+    let cum = 0;
+    for (const i of moving) {
+      cum += i.bills;
+      i.fsn = cum / totalBills <= 0.7 ? "F" : "S";
     }
   }
 
@@ -801,7 +895,7 @@ export async function loadCoverageGroup(
           brand_name: r.brand_name,
           on_hand: 0, wms_on_hand: 0, sold: 0, bills: 0, sale_days: 0,
           last_sale: null, avg_cost: 0, cost_source: "none", last_buy_date: null,
-          recent_qty: 0, prior_qty: 0, sale_amount: 0, by_wh: [],
+          recent_qty: 0, prior_qty: 0, sale_amount: 0, pack: null, by_wh: [],
         };
         merged.set(r.item_code, g);
       }
@@ -812,6 +906,7 @@ export async function loadCoverageGroup(
       g.recent_qty += r.recent_qty;
       g.prior_qty += r.prior_qty;
       g.sale_amount += r.sale_amount;
+      g.pack ??= r.pack;
       // ມື້ທີ່ຂາຍ: ເອົາສູງສຸດ ບໍ່ບວກກັນ — ສາງຫຼາຍບ່ອນຂາຍມື້ດຽວກັນໄດ້
       g.sale_days = Math.max(g.sale_days, r.sale_days);
       if (r.last_sale && (!g.last_sale || r.last_sale > g.last_sale)) g.last_sale = r.last_sale;

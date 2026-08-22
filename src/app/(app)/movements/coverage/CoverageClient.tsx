@@ -1,14 +1,37 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
   AbcClass,
   CoverageItem,
   CoverageStatus,
   DemandPattern,
   DemandTrend,
+  FsnClass,
   WarehouseSummary,
 } from "@/lib/coverage";
+
+/**
+ * ປ້າຍ FSN — ຄວາມຖີ່ການເຄື່ອນໄຫວ (ຄົນລະເລື່ອງກັບ ABC ທີ່ເປັນມູນຄ່າ).
+ * ໃຊ້ຮູບແບບ outline ເພື່ອບໍ່ໃຫ້ແຂ່ງສາຍຕາກັບປ້າຍ ABC ທີ່ເປັນພື້ນທຶບ.
+ */
+const FSN_CHIP: Record<FsnClass, { label: string; cls: string; hint: string }> = {
+  F: {
+    label: "F",
+    cls: "ring-emerald-400 text-emerald-700 dark:text-emerald-400",
+    hint: "ເຄື່ອນໄຫວໄວ — ຢູ່ໃນກຸ່ມ 70% ທຳອິດຂອງຈຳນວນບິນ",
+  },
+  S: {
+    label: "S",
+    cls: "ring-amber-400 text-amber-700 dark:text-amber-400",
+    hint: "ເຄື່ອນໄຫວຊ້າ — ຂາຍຢູ່ ແຕ່ຖີ່ໜ້ອຍ",
+  },
+  N: {
+    label: "N",
+    cls: "ring-zinc-300 text-zinc-400 dark:ring-zinc-700",
+    hint: "ບໍ່ເຄື່ອນໄຫວເລີຍໃນຊ່ວງນີ້ — ເງິນຈົມແທ້",
+  },
+};
 
 /** ປ້າຍ ABC — A ຄືກຸ່ມທີ່ສ້າງມູນຄ່າຂາຍ 80% ທຳອິດ. */
 const ABC_CHIP: Record<AbcClass, string> = {
@@ -115,7 +138,7 @@ function fmt(v: number, digits = 0) {
     : "0";
 }
 
-/** ຫຍໍ້ເງິນກີບ ໃຫ້ອ່ານໄວ (ລ້ານ / ພັນ). */
+/** ຫຍໍ້ເງິນບາດ ໃຫ້ອ່ານໄວ (ລ້ານ / ພັນ). */
 function money(v: number) {
   const a = Math.abs(v);
   if (a >= 1e9) return `${(v / 1e9).toFixed(2)} ຕື້`;
@@ -169,6 +192,11 @@ export default function CoverageClient({ warehouses }: { warehouses: WarehouseOp
   const [fAbc, setFAbc] = useState<AbcClass | "all">("all");
   const [fPattern, setFPattern] = useState<DemandPattern | "all">("all");
   const [fTrend, setFTrend] = useState<DemandTrend | "all">("all");
+  const [fFsn, setFFsn] = useState<FsnClass | "all">("all");
+  /** ມີ/ບໍ່ມີສະຕ໋ອກ — ຄິດຈາກຄົງເຫຼືອ ERP. */
+  const [fStock, setFStock] = useState<"all" | "has" | "none">("all");
+  /** ບໍ່ຂາຍມາຫຼາຍກວ່າ N ມື້ — 0 = ບໍ່ກອງ, -1 = ບໍ່ເຄີຍຂາຍເລີຍ. */
+  const [fIdle, setFIdle] = useState(0);
 
   const active = results.find((r) => r.code === activeTab) ?? results[0] ?? null;
   const activeCode = active?.code ?? null;
@@ -463,6 +491,12 @@ export default function CoverageClient({ warehouses }: { warehouses: WarehouseOp
             setPattern={setFPattern}
             trend={fTrend}
             setTrend={setFTrend}
+            fsn={fFsn}
+            setFsn={setFFsn}
+            stock={fStock}
+            setStock={setFStock}
+            idleDays={fIdle}
+            setIdleDays={setFIdle}
           />
         ) : (
           <div className="py-12 text-center text-sm text-zinc-400">
@@ -495,7 +529,7 @@ function verdict(rate: number, selling: number) {
   return { text: "ບໍ່ພຽງພໍ — ຕ້ອງເຕີມ", tone: "bg-red-50 text-red-700 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-300" };
 }
 
-type SortKey = "risk" | "shortfall" | "sold" | "cover" | "excess";
+type SortKey = "risk" | "shortfall" | "sold" | "cover" | "excess" | "idle";
 
 function WarehousePanel({
   warehouses,
@@ -515,6 +549,12 @@ function WarehousePanel({
   setPattern,
   trend,
   setTrend,
+  fsn,
+  setFsn,
+  stock,
+  setStock,
+  idleDays,
+  setIdleDays,
 }: {
   warehouses: WarehouseOption[];
   summary: WarehouseSummary;
@@ -533,6 +573,12 @@ function WarehousePanel({
   setPattern: (v: DemandPattern | "all") => void;
   trend: DemandTrend | "all";
   setTrend: (v: DemandTrend | "all") => void;
+  fsn: FsnClass | "all";
+  setFsn: (v: FsnClass | "all") => void;
+  stock: "all" | "has" | "none";
+  setStock: (v: "all" | "has" | "none") => void;
+  idleDays: number;
+  setIdleDays: (v: number) => void;
 }) {
   /** ຕາຕະລາງ ຫຼື ຕົ້ນໄມ້ຕາມໝວດສິນຄ້າ. */
   const [view, setView] = useState<"table" | "tree">("table");
@@ -566,6 +612,11 @@ function WarehousePanel({
       if (abc !== "all" && i.abc !== abc) return false;
       if (pattern !== "all" && i.pattern !== pattern) return false;
       if (trend !== "all" && i.trend !== trend) return false;
+      if (fsn !== "all" && i.fsn !== fsn) return false;
+      if (stock === "has" && i.on_hand <= 0) return false;
+      if (stock === "none" && i.on_hand > 0) return false;
+      if (idleDays === -1 && i.days_since_sale !== null) return false;
+      if (idleDays > 0 && (i.days_since_sale ?? Infinity) < idleDays) return false;
       if (!needle) return true;
       return (
         i.item_code.toLowerCase().includes(needle) ||
@@ -591,9 +642,11 @@ function WarehousePanel({
       sold: (a, b) => b.sold - a.sold,
       cover: (a, b) => (a.days_cover ?? Infinity) - (b.days_cover ?? Infinity),
       excess: (a, b) => b.excess * b.avg_cost - a.excess * a.avg_cost,
+      // ບໍ່ຂາຍດົນສຸດຢູ່ເທິງ; "ບໍ່ເຄີຍຂາຍ" ຖືວ່າດົນທີ່ສຸດ
+      idle: (a, b) => (b.days_since_sale ?? Infinity) - (a.days_since_sale ?? Infinity),
     };
     return [...relevant].sort(cmp[sort]).slice(0, 300);
-  }, [items, status, q, sort, abc, pattern, trend]);
+  }, [items, status, q, sort, abc, pattern, trend, fsn, stock, idleDays]);
 
   /**
    * ຕົ້ນໄມ້ໃຊ້ຜົນທີ່ **ກອງແລ້ວ ແຕ່ບໍ່ຕັດ 300 ແຖວ** — ຕົວເລກສະຫຼຸບຂອງແຕ່ລະໝວດ
@@ -606,6 +659,11 @@ function WarehousePanel({
       if (abc !== "all" && i.abc !== abc) return false;
       if (pattern !== "all" && i.pattern !== pattern) return false;
       if (trend !== "all" && i.trend !== trend) return false;
+      if (fsn !== "all" && i.fsn !== fsn) return false;
+      if (stock === "has" && i.on_hand <= 0) return false;
+      if (stock === "none" && i.on_hand > 0) return false;
+      if (idleDays === -1 && i.days_since_sale !== null) return false;
+      if (idleDays > 0 && (i.days_since_sale ?? Infinity) < idleDays) return false;
       if (sort === "shortfall" && i.shortfall <= 0) return false;
       if (sort === "excess" && i.excess <= 0) return false;
       if (!needle) return true;
@@ -616,7 +674,7 @@ function WarehousePanel({
       );
     });
     return buildTree(base, treeLevels);
-  }, [items, status, q, sort, abc, pattern, trend, treeLevels]);
+  }, [items, status, q, sort, abc, pattern, trend, fsn, stock, idleDays, treeLevels]);
 
   return (
     <div className="space-y-4">
@@ -645,9 +703,9 @@ function WarehousePanel({
 
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Kard label="ຕ້ອງເຕີມດ່ວນ" value={fmt(risky)} unit="ລາຍການ" tone="rose" />
-          <Kard label="ມູນຄ່າທີ່ຕ້ອງເຕີມ" value={money(summary.shortfall_value)} unit="ກີບ" tone="rose" />
+          <Kard label="ມູນຄ່າທີ່ຕ້ອງເຕີມ" value={money(summary.shortfall_value)} unit="ບາດ" tone="rose" />
           <Kard label="ເກີນ / ບໍ່ເຄື່ອນໄຫວ" value={fmt(summary.counts.over + summary.counts.idle)} unit="ລາຍການ" tone="navy" />
-          <Kard label="ເງິນຈົມ (ເກີນຂີດ)" value={money(summary.excess_value)} unit="ກີບ" tone="navy" />
+          <Kard label="ເງິນຈົມ (ເກີນຂີດ)" value={money(summary.excess_value)} unit="ບາດ" tone="navy" />
         </div>
 
         <StatusBar counts={summary.counts} total={summary.items} onPick={setStatus} active={status} />
@@ -737,6 +795,41 @@ function WarehousePanel({
               <option value="none">ບໍ່ຂາຍ</option>
             </select>
             <select
+              value={fsn}
+              onChange={(e) => setFsn(e.target.value as FsnClass | "all")}
+              title="FSN — ຄວາມຖີ່ການເຄື່ອນໄຫວ (ຄິດຈາກຈຳນວນບິນ)"
+              className={`${inputCls} py-1.5 text-[12px]`}
+            >
+              <option value="all">FSN ທັງໝົດ</option>
+              <option value="F">F ໄວ</option>
+              <option value="S">S ຊ້າ</option>
+              <option value="N">N ບໍ່ເຄື່ອນໄຫວ</option>
+            </select>
+            <select
+              value={idleDays}
+              onChange={(e) => setIdleDays(Number(e.target.value))}
+              title="ນັບຈາກວັນທີ່ຂາຍລ່າສຸດ"
+              className={`${inputCls} py-1.5 text-[12px]`}
+            >
+              <option value={0}>ຂາຍລ່າສຸດ ທັງໝົດ</option>
+              {/* ສະເພາະຂີດທີ່ຢູ່ໃນຊ່ວງວິເຄາະ — ຂີດທີ່ໃຫຍ່ກວ່າຊ່ວງ ຈະບໍ່ມີວັນພົບຫຍັງ
+                  ເພາະເຮົາເບິ່ງຍ້ອນຫຼັງພຽງ {days} ມື້ */}
+              {[7, 14, 30, 60, 90, 180].filter((d) => d < days).map((d) => (
+                <option key={d} value={d}>ບໍ່ຂາຍມາເກີນ {d} ມື້</option>
+              ))}
+              <option value={-1}>ບໍ່ເຄີຍຂາຍໃນ {days} ມື້</option>
+            </select>
+            <select
+              value={stock}
+              onChange={(e) => setStock(e.target.value as "all" | "has" | "none")}
+              title="ຄິດຈາກຄົງເຫຼືອ ERP"
+              className={`${inputCls} py-1.5 text-[12px]`}
+            >
+              <option value="all">ສະຕ໋ອກ ທັງໝົດ</option>
+              <option value="has">ມີສະຕ໋ອກ</option>
+              <option value="none">ບໍ່ມີສະຕ໋ອກ</option>
+            </select>
+            <select
               value={trend}
               onChange={(e) => setTrend(e.target.value as DemandTrend | "all")}
               title="ຊ່ວງຫຼ້າສຸດ ທຽບ ຊ່ວງກ່ອນໜ້າ"
@@ -755,6 +848,7 @@ function WarehousePanel({
                 ["cover", "ວັນນ້ອຍ"],
                 ["sold", "ຂາຍຫຼາຍ"],
                 ["excess", "ເງິນຈົມ"],
+                ["idle", "ບໍ່ຂາຍດົນ"],
               ] as [SortKey, string][]).map(([k, l]) => (
                 <button
                   key={k}
@@ -840,6 +934,7 @@ function WarehousePanel({
                 <th className="px-3 py-2.5">ສິນຄ້າ</th>
                 <th className="px-3 py-2.5 text-right">ຄົງເຫຼືອ</th>
                 <th className="px-3 py-2.5 text-right">ຂາຍ {days} ວັນ</th>
+                <th className="px-3 py-2.5 text-right">ຂາຍລ່າສຸດ</th>
                 <th className="px-3 py-2.5 text-right">ສະເລ່ຍ/ມື້</th>
                 <th className="px-3 py-2.5 text-right">ວັນທີ່ພໍໃຊ້</th>
                 <th className="px-3 py-2.5 text-right">ຕ້ອງເຕີມ</th>
@@ -849,7 +944,7 @@ function WarehousePanel({
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {shown.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-zinc-400">
+                  <td colSpan={10} className="px-4 py-12 text-center text-sm text-zinc-400">
                     ບໍ່ມີລາຍການ
                   </td>
                 </tr>
@@ -884,12 +979,19 @@ function WarehousePanel({
                       <div className="flex items-center gap-1.5">
                         {i.abc !== "none" && (
                           <span
-                            title={`ກຸ່ມ ${i.abc} — ມູນຄ່າຂາຍ ${money(i.sale_amount)} ກີບ`}
+                            title={`ກຸ່ມ ${i.abc} — ມູນຄ່າຂາຍ ${money(i.sale_amount)} ບາດ`}
                             className={`rounded px-1.5 py-0.5 text-[9px] font-black ${ABC_CHIP[i.abc]}`}
                           >
                             {i.abc}
                           </span>
                         )}
+                        {/* FSN = ຄວາມຖີ່ (ວົງນອກ) ຄູ່ກັບ ABC = ມູນຄ່າ (ພື້ນທຶບ) */}
+                        <span
+                          title={`${FSN_CHIP[i.fsn].hint}${i.days_since_sale !== null ? ` · ບໍ່ຂາຍມາ ${i.days_since_sale} ມື້` : ""}`}
+                          className={`rounded px-1 py-0.5 text-[9px] font-black ring-1 ${FSN_CHIP[i.fsn].cls}`}
+                        >
+                          {FSN_CHIP[i.fsn].label}
+                        </span>
                         <span className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">
                           {i.item_code}
                         </span>
@@ -911,7 +1013,7 @@ function WarehousePanel({
                         )}
                         {i.last_sale && (
                           <span className="text-[10px] text-zinc-400">
-                            ຂາຍລ່າສຸດ {i.last_sale} · {i.bills} ບິນ / {i.sale_days} ມື້
+                            {i.bills} ບິນ / {i.sale_days} ມື້
                           </span>
                         )}
                       </div>
@@ -947,6 +1049,29 @@ function WarehousePanel({
                         >
                           {TREND_VIEW[i.trend].icon} {TREND_VIEW[i.trend].label}
                         </div>
+                      )}
+                    </td>
+                    {/* ຂາຍລ່າສຸດ — ວັນທີ່ + ບໍ່ຂາຍມາກີ່ມື້ (ສີເຂັ້ມຂຶ້ນເມື່ອດົນຂຶ້ນ) */}
+                    <td className="px-3 py-2.5 text-right font-mono text-[11px] tabular-nums">
+                      {i.last_sale ? (
+                        <>
+                          <span className="text-zinc-600 dark:text-zinc-300">{i.last_sale}</span>
+                          <div
+                            className={
+                              (i.days_since_sale ?? 0) >= 180
+                                ? "text-red-600 dark:text-red-400"
+                                : (i.days_since_sale ?? 0) >= 90
+                                  ? "text-amber-600 dark:text-amber-400"
+                                  : "text-zinc-400"
+                            }
+                          >
+                            {i.days_since_sale} ມື້ກ່ອນ
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-zinc-300 dark:text-zinc-600" title="ບໍ່ມີການຂາຍເລີຍໃນຊ່ວງທີ່ວິເຄາະ">
+                          ບໍ່ເຄີຍຂາຍ
+                        </span>
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono tabular-nums text-zinc-500">
@@ -1129,7 +1254,7 @@ function TreeRow({
           )}
           {need > 0 && (
             <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
-              {money(need)} ກີບ
+              {money(need)} ບາດ
             </span>
           )}
           {risky > 0 && (
@@ -1220,19 +1345,81 @@ function TransferBar({
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   /**
+   * ຄົງເຫຼືອຂອງ **ສາງຕົ້ນທາງ** ຕໍ່ລາຍການທີ່ຕິກໄວ້.
+   *
+   * ໜ້ານີ້ວິເຄາະສາງປາຍທາງ ຈຶ່ງບໍ່ຮູ້ຈັກຂອງຢູ່ຕົ້ນທາງເລີຍ — ຖ້າບໍ່ກວດ ຈະຂໍ 400 ຕົວ
+   * ຈາກສາງທີ່ມີພຽງ 6 ໄດ້ຢ່າງງຽບໆ ແລ້ວໃບຂໍໂອນນັ້ນກໍ່ຈ່າຍບໍ່ໄດ້.
+   */
+  const [avail, setAvail] = useState<Record<string, number> | null>(null);
+  const [availBusy, setAvailBusy] = useState(false);
+
+  /** ລະຫັດທີ່ຕິກໄວ້ — ໃຊ້ເປັນ dep ເພື່ອກວດຄືນເມື່ອຕິກເພີ່ມ/ເອົາອອກ. */
+  const pickedKey = picked.map((i) => i.item_code).sort().join(",");
+
+  useEffect(() => {
+    void loadAvail(from);
+    // ຕິກລາຍການເພີ່ມຫຼັງເລືອກຕົ້ນທາງແລ້ວ ຕ້ອງກວດຄືນ ບໍ່ດັ່ງນັ້ນລາຍການໃໝ່ຈະ
+    // ຂຶ້ນວ່າ "ຕົ້ນທາງມີ 0" ທັງທີ່ຍັງບໍ່ໄດ້ກວດ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, pickedKey]);
+
+  async function loadAvail(whFrom: string) {
+    setAvail(null);
+    if (!whFrom || picked.length === 0) return;
+    setAvailBusy(true);
+    try {
+      const p = new URLSearchParams({
+        wh: whFrom,
+        items: picked.map((i) => i.item_code).join(","),
+      });
+      const res = await fetch(`/api/movements/stock-check?${p}`);
+      const json = (await res.json()) as {
+        items?: { item_code: string; on_hand: number }[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setMsg({ ok: false, text: json.error ?? "ກວດຄົງເຫຼືອຕົ້ນທາງບໍ່ສຳເລັດ" });
+        return;
+      }
+      setAvail(Object.fromEntries((json.items ?? []).map((r) => [r.item_code, r.on_hand])));
+    } catch {
+      setMsg({ ok: false, text: "ກວດຄົງເຫຼືອຕົ້ນທາງບໍ່ໄດ້" });
+    } finally {
+      setAvailBusy(false);
+    }
+  }
+
+  /**
    * ຈຳນວນທີ່ຜູ້ໃຊ້ພິມແກ້ເອງ — ເກັບແຕ່ **ຕົວທີ່ຖືກແກ້** ສ່ວນທີ່ເຫຼືອຄິດຈາກ
    * `shortfall` ສົດໆ. ເຮັດແບບນີ້ຈຶ່ງບໍ່ຕ້ອງ sync state ເມື່ອຕິກລາຍການເພີ່ມ
    * ຫຼື ເມື່ອຜົນວິເຄາະໂຫຼດໃໝ່.
    */
   const [edited, setEdited] = useState<Record<string, number>>({});
-  const qtyOf = (i: CoverageItem) =>
-    edited[i.item_code] ?? Math.ceil(i.shortfall > 0 ? i.shortfall : 0);
+
+  /**
+   * ປັດຂຶ້ນໃຫ້ຄົບຫົວໜ່ວຍໃຫຍ່ — ສາງບໍ່ແຕກມັດເພື່ອສົ່ງ 13 ເສັ້ນ.
+   * ເປີດໄວ້ເປັນຄ່າເລີ່ມຕົ້ນ ແຕ່ປິດໄດ້ ເພາະບາງລາຍການ 1 ຖົງ = 1,300 ຕົວ
+   * ຊຶ່ງການປັດຂຶ້ນຈະກາຍເປັນການຂົນເກີນຄວາມຕ້ອງການຫຼາຍເທົ່າ.
+   */
+  const [roundPack, setRoundPack] = useState(true);
+
+  /** ຈຳນວນດິບທີ່ຕ້ອງເຕີມ (ຍັງບໍ່ປັດ). */
+  const rawOf = (i: CoverageItem) => Math.ceil(i.shortfall > 0 ? i.shortfall : 0);
+  /** ຈຳນວນຫຼັງປັດເປັນຫົວໜ່ວຍໃຫຍ່ (ຖ້າມີ ແລະ ເປີດໃຊ້). */
+  const packedOf = (i: CoverageItem) => {
+    const raw = rawOf(i);
+    if (!roundPack || !i.pack || raw <= 0) return raw;
+    return Math.ceil(raw / i.pack.size) * i.pack.size;
+  };
+  const qtyOf = (i: CoverageItem) => edited[i.item_code] ?? packedOf(i);
 
   const lines = picked
     .map((i) => ({ item: i, qty: qtyOf(i) }))
     .filter((l) => l.qty > 0);
   const skipped = picked.length - lines.length;
   const totalValue = lines.reduce((s, l) => s + l.qty * l.item.avg_cost, 0);
+  /** ແຖວທີ່ຂໍເກີນຄົງເຫຼືອຂອງຕົ້ນທາງ. */
+  const over = avail === null ? [] : lines.filter((l) => l.qty > (avail[l.item.item_code] ?? 0));
 
   async function create() {
     if (!from) return setMsg({ ok: false, text: "ກະລຸນາເລືອກສາງຕົ້ນທາງ" });
@@ -1282,16 +1469,30 @@ function TransferBar({
           <span className="text-[12px] font-bold text-zinc-700 dark:text-zinc-200">
             ລາຍການທີ່ຈະຂໍໂອນ
             <span className="ml-1.5 text-[11px] font-normal text-zinc-400">
-              {lines.length} ລາຍການ · ປະມານ {money(totalValue)} ກີບ
+              {lines.length} ລາຍການ · ປະມານ {money(totalValue)} ບາດ
             </span>
           </span>
-          <button
-            type="button"
-            onClick={onClear}
-            className="text-[11px] font-semibold text-zinc-500 underline-offset-2 hover:underline"
-          >
-            ລ້າງທັງໝົດ
-          </button>
+          <div className="flex items-center gap-3">
+            <label
+              className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-600 dark:text-zinc-300"
+              title="ປັດຂຶ້ນໃຫ້ຄົບ ຫີບ/ມັດ/ຖົງ — ບໍ່ແຕະລາຍການທີ່ຜູ້ໃຊ້ພິມແກ້ເອງແລ້ວ"
+            >
+              <input
+                type="checkbox"
+                checked={roundPack}
+                onChange={(e) => setRoundPack(e.target.checked)}
+                className="h-3.5 w-3.5 accent-brand-500"
+              />
+              ປັດເປັນຫົວໜ່ວຍໃຫຍ່
+            </label>
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-[11px] font-semibold text-zinc-500 underline-offset-2 hover:underline"
+            >
+              ລ້າງທັງໝົດ
+            </button>
+          </div>
         </div>
 
         <div className="max-h-56 overflow-y-auto">
@@ -1313,9 +1514,54 @@ function TransferBar({
                 >
                   {i.item_name}
                 </span>
-                <span className="shrink-0 text-[10px] text-zinc-400" title="ຄົງເຫຼືອປັດຈຸບັນ">
+                <span className="shrink-0 text-[10px] text-zinc-400" title="ຄົງເຫຼືອຂອງສາງປາຍທາງ">
                   ມີ {fmt(i.on_hand, 0)}
                 </span>
+                {/* ຄົງເຫຼືອຂອງສາງຕົ້ນທາງ — ຂໍເກີນທີ່ເຂົາມີບໍ່ໄດ້ */}
+                <span className="w-24 shrink-0 text-right text-[10px]">
+                  {avail === null ? (
+                    <span className="text-zinc-300 dark:text-zinc-600">
+                      {availBusy ? "ກຳລັງກວດ..." : from ? "" : "ເລືອກຕົ້ນທາງ"}
+                    </span>
+                  ) : (avail[i.item_code] ?? 0) >= q ? (
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      ຕົ້ນທາງມີ {fmt(avail[i.item_code] ?? 0, 0)}
+                    </span>
+                  ) : (
+                    <span className="font-bold text-red-600 dark:text-red-400">
+                      ຕົ້ນທາງມີ {fmt(avail[i.item_code] ?? 0, 0)}
+                    </span>
+                  )}
+                </span>
+                {/* ຫົວໜ່ວຍໃຫຍ່ + ຈຳນວນຫີບ/ມັດ ທີ່ຈຳນວນນີ້ຄິດເປັນ */}
+                {i.pack ? (
+                  <span
+                    className="w-32 shrink-0 text-right text-[10px]"
+                    title={`1 ${i.pack.unit} = ${fmt(i.pack.size, 0)} ${i.unit_code ?? ""} · ຕ້ອງເຕີມແທ້ ${fmt(rawOf(i), 0)}`}
+                  >
+                    <span
+                      className={
+                        q % i.pack.size === 0
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-amber-600 dark:text-amber-400"
+                      }
+                    >
+                      {q % i.pack.size === 0
+                        ? `${fmt(q / i.pack.size, 2)} ${i.pack.unit}`
+                        : `ບໍ່ຄົບ ${i.pack.unit}`}
+                    </span>
+                    {/* ປັດແລ້ວເກີນຄວາມຕ້ອງການຫຼາຍ — ບອກໄວ້ ບໍ່ໃຫ້ຂົນເກີນແບບບໍ່ຮູ້ຕົວ */}
+                    {q > rawOf(i) * 2 && rawOf(i) > 0 && (
+                      <div className="text-red-600 dark:text-red-400">
+                        ເກີນ {fmt(q - rawOf(i), 0)} ({(q / rawOf(i)).toFixed(1)}×)
+                      </div>
+                    )}
+                  </span>
+                ) : (
+                  <span className="w-28 shrink-0 text-right text-[10px] text-zinc-300 dark:text-zinc-600" title="ສິນຄ້ານີ້ບໍ່ໄດ້ຕັ້ງຫົວໜ່ວຍໃຫຍ່ໄວ້ໃນ ERP">
+                    ບໍ່ມີຫົວໜ່ວຍໃຫຍ່
+                  </span>
+                )}
                 <input
                   type="number"
                   min={0}
@@ -1347,7 +1593,11 @@ function TransferBar({
 
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="text-[11px] text-zinc-500">ຈາກສາງ</span>
-        <select value={from} onChange={(e) => setFrom(e.target.value)} className={sel}>
+        <select
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          className={sel}
+        >
           <option value="">— ເລືອກຕົ້ນທາງ —</option>
           {warehouses
             .filter((w) => !destChoices.includes(w.code))
@@ -1378,6 +1628,28 @@ function TransferBar({
           {busy ? "ກຳລັງສ້າງ..." : `ສ້າງໃບຂໍໂອນ (${lines.length})`}
         </button>
       </div>
+
+      {/* ຂໍເກີນທີ່ຕົ້ນທາງມີ — ບອກ ແລະ ໃຫ້ປັບລົງໄດ້ໃນປຸ່ມດຽວ */}
+      {over.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-red-700 dark:text-red-400">
+          <span>
+            <b>{over.length}</b> ລາຍການ ຂໍເກີນທີ່ສາງ {from} ມີ — ໃບຂໍໂອນນີ້ຈ່າຍບໍ່ຄົບ
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              setEdited((s) => {
+                const n = { ...s };
+                for (const l of over) n[l.item.item_code] = avail?.[l.item.item_code] ?? 0;
+                return n;
+              })
+            }
+            className="rounded-md bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white transition hover:bg-red-700"
+          >
+            ປັບລົງໃຫ້ພໍດີກັບຂອງທີ່ມີ
+          </button>
+        </div>
+      )}
 
       {skipped > 0 && (
         <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">

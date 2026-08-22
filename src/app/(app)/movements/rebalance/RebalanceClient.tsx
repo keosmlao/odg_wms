@@ -215,7 +215,7 @@ export default function RebalanceClient({ warehouses }: { warehouses: WarehouseO
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Kard label="ຕ້ອງໂອນມາຈາກຕົ້ນທາງ" value={fmt(totals.lines)} unit="ແຖວ" tone="emerald" />
-            <Kard label="ມູນຄ່າທີ່ໂອນ" value={money(totals.value)} unit="ກີບ" tone="navy" />
+            <Kard label="ມູນຄ່າທີ່ໂອນ" value={money(totals.value)} unit="ບາດ" tone="navy" />
             <Kard
               label="ຍ້າຍພາຍໃນກຸ່ມກໍ່ພໍ"
               value={fmt(totals.internalLines)}
@@ -228,7 +228,7 @@ export default function RebalanceClient({ warehouses }: { warehouses: WarehouseO
           {totals.internalLines > 0 && (
             <div className="rounded-xl bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900">
               ມີ <b>{fmt(totals.internalLines)}</b> ແຖວ ທີ່ຂອງມີຢູ່ໃນກຸ່ມປາຍທາງແລ້ວ ພຽງແຕ່ນອນຜິດສາງ
-              (ປະມານ {money(totals.internalValue)} ກີບ) — <b>ຍ້າຍພາຍໃນບ່ອນດຽວກັນ</b> ໄດ້ເລີຍ
+              (ປະມານ {money(totals.internalValue)} ບາດ) — <b>ຍ້າຍພາຍໃນບ່ອນດຽວກັນ</b> ໄດ້ເລີຍ
               ບໍ່ຕ້ອງຂໍໂອນມາຈາກທາງໄກ. ບລັອກສີເຫຼືອງລຸ່ມນີ້ຄືລາຍການເຫຼົ່ານັ້ນ.
             </div>
           )}
@@ -247,17 +247,9 @@ export default function RebalanceClient({ warehouses }: { warehouses: WarehouseO
           )}
 
           {data.unmet_lines > 0 && (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl bg-rose-50 px-4 py-3 text-[12px] leading-relaxed text-rose-800 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900">
-              <span>
-                ມີ <b>{fmt(data.unmet_lines)}</b> ລາຍການທີ່ປາຍທາງຂາດ ແຕ່ບໍ່ມີສາງຕົ້ນທາງໃດເຫຼືອພໍໃຫ້ໂອນ
-                (ປະມານ {money(data.unmet_value)} ກີບ) — ພວກນີ້ຕ້ອງ<b>ສັ່ງຊື້</b> ບໍ່ແມ່ນໂອນ.
-              </span>
-              <Link
-                href="/movements/purchase"
-                className="ml-auto rounded-lg bg-rose-600 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-rose-700"
-              >
-                ເປີດໃບສະເໜີສັ່ງຊື້
-              </Link>
+            <div className="rounded-xl bg-rose-50 px-4 py-3 text-[12px] leading-relaxed text-rose-800 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900">
+              ມີ <b>{fmt(data.unmet_lines)}</b> ລາຍການທີ່ປາຍທາງຂາດ ແຕ່ບໍ່ມີສາງຕົ້ນທາງໃດເຫຼືອພໍໃຫ້ໂອນ
+              (ປະມານ {money(data.unmet_value)} ບາດ) — ພວກນີ້ຕ້ອງ<b>ສັ່ງຊື້</b> ບໍ່ແມ່ນໂອນ.
             </div>
           )}
 
@@ -307,10 +299,22 @@ function PairBlock({
    * ຕັ້ງເປັນ 0 ເພື່ອຂ້າມແຖວນັ້ນ.
    */
   const [edited, setEdited] = useState<Record<string, number>>({});
+  const [roundPack, setRoundPack] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const qtyOf = (s: Suggestion) => edited[s.item_code] ?? Math.ceil(s.move_qty);
+  /** ຈຳນວນດິບທີ່ຄິດໃຫ້ (ຍັງບໍ່ປັດເປັນຫົວໜ່ວຍໃຫຍ່). */
+  const rawOf = (s: Suggestion) => Math.ceil(s.move_qty);
+  /**
+   * ປັດຂຶ້ນໃຫ້ຄົບ ຫີບ/ມັດ/ຖົງ — ສາງບໍ່ແຕກມັດເພື່ອສົ່ງເສດ.
+   * ບາງລາຍການ 1 ຖົງ = 1,300 ຕົວ ຈຶ່ງປິດໄດ້ ແລະ ຫົວຕາຕະລາງເຕືອນເມື່ອປັດແລ້ວເກີນຫຼາຍ.
+   */
+  const packedOf = (s: Suggestion) => {
+    const raw = rawOf(s);
+    if (!roundPack || !s.pack || raw <= 0) return raw;
+    return Math.ceil(raw / s.pack.size) * s.pack.size;
+  };
+  const qtyOf = (s: Suggestion) => edited[s.item_code] ?? packedOf(s);
   const sendable = lines.map((s) => ({ s, qty: qtyOf(s) })).filter((l) => l.qty > 0);
 
   async function createDoc() {
@@ -385,7 +389,7 @@ function PairBlock({
             {fmt(pair.lines)} ລາຍການ
           </span>
           <span className="font-mono font-bold text-brand-600 dark:text-brand-400">
-            {money(pair.value)} ກີບ
+            {money(pair.value)} ບາດ
           </span>
           <span className="text-zinc-400">{open ? "▲" : "▼"}</span>
         </span>
@@ -400,6 +404,18 @@ function PairBlock({
                 : `ເອົາລາຍການລຸ່ມນີ້ໄປເປີດ ໃບຂໍໂອນ (124) ຈາກສາງ ${pair.from_wh} ໄປ ${pair.to_wh}`}
             </span>
             <div className="flex items-center gap-2">
+              <label
+                className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-600 dark:text-zinc-300"
+                title="ປັດຂຶ້ນໃຫ້ຄົບ ຫີບ/ມັດ/ຖົງ ຕາມທີ່ຕັ້ງໄວ້ໃນ ERP"
+              >
+                <input
+                  type="checkbox"
+                  checked={roundPack}
+                  onChange={(e) => setRoundPack(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-brand-500"
+                />
+                ປັດເປັນຫົວໜ່ວຍໃຫຍ່
+              </label>
               <button
                 type="button"
                 onClick={() => void createDoc()}
@@ -493,8 +509,32 @@ function PairBlock({
                         />
                         <span className="ml-1 text-[10px] text-zinc-400">{s.unit_code}</span>
                         <div className="text-[10px] text-zinc-400">
-                          ແນະນຳ {fmt(s.move_qty, 2)} · {money(s.move_value)} ກີບ
+                          ແນະນຳ {fmt(s.move_qty, 2)} · {money(s.move_value)} ບາດ
                         </div>
+                        {/* ຫົວໜ່ວຍໃຫຍ່ — ບອກວ່າຄິດເປັນຈັກຫີບ/ມັດ ແລະ ເຕືອນເມື່ອປັດເກີນຫຼາຍ */}
+                        {s.pack && (
+                          <div
+                            className="text-[10px]"
+                            title={`1 ${s.pack.unit} = ${fmt(s.pack.size, 0)} ${s.unit_code ?? ""}`}
+                          >
+                            <span
+                              className={
+                                qtyOf(s) % s.pack.size === 0
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : "text-amber-600 dark:text-amber-400"
+                              }
+                            >
+                              {qtyOf(s) % s.pack.size === 0
+                                ? `${fmt(qtyOf(s) / s.pack.size, 2)} ${s.pack.unit}`
+                                : `ບໍ່ຄົບ ${s.pack.unit}`}
+                            </span>
+                            {qtyOf(s) > rawOf(s) * 2 && rawOf(s) > 0 && (
+                              <span className="ml-1 text-red-600 dark:text-red-400">
+                                ({(qtyOf(s) / rawOf(s)).toFixed(1)}×)
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-[11px] tabular-nums">
                         <span className="font-bold text-emerald-600 dark:text-emerald-400">

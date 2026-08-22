@@ -28,14 +28,7 @@
  *   `between`  ກຸ່ມປາຍທາງຂາດແທ້ → ຕ້ອງໂອນມາຈາກຕົ້ນທາງ (ໃບຂໍໂອນ 124)
  *   `internal` ກຸ່ມມີພໍ ແຕ່ນອນຜິດສາງ → ຍ້າຍພາຍໃນກຸ່ມກໍ່ພຽງພໍ ບໍ່ຕ້ອງຂົນທາງໄກ
  */
-import {
-  loadCoverage,
-  type AbcClass,
-  type CostSource,
-  type CoverageItem,
-  type DemandPattern,
-  type DemandTrend,
-} from "@/lib/coverage";
+import { loadCoverage, type CoverageItem, type PackUnit } from "@/lib/coverage";
 
 export type RebalanceFilter = {
   /** ສາງຕົ້ນທາງ (ບ່ອນທີ່ມີຂອງເຫຼືອ). */
@@ -85,6 +78,8 @@ export type Suggestion = {
   urgency: "out" | "critical" | "low";
   /** ຈຳນວນທີ່ແນະນຳໃຫ້ຍ້າຍ. */
   move_qty: number;
+  /** ຫົວໜ່ວຍໃຫຍ່ (ຫີບ/ມັດ/ຖົງ) — ໃຊ້ປັດຈຳນວນຕອນສ້າງໃບຂໍໂອນ. */
+  pack: PackUnit | null;
   /** ມູນຄ່າໂດຍປະມານ (ຕົ້ນທຶນສະເລ່ຍ). */
   move_value: number;
   /** ວັນທີ່ພໍໃຊ້ຂອງປາຍທາງ ຫຼັງຍ້າຍ. */
@@ -104,41 +99,10 @@ export type PairSummary = {
   value: number;
 };
 
-/**
- * ລາຍການທີ່ໂອນບໍ່ໄດ້ — ບໍ່ມີສາງໃດໃນຂອບເຂດເຫຼືອພໍ ຈຶ່ງຕ້ອງ **ສັ່ງຊື້**.
- * ນີ້ຄືຂໍ້ມູນຂອງໜ້າ "ໃບສະເໜີສັ່ງຊື້".
- */
-export type UnmetLine = {
-  item_code: string;
-  item_name: string | null;
-  unit_code: string | null;
-  group_name: string | null;
-  brand_name: string | null;
-  wh_code: string;
-  on_hand: number;
-  avg_daily: number;
-  recent_avg_daily: number;
-  days_cover: number | null;
-  pattern: DemandPattern;
-  trend: DemandTrend;
-  abc: AbcClass;
-  /** ຍັງຂາດເທົ່າໃດ ຫຼັງຫັກສິ່ງທີ່ໂອນມາໄດ້ແລ້ວ. */
-  order_qty: number;
-  /** ມູນຄ່າໂດຍປະມານ (ຕົ້ນທຶນສະເລ່ຍ). */
-  order_value: number;
-  /** ຕົ້ນທຶນທີ່ໃຊ້ຄິດມາຈາກໃສ — ລາຄາຊື້ຫຼ້າສຸດ ບໍ່ແມ່ນຕົ້ນທຶນສະເລ່ຍ. */
-  cost_source: CostSource;
-  /** ວັນທີ່ຊື້ຫຼ້າສຸດ ເມື່ອຕົ້ນທຶນມາຈາກລາຄາຊື້. */
-  last_buy_date: string | null;
-  urgency: Suggestion["urgency"];
-};
-
 export type RebalanceResult = {
   filter: RebalanceFilter;
   pairs: PairSummary[];
   suggestions: Suggestion[];
-  /** ລາຍການທີ່ຕ້ອງສັ່ງຊື້ (ຮຽງຕາມມູນຄ່າ). */
-  unmet: UnmetLine[];
   /** ຈຳນວນລາຍການທີ່ຖືກຂ້າມຍ້ອນ ເຊົາຂາຍ / ຂາຍເທື່ອດຽວ — ບອກໄວ້ ບໍ່ໃຫ້ຫາຍງຽບ. */
   skipped_lines: number;
   /** ສາງທີ່ດຶງບໍ່ສຳເລັດ — ບອກໄວ້ ດີກວ່າສະແດງຜົນທີ່ຂາດໄປແບບງຽບໆ. */
@@ -226,7 +190,6 @@ export async function loadRebalance(f: RebalanceFilter): Promise<RebalanceResult
     it.avg_cost > 0 ? it.avg_cost : (costOf.get(it.item_code) ?? 0);
 
   const suggestions: Suggestion[] = [];
-  const unmet: UnmetLine[] = [];
   let unmet_lines = 0;
   let unmet_value = 0;
   let internal_lines = 0;
@@ -304,6 +267,7 @@ export async function loadRebalance(f: RebalanceFilter): Promise<RebalanceResult
           to_avg_daily: n.it.avg_daily,
           urgency: urgencyOf(n.it.on_hand, n.it.days_cover),
           move_qty: r2(qty),
+        pack: n.it.pack,
           move_value: Math.round(qty * unitCost),
           to_cover_after: cover(n.it.on_hand + qty, n.it.avg_daily),
           from_cover_after: cover(si.on_hand - qty, si.avg_daily),
@@ -415,6 +379,7 @@ export async function loadRebalance(f: RebalanceFilter): Promise<RebalanceResult
         to_avg_daily: n.it.avg_daily,
         urgency: n.urgency,
         move_qty: r2(qty),
+        pack: n.it.pack,
         move_value: Math.round(qty * unitCost),
         to_cover_after: cover(n.it.on_hand + qty, n.it.avg_daily),
         from_cover_after: cover(si.on_hand - qty, si.avg_daily),
@@ -424,31 +389,8 @@ export async function loadRebalance(f: RebalanceFilter): Promise<RebalanceResult
     if (remaining > 0.999) {
       unmet_lines += 1;
       unmet_value += remaining * unitCostOf(n.it);
-      unmet.push({
-        item_code: n.it.item_code,
-        item_name: n.it.item_name,
-        unit_code: n.it.unit_code,
-        group_name: n.it.group_name,
-        brand_name: n.it.brand_name,
-        wh_code: n.wh,
-        on_hand: n.it.on_hand,
-        avg_daily: n.it.avg_daily,
-        recent_avg_daily: n.it.recent_avg_daily,
-        days_cover: n.it.days_cover,
-        pattern: n.it.pattern,
-        trend: n.it.trend,
-        abc: n.it.abc,
-        order_qty: r2(remaining),
-        order_value: Math.round(remaining * unitCostOf(n.it)),
-        cost_source: n.it.cost_source,
-        last_buy_date: n.it.last_buy_date,
-        urgency: n.urgency,
-      });
     }
   }
-
-  // ຮຽງໃບສະເໜີສັ່ງຊື້: ດ່ວນກ່ອນ ແລ້ວມູນຄ່າສູງກ່ອນ
-  unmet.sort((a, b) => RANK[a.urgency] - RANK[b.urgency] || b.order_value - a.order_value);
 
   // ── ສະຫຼຸບເປັນຄູ່ ຕົ້ນທາງ → ປາຍທາງ (ໜຶ່ງຄູ່ = ໜຶ່ງໃບຂໍໂອນ) ──────────────
   const pairMap = new Map<string, PairSummary>();
@@ -486,7 +428,6 @@ export async function loadRebalance(f: RebalanceFilter): Promise<RebalanceResult
     filter: f,
     pairs,
     suggestions,
-    unmet,
     skipped_lines,
     failed: [...src.failed, ...dst.failed],
     unmet_lines,

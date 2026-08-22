@@ -149,7 +149,7 @@ export default function AssortmentClient({ warehouses }: { warehouses: Warehouse
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Kard label="ຍັງບໍ່ເຄີຍມີ" value={fmt(data.never_carried)} unit="ລາຍການ" tone="emerald" />
             <Kard label="ມີຂອງ ແຕ່ຂາຍບໍ່ອອກ" value={fmt(data.stocked_not_selling)} unit="ລາຍການ" tone="rose" />
-            <Kard label="ມູນຄ່າທີ່ຕົ້ນທາງເຮັດໄດ້" value={money(data.total_src_value)} unit="ກີບ/ຊ່ວງ" tone="navy" />
+            <Kard label="ມູນຄ່າທີ່ຕົ້ນທາງເຮັດໄດ້" value={money(data.total_src_value)} unit="ບາດ/ຊ່ວງ" tone="navy" />
             <Kard label="ຂະໜາດຮ້ານປາຍທາງ" value={`${(data.scale * 100).toFixed(0)}%`} unit="ຂອງຕົ້ນທາງ" tone="navy" />
           </div>
 
@@ -217,7 +217,7 @@ export default function AssortmentClient({ warehouses }: { warehouses: Warehouse
                         </td>
                         <td className="px-3 py-2.5 text-right font-mono tabular-nums text-zinc-700 dark:text-zinc-200">
                           {fmt(i.src_sold, 0)}
-                          <div className="text-[10px] text-zinc-400">{money(i.src_sale_amount)} ກີບ</div>
+                          <div className="text-[10px] text-zinc-400">{money(i.src_sale_amount)} ບາດ</div>
                         </td>
                         <td className="px-3 py-2.5 text-right font-mono tabular-nums text-zinc-500">{i.src_avg_daily.toFixed(2)}</td>
                         <td className="px-3 py-2.5 text-right font-mono tabular-nums text-zinc-600 dark:text-zinc-300">
@@ -233,7 +233,7 @@ export default function AssortmentClient({ warehouses }: { warehouses: Warehouse
                           {i.suggest_qty > 0 ? (
                             <>
                               <span className="text-base font-black text-emerald-600 dark:text-emerald-400">{fmt(i.suggest_qty, 0)}</span>
-                              <div className="text-[10px] text-zinc-400">{money(i.suggest_value)} ກີບ</div>
+                              <div className="text-[10px] text-zinc-400">{money(i.suggest_value)} ບາດ</div>
                             </>
                           ) : (
                             <span className="text-[11px] text-zinc-400" title={KIND_VIEW[i.kind].hint}>ບໍ່ແນະນຳ</span>
