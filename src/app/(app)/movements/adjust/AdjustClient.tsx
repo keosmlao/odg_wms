@@ -255,8 +255,36 @@ type PWorking = CountLine & {
 function pNodeKey(i: { item_code: string; rack: string; location: string; pallet: string }) {
   return `${i.item_code}|${i.rack}|${i.location}|${i.pallet}`;
 }
+/** ເສັ້ນທາງເປັນ **ລະຫັດ** — ໃຊ້ເປັນ key ແລະ ເປັນ title ຕອນສະແດງຊື່. */
 function pNodePath(i: { rack: string; location: string; pallet: string }) {
   const parts = [i.rack, i.location].filter(Boolean);
+  if (i.pallet) parts.push(`pallet:${i.pallet}`);
+  return parts.length ? parts.join(" / ") : "ບໍ່ລະບຸ (ສາງລວມ)";
+}
+
+/**
+ * ຊື່ຂອງ rack/location ຕາມລະຫັດ.
+ *
+ * ພະນັກງານຢູ່ພື້ນຮູ້ຈັກຊັ້ນວາງດ້ວຍ **ຊື່** ("RACK M", "Z02") ບໍ່ແມ່ນລະຫັດ
+ * ("120213", "120213-Z02") ຊຶ່ງເປັນເລກຂອງລະບົບ ແລະ ອ່ານຄືກັນໄປໝົດ.
+ */
+type NameBook = { rack: Map<string, string>; loc: Map<string, string> };
+const EMPTY_NAMES: NameBook = { rack: new Map(), loc: new Map() };
+
+/** ຊື່ນຳ ລະຫັດຕາມ — ໃຊ້ໃນຊ່ອງເລືອກ ບ່ອນທີ່ຍັງຕ້ອງທຽບລະຫັດກັບປ້າຍເທິງຊັ້ນ. */
+function labelOf(code: string, name: string | null | undefined) {
+  const n = name?.trim();
+  return n && n !== code ? `${n} · ${code}` : code;
+}
+
+/** ເສັ້ນທາງເປັນ **ຊື່** — ບ່ອນທີ່ບໍ່ມີຊື່ ຕົກກັບໄປໃຊ້ລະຫັດ. */
+function pNodeLabel(
+  i: { rack: string; location: string; pallet: string },
+  names: NameBook = EMPTY_NAMES,
+) {
+  const parts: string[] = [];
+  if (i.rack) parts.push(names.rack.get(i.rack) ?? i.rack);
+  if (i.location) parts.push(names.loc.get(i.location) ?? i.location);
   if (i.pallet) parts.push(`pallet:${i.pallet}`);
   return parts.length ? parts.join(" / ") : "ບໍ່ລະບຸ (ສາງລວມ)";
 }
@@ -368,7 +396,7 @@ function computeFillGaps(rows: PWorking[], snOn: boolean): FillGap[] {
 }
 
 /** Read-only "where it sits now" summary, shown on each search result. */
-function NodeSummary({ nodes, unit }: { nodes: StockNode[]; unit: string | null }) {
+function NodeSummary({ nodes, unit, names }: { nodes: StockNode[]; unit: string | null; names?: NameBook }) {
   if (nodes.length === 0) {
     return <span className="text-[10px] text-zinc-400">ຍັງບໍ່ມີໃນສາງນີ້</span>;
   }
@@ -379,9 +407,10 @@ function NodeSummary({ nodes, unit }: { nodes: StockNode[]; unit: string | null 
       {shown.map((n) => (
         <span
           key={pNodePath(n)}
+          title={pNodePath(n)}
           className="rounded bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] text-brand-700 dark:bg-brand-950/40 dark:text-brand-300"
         >
-          {pNodePath(n)}
+          {pNodeLabel(n, names)}
           <span className="ml-1 tabular-nums opacity-70">
             {formatQty(n.qty)}
             {unit ? ` ${unit}` : ""}
@@ -457,6 +486,15 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   const hitGroups = useMemo(() => groupByWarehouse(hits, (h) => h.wh_code ?? "—", warehouses), [hits, warehouses]);
   const snOn = useMemo(() => warehouses.find((w) => w.code === whCode)?.sn_adjust ?? true, [warehouses, whCode]);
   const locationsForRack = (rack: string) => (rack ? locations.filter((l) => l.rack_code === rack) : locations);
+
+  /** ລະຫັດ → ຊື່ ຂອງ rack/location ຂອງສາງທີ່ເລືອກ — ໃຊ້ສະແດງແທນລະຫັດດິບ. */
+  const nameBook = useMemo<NameBook>(
+    () => ({
+      rack: new Map(racks.filter((r) => r.name?.trim()).map((r) => [r.code, r.name!.trim()])),
+      loc: new Map(locations.filter((l) => l.name?.trim()).map((l) => [l.code, l.name!.trim()])),
+    }),
+    [racks, locations],
+  );
 
   // Debounced item search. ບໍ່ມີການເລືອກສາງແລ້ວ — ຄົ້ນຫາທຸກສາງທີ່ມີສິດ ແລ້ວແຍກ
   // ຜົນລັບເປັນກຸ່ມຕາມສາງ; ພໍເລືອກແຖວແລ້ວ ໃບປັບປຸງນີ້ຜູກກັບສາງນັ້ນ (1 ໃບ = 1 ສາງ).
@@ -868,7 +906,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                           <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{h.item_code}</div>
                           <div className="truncate text-xs">{h.item_name}</div>
                           <div className="mt-1">
-                            <NodeSummary nodes={h.locations ?? []} unit={h.unit_code} />
+                            <NodeSummary nodes={h.locations ?? []} unit={h.unit_code} names={nameBook} />
                           </div>
                         </div>
                         <div className="shrink-0 text-right text-[10px]">
@@ -976,7 +1014,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                                   ? focusNodeRow(i.item_code, { rack: n.rack, location: n.location, pallet: n.pallet })
                                   : setLineNode(i.id, { rack: n.rack, location: n.location, pallet: n.pallet })
                               }
-                              title={taken ? "ໄປທີ່ແຖວຂອງບ່ອນນີ້" : "ໃຊ້ບ່ອນຈັດເກັບນີ້"}
+                              title={`${taken ? "ໄປທີ່ແຖວຂອງບ່ອນນີ້" : "ໃຊ້ບ່ອນຈັດເກັບນີ້"} · ${pNodePath(n)}`}
                               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] transition ${
                                 active
                                   ? "bg-brand-600 text-white shadow-sm"
@@ -985,7 +1023,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                                     : "bg-brand-50 text-brand-700 ring-1 ring-brand-100 hover:bg-brand-100 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50 dark:hover:bg-brand-900/40"
                               }`}
                             >
-                              {pNodePath(n)}
+                              {pNodeLabel(n, nameBook)}
                               <span className={`tabular-nums ${active ? "text-white/80" : taken ? "" : "text-brand-500/80 dark:text-brand-400/80"}`}>
                                 {formatQty(n.qty)}
                               </span>
@@ -1066,7 +1104,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             {i.rack && !racks.some((r) => r.code === i.rack) && <option value={i.rack}>{i.rack}</option>}
                             {racks.map((r) => (
                               <option key={r.code} value={r.code}>
-                                {r.code}
+                                {labelOf(r.code, r.name)}
                               </option>
                             ))}
                           </select>
@@ -1080,7 +1118,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             )}
                             {locationsForRack(i.rack).map((l) => (
                               <option key={l.code} value={l.code}>
-                                {l.code}
+                                {labelOf(l.code, l.name)}
                               </option>
                             ))}
                           </select>
@@ -1186,9 +1224,12 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             <div className="max-w-xs truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div>
                           </td>
                           <td className="px-3 py-2">
-                            <span className="inline-flex items-center gap-1 font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
+                            <span
+                              title={pNodePath(i)}
+                              className="inline-flex items-center gap-1 font-mono text-[11px] text-zinc-600 dark:text-zinc-300"
+                            >
                               <MapPinIcon className="h-3 w-3 text-brand-400" />
-                              {pNodePath(i)}
+                              {pNodeLabel(i, nameBook)}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-xs tabular-nums text-zinc-500">{formatQty(i.before_qty)}</td>
@@ -1257,8 +1298,8 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {g.bins.map((b) => (
-                      <span key={pNodePath(b)} className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-                        {pNodePath(b)} <span className="tabular-nums">{formatQty(b.qty)} → 0</span>
+                      <span key={pNodePath(b)} title={pNodePath(b)} className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                        {pNodeLabel(b, nameBook)} <span className="tabular-nums">{formatQty(b.qty)} → 0</span>
                       </span>
                     ))}
                   </div>
@@ -1670,8 +1711,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   <optgroup key={g.code} label={`${g.code}${warehouses.find((w) => w.code === g.code)?.name ? ` · ${warehouses.find((w) => w.code === g.code)?.name}` : ""} (${g.rows.length})`}>
                     {g.rows.map((r) => (
                       <option key={`${r.wh_code}|${r.code}`} value={`${r.wh_code}|${r.code}`}>
-                        {r.code}
-                        {r.name ? ` · ${r.name}` : ""}
+                        {labelOf(r.code, r.name)}
                       </option>
                     ))}
                   </optgroup>
@@ -1684,8 +1724,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                 <option value="">{rackCode ? "— ທຸກ location —" : "ເລືອກ rack ກ່ອນ"}</option>
                 {availableLocations.map((l) => (
                   <option key={l.code} value={l.code}>
-                    {l.code}
-                    {l.name ? ` · ${l.name}` : ""}
+                    {labelOf(l.code, l.name)}
                   </option>
                 ))}
               </select>

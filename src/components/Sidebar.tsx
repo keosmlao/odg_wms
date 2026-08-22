@@ -21,6 +21,7 @@ import {
   LayersIcon,
   ListIcon,
   MailIcon,
+  MapPinIcon,
   PackageIcon,
   PlusIcon,
   RouteIcon,
@@ -198,6 +199,11 @@ const groups: Group[] = [
         label: "ເຄື່ອນໄຫວປະຈຳວັນ",
         href: "/movements/daily",
         icon: <CalendarIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ເຄື່ອນໄຫວຕາມບ່ອນເກັບ",
+        href: "/movements/daily-location",
+        icon: <MapPinIcon className="h-3.5 w-3.5" />,
       },
       {
         label: "ຄ້າງຈ່າຍອອກສາງ",
