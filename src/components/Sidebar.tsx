@@ -206,6 +206,11 @@ const groups: Group[] = [
         icon: <MapPinIcon className="h-3.5 w-3.5" />,
       },
       {
+        label: "ເຄື່ອນໄຫວລາຍເດືອນ (ຕາມສິນຄ້າ)",
+        href: "/movements/monthly",
+        icon: <PackageIcon className="h-3.5 w-3.5" />,
+      },
+      {
         label: "ຄ້າງຈ່າຍອອກສາງ",
         href: "/movements/pending-out",
         icon: <ArrowUpIcon className="h-3.5 w-3.5" />,

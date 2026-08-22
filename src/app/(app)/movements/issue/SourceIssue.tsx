@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/Icons";
 import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import TripIssue from "./TripIssue";
+import { useBinNames } from "@/components/useBinNames";
+import { nodeName } from "@/lib/locationLabel";
 
 const PhoneIcon = ({ className = "h-4 w-4" }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -297,6 +299,8 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   }, []);
 
   const whName = useMemo(() => warehouses.find((w) => w.code === whCode)?.name ?? null, [warehouses, whCode]);
+  /** ຊື່ຊັ້ນວາງ/ບ່ອນເກັບ ຂອງສາງທີ່ກຳລັງເຮັດໃບຢູ່ — ສະແດງແທນລະຫັດຕອນເລືອກບ່ອນຢິບ. */
+  const binNames = useBinNames(whCode);
   const docGroups = useMemo(() => groupByWarehouse(docs, (d) => d.wh_code, warehouses), [docs, warehouses]);
 
   /** ນະໂຍບາຍ SN ແມ່ນ "ຕໍ່ສາງ" — ໂຫຼດຕອນເປີດໃບ (ສາງມາຈາກໃບ, ບໍ່ແມ່ນຈາກ dropdown ອີກ). */
@@ -1118,7 +1122,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                               <div className="relative min-w-[210px] flex-1">
                                 <select value={l.selIdx} onChange={(e) => setLocation(l.key, Number.parseInt(e.target.value, 10))} className={`w-full rounded-lg bg-zinc-50/70 pl-3 pr-7 py-2 text-xs font-bold ring-1 dark:bg-zinc-950 appearance-none focus:outline-none focus:ring-2 focus:ring-red-500/30 cursor-pointer ${over ? "ring-amber-400 text-amber-700" : "ring-zinc-200 text-zinc-800 dark:ring-zinc-800 dark:text-zinc-200"}`}>
                                   <option value={-1}>— ເລືອກ location —</option>
-                                  {l.locations.map((loc, idx) => (<option key={`${loc.rack}/${loc.location}/${loc.pallet}`} value={idx}>{idx === 0 ? "⭐ " : ""}{[loc.rack, loc.location, loc.pallet].filter(Boolean).join(" / ") || "(ສາງ)"} · ມີ {formatQty(loc.qty)}{loc.sn_qty != null ? ` · SN ${loc.sn_qty}${loc.sn_qty === 0 ? " ⚠" : ""}` : ""}{loc.first_in ? ` · ເຂົ້າ ${loc.first_in}` : ""}{idx === 0 ? " · FIFO" : ""}</option>))}
+                                  {l.locations.map((loc, idx) => (<option key={`${loc.rack}/${loc.location}/${loc.pallet}`} value={idx}>{idx === 0 ? "⭐ " : ""}{nodeName(loc, binNames, "(ສາງ)")} · ມີ {formatQty(loc.qty)}{loc.sn_qty != null ? ` · SN ${loc.sn_qty}${loc.sn_qty === 0 ? " ⚠" : ""}` : ""}{loc.first_in ? ` · ເຂົ້າ ${loc.first_in}` : ""}{idx === 0 ? " · FIFO" : ""}</option>))}
                                 </select>
                                 <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-[10px]">▾</span>
                               </div>
@@ -1226,7 +1230,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
             {(() => {
               const loc = pickerLine.locations[pickerLine.selIdx];
               if (!loc) return null;
-              const label = [loc.rack, loc.location, loc.pallet].filter(Boolean).join(" / ") || "(ສາງ)";
+              const label = nodeName(loc, binNames, "(ສາງ)");
               const snCount = pickerLine.availableSerials.length;
               const stock = Number.parseFloat(loc.qty) || 0;
               const mismatch = Math.abs(snCount - stock) > 0.001;

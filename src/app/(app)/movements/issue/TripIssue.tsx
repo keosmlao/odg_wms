@@ -13,6 +13,8 @@ import {
   UserIcon,
 } from "@/components/ui/Icons";
 import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
+import { useBinNames } from "@/components/useBinNames";
+import { nodeName, type NameBook } from "@/lib/locationLabel";
 
 /**
  * ດຶງ "ໃບຈັດຖ້ຽວ" ຂອງຂົນສົ່ງ (TMS) ມາເຮັດໃບສັ່ງຈ່າຍ.
@@ -113,10 +115,9 @@ function fmtQty(v: string | number | null | undefined) {
   if (!Number.isFinite(n)) return "0";
   return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
-function nodeLabel(n: NodeStock | undefined) {
+function nodeLabel(n: NodeStock | undefined, names?: NameBook) {
   if (!n) return "— ເລືອກບ່ອນຈັດເກັບ —";
-  const parts = [n.rack, n.location, n.pallet].filter(Boolean);
-  return `${parts.join(" / ") || "(ສາງ)"} · ຄົງເຫຼືອ ${fmtQty(n.qty)}${n.sn_qty !== null ? ` · SN ${n.sn_qty}` : ""}`;
+  return `${nodeName(n, names, "(ສາງ)")} · ຄົງເຫຼືອ ${fmtQty(n.qty)}${n.sn_qty !== null ? ` · SN ${n.sn_qty}` : ""}`;
 }
 function parsed(raw: string): number {
   const n = Number.parseFloat(raw);
@@ -181,6 +182,8 @@ export default function TripIssue({ warehouses }: { warehouses: WarehouseOption[
   }, []);
 
   const whName = useMemo(() => warehouses.find((w) => w.code === whCode)?.name ?? null, [warehouses, whCode]);
+  /** ຊື່ຊັ້ນວາງ/ບ່ອນເກັບ ຂອງສາງຂອງຖ້ຽວນີ້ — ສະແດງແທນລະຫັດ. */
+  const binNames = useBinNames(whCode);
   const tripGroups = useMemo(() => groupByWarehouse(trips, (t) => t.wh_code, warehouses), [trips, warehouses]);
 
   // ລາຍການຖ້ຽວ ທຸກສາງ (debounce ຕາມການຄົ້ນຫາ)
@@ -641,7 +644,7 @@ export default function TripIssue({ warehouses }: { warehouses: WarehouseOption[
                             >
                               <option value={-1}>— ເລືອກບ່ອນຈັດເກັບ —</option>
                               {it.locations.map((l, i) => (
-                                <option key={`${l.rack}|${l.location}|${l.pallet}`} value={i}>{nodeLabel(l)}{l.first_in ? ` · ເຂົ້າ ${fmtDate(l.first_in)}` : ""}</option>
+                                <option key={`${l.rack}|${l.location}|${l.pallet}`} value={i}>{nodeLabel(l, binNames)}{l.first_in ? ` · ເຂົ້າ ${fmtDate(l.first_in)}` : ""}</option>
                               ))}
                             </select>
                             <input
@@ -709,7 +712,7 @@ export default function TripIssue({ warehouses }: { warehouses: WarehouseOption[
                   <div className="min-w-0">
                     <div className="truncate text-sm font-extrabold text-zinc-900 dark:text-zinc-100">{row.item_code} · {it?.item_name ?? ""}</div>
                     <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                      ເລືອກ {row.serials.length}/{want} ໜ່ວຍ · ບ່ອນ {nodeLabel(it?.locations[row.locIdx])}
+                      ເລືອກ {row.serials.length}/{want} ໜ່ວຍ · ບ່ອນ {nodeLabel(it?.locations[row.locIdx], binNames)}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

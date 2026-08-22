@@ -20,6 +20,7 @@ import {
   SearchIcon,
 } from "@/components/ui/Icons";
 import type { CountedLine, LocationOption, RackOption } from "./page";
+import { locLabel } from "@/lib/locationLabel";
 
 type ItemHit = {
   item_code: string;
@@ -591,7 +592,7 @@ export default function Counter({
                       <option value="">— ບໍ່ລະບຸ —</option>
                       {racks.map((r) => (
                         <option key={r.code} value={r.code}>
-                          {r.code}
+                          {locLabel(r.code, r.name)}
                         </option>
                       ))}
                     </select>
@@ -608,7 +609,7 @@ export default function Counter({
                       <option value="">— ບໍ່ລະບຸ —</option>
                       {availableLocations.map((l) => (
                         <option key={l.code} value={l.code}>
-                          {l.code}
+                          {locLabel(l.code, l.name)}
                         </option>
                       ))}
                     </select>

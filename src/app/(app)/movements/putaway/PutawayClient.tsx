@@ -115,7 +115,10 @@ export default function PutawayClient({ warehouses }: { warehouses: WarehouseOpt
               <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 lg:grid-cols-4">
                 {bins.map((b) => (
                   <div key={b.location} className={`rounded-lg px-3 py-2 ring-1 ${b.empty ? "bg-emerald-50/60 ring-emerald-200 dark:bg-emerald-950/30 dark:ring-emerald-900/50" : "bg-white ring-zinc-200 dark:bg-zinc-950/40 dark:ring-zinc-800"}`}>
-                    <div className="font-mono text-[12px] font-semibold text-zinc-800 dark:text-zinc-200">{b.location}</div>
+                    <div className="text-[12px] font-semibold text-zinc-800 dark:text-zinc-200">{b.name?.trim() || b.location}</div>
+                    {b.name?.trim() && b.name.trim() !== b.location && (
+                      <div className="font-mono text-[10px] text-zinc-400">{b.location}</div>
+                    )}
                     {b.empty ? (
                       <div className="mt-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">ວ່າງ — ໃສ່ໄດ້</div>
                     ) : (

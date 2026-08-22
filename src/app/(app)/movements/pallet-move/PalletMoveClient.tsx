@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertIcon, CheckIcon, LayersIcon, PackageIcon } from "@/components/ui/Icons";
 import { groupByWarehouse } from "@/components/ui/WarehouseGroup";
+import { locLabel } from "@/lib/locationLabel";
 
 export type WarehouseOption = { code: string; name: string | null };
 type RackOption = { code: string; name: string | null };
@@ -235,14 +236,14 @@ export default function PalletMoveClient({ warehouses }: { warehouses: Warehouse
                   <label className={labelCls}>Rack ປາຍທາງ</label>
                   <select value={toRack} onChange={(e) => { setToRack(e.target.value); setToLoc(""); }} className={`${inputCls} w-full`}>
                     <option value="">— ບໍ່ລະບຸ (ລະດັບ ສາງ) —</option>
-                    {racks.map((r) => (<option key={r.code} value={r.code}>{r.code}{r.name ? ` · ${r.name}` : ""}</option>))}
+                    {racks.map((r) => (<option key={r.code} value={r.code}>{locLabel(r.code, r.name)}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className={labelCls}>Location ປາຍທາງ</label>
                   <select value={toLoc} onChange={(e) => setToLoc(e.target.value)} disabled={!toRack} className={`${inputCls} w-full`}>
                     <option value="">{toRack ? "— ບໍ່ລະບຸ (ລະດັບ rack) —" : "ເລືອກ rack ກ່ອນ"}</option>
-                    {availableLocations.map((l) => (<option key={l.code} value={l.code}>{l.code}{l.name ? ` · ${l.name}` : ""}</option>))}
+                    {availableLocations.map((l) => (<option key={l.code} value={l.code}>{locLabel(l.code, l.name)}</option>))}
                   </select>
                 </div>
               </div>

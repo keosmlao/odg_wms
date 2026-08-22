@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckIcon, SearchIcon } from "@/components/ui/Icons";
+import { useBinNames } from "@/components/useBinNames";
+import { nodeName } from "@/lib/locationLabel";
 import {
   DEFECT_GRADES,
   DEFECT_GRADE_LABEL,
@@ -73,6 +75,8 @@ export default function NewDefectForm({
   const [snBusy, setSnBusy] = useState(false);
   const [snNote, setSnNote] = useState<string | null>(null);
   const [picked, setPicked] = useState<SnHit | null>(null);
+  /** ຊື່ຊັ້ນວາງ/ບ່ອນເກັບ ຂອງສາງທີ່ serial ນີ້ຢູ່ — ສະແດງແທນລະຫັດ. */
+  const binNames = useBinNames(picked?.wh_code ?? null);
 
   /** Fill the form from a scanned serial — item, warehouse and SN all at once. */
   const applyHit = useCallback(
@@ -320,8 +324,11 @@ export default function NewDefectForm({
               </div>
               <div>
                 <span className="text-zinc-500 dark:text-zinc-400">ຕຳແໜ່ງ</span>{" "}
-                <span className="font-mono text-zinc-700 dark:text-zinc-200">
-                  {[picked.rack, picked.location, picked.pallet].filter(Boolean).join(" / ") || "—"}
+                <span
+                  title={[picked.rack, picked.location, picked.pallet].filter(Boolean).join(" / ")}
+                  className="text-zinc-700 dark:text-zinc-200"
+                >
+                  {nodeName(picked, binNames, "—")}
                 </span>
               </div>
             </div>

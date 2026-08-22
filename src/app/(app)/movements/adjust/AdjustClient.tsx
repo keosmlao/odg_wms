@@ -12,6 +12,7 @@ import {
   SearchIcon,
 } from "@/components/ui/Icons";
 import { WarehouseGroupHeader, groupByWarehouse } from "@/components/ui/WarehouseGroup";
+import { locLabel, nameBookOf, nodeName, nodePath, type NameBook } from "@/lib/locationLabel";
 import AdjustSerialModal, { type SerialPlan } from "./AdjustSerialModal";
 
 export type WarehouseOption = { code: string; name: string | null; sn_adjust: boolean };
@@ -256,38 +257,9 @@ function pNodeKey(i: { item_code: string; rack: string; location: string; pallet
   return `${i.item_code}|${i.rack}|${i.location}|${i.pallet}`;
 }
 /** ເສັ້ນທາງເປັນ **ລະຫັດ** — ໃຊ້ເປັນ key ແລະ ເປັນ title ຕອນສະແດງຊື່. */
-function pNodePath(i: { rack: string; location: string; pallet: string }) {
-  const parts = [i.rack, i.location].filter(Boolean);
-  if (i.pallet) parts.push(`pallet:${i.pallet}`);
-  return parts.length ? parts.join(" / ") : "ບໍ່ລະບຸ (ສາງລວມ)";
-}
-
-/**
- * ຊື່ຂອງ rack/location ຕາມລະຫັດ.
- *
- * ພະນັກງານຢູ່ພື້ນຮູ້ຈັກຊັ້ນວາງດ້ວຍ **ຊື່** ("RACK M", "Z02") ບໍ່ແມ່ນລະຫັດ
- * ("120213", "120213-Z02") ຊຶ່ງເປັນເລກຂອງລະບົບ ແລະ ອ່ານຄືກັນໄປໝົດ.
- */
-type NameBook = { rack: Map<string, string>; loc: Map<string, string> };
-const EMPTY_NAMES: NameBook = { rack: new Map(), loc: new Map() };
-
-/** ຊື່ນຳ ລະຫັດຕາມ — ໃຊ້ໃນຊ່ອງເລືອກ ບ່ອນທີ່ຍັງຕ້ອງທຽບລະຫັດກັບປ້າຍເທິງຊັ້ນ. */
-function labelOf(code: string, name: string | null | undefined) {
-  const n = name?.trim();
-  return n && n !== code ? `${n} · ${code}` : code;
-}
-
-/** ເສັ້ນທາງເປັນ **ຊື່** — ບ່ອນທີ່ບໍ່ມີຊື່ ຕົກກັບໄປໃຊ້ລະຫັດ. */
-function pNodeLabel(
-  i: { rack: string; location: string; pallet: string },
-  names: NameBook = EMPTY_NAMES,
-) {
-  const parts: string[] = [];
-  if (i.rack) parts.push(names.rack.get(i.rack) ?? i.rack);
-  if (i.location) parts.push(names.loc.get(i.location) ?? i.location);
-  if (i.pallet) parts.push(`pallet:${i.pallet}`);
-  return parts.length ? parts.join(" / ") : "ບໍ່ລະບຸ (ສາງລວມ)";
-}
+const pNodePath = (i: { rack: string; location: string; pallet: string }) => nodePath(i);
+/** ເສັ້ນທາງເປັນ **ຊື່** (ເບິ່ງ `@/lib/locationLabel`). */
+const pNodeLabel = nodeName;
 /** Same node? — compares only the three storage fields. */
 function sameNode(a: { rack: string; location: string; pallet: string }, b: { rack: string; location: string; pallet: string }) {
   return a.rack === b.rack && a.location === b.location && a.pallet === b.pallet;
@@ -488,13 +460,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   const locationsForRack = (rack: string) => (rack ? locations.filter((l) => l.rack_code === rack) : locations);
 
   /** ລະຫັດ → ຊື່ ຂອງ rack/location ຂອງສາງທີ່ເລືອກ — ໃຊ້ສະແດງແທນລະຫັດດິບ. */
-  const nameBook = useMemo<NameBook>(
-    () => ({
-      rack: new Map(racks.filter((r) => r.name?.trim()).map((r) => [r.code, r.name!.trim()])),
-      loc: new Map(locations.filter((l) => l.name?.trim()).map((l) => [l.code, l.name!.trim()])),
-    }),
-    [racks, locations],
-  );
+  const nameBook = useMemo<NameBook>(() => nameBookOf(racks, locations), [racks, locations]);
 
   // Debounced item search. ບໍ່ມີການເລືອກສາງແລ້ວ — ຄົ້ນຫາທຸກສາງທີ່ມີສິດ ແລ້ວແຍກ
   // ຜົນລັບເປັນກຸ່ມຕາມສາງ; ພໍເລືອກແຖວແລ້ວ ໃບປັບປຸງນີ້ຜູກກັບສາງນັ້ນ (1 ໃບ = 1 ສາງ).
@@ -1104,7 +1070,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             {i.rack && !racks.some((r) => r.code === i.rack) && <option value={i.rack}>{i.rack}</option>}
                             {racks.map((r) => (
                               <option key={r.code} value={r.code}>
-                                {labelOf(r.code, r.name)}
+                                {locLabel(r.code, r.name)}
                               </option>
                             ))}
                           </select>
@@ -1118,7 +1084,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             )}
                             {locationsForRack(i.rack).map((l) => (
                               <option key={l.code} value={l.code}>
-                                {labelOf(l.code, l.name)}
+                                {locLabel(l.code, l.name)}
                               </option>
                             ))}
                           </select>
@@ -1711,7 +1677,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   <optgroup key={g.code} label={`${g.code}${warehouses.find((w) => w.code === g.code)?.name ? ` · ${warehouses.find((w) => w.code === g.code)?.name}` : ""} (${g.rows.length})`}>
                     {g.rows.map((r) => (
                       <option key={`${r.wh_code}|${r.code}`} value={`${r.wh_code}|${r.code}`}>
-                        {labelOf(r.code, r.name)}
+                        {locLabel(r.code, r.name)}
                       </option>
                     ))}
                   </optgroup>
@@ -1724,7 +1690,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                 <option value="">{rackCode ? "— ທຸກ location —" : "ເລືອກ rack ກ່ອນ"}</option>
                 {availableLocations.map((l) => (
                   <option key={l.code} value={l.code}>
-                    {labelOf(l.code, l.name)}
+                    {locLabel(l.code, l.name)}
                   </option>
                 ))}
               </select>

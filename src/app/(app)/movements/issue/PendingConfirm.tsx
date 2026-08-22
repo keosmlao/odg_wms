@@ -6,6 +6,8 @@ import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup
 import { MOVE_REASONS } from "@/lib/moveReasons";
 import ScanLogPanel from "./ScanLogPanel";
 import type { WarehouseOption } from "./SourceIssue";
+import { useBinNames } from "@/components/useBinNames";
+import { nodeName } from "@/lib/locationLabel";
 
 type DraftDoc = {
   doc_no: string; doc_date: string | null; doc_time: string | null; warehouse_code: string | null;
@@ -40,6 +42,7 @@ type ScanEvent = {
 type ScanLogRow = ScanEvent & { roworder: number; user_created: string | null; created_at: string; qty: string | null };
 
 const nodeKey = (n: NodeRef) => `${n.rack}|${n.location}|${n.pallet}`;
+/** ລະຫັດ — ໃຊ້ໃນ payload ຂອງ scan-log ແລະ ການຮຽງ (ຢ່າປ່ຽນເປັນຊື່: ມັນຖືກບັນທຶກ). */
 const nodeLabel = (n: NodeRef) => [n.rack, n.location, n.pallet].filter(Boolean).join(" / ") || "(ສາງ)";
 
 function ddmm(d: string | null) {
@@ -75,6 +78,8 @@ function loadScan(doc: string): { scanned: string[]; reasons: Record<string, str
 
 export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOption[] }) {
   const [docs, setDocs] = useState<DraftDoc[]>([]);
+  /** ຊື່ຊັ້ນວາງ/ບ່ອນເກັບ ຂອງທຸກສາງທີ່ມີໃບຢູ່ໃນລາຍການ — ສະແດງແທນລະຫັດ. */
+  const binNames = useBinNames(docs.map((d) => d.warehouse_code ?? "").filter(Boolean));
   /** ກອງຕາມລົດ/ຖ້ຽວ — "" = ທັງໝົດ, "-" = ໃບທີ່ບໍ່ໄດ້ມາຈາກຖ້ຽວ, ອື່ນໆ = trip_doc_no */
   const [tripFilter, setTripFilter] = useState("");
   const [loading, setLoading] = useState(false);
@@ -256,8 +261,8 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       const more = dropped.length > 5 ? `\n… ແລະ ອີກ ${dropped.length - 5}` : "";
       const ok = window.confirm(
         `ປ່ຽນ location ຂອງ ${l.item_code}\n` +
-          `ຈາກ  ${nodeLabel(from)}\n` +
-          `ໄປ   ${nodeLabel(target)}\n\n` +
+          `ຈາກ  ${nodeName(from, binNames, "(ສາງ)")}\n` +
+          `ໄປ   ${nodeName(target, binNames, "(ສາງ)")}\n\n` +
           `⚠ SN ທີ່ຍິງໄວ້ແລ້ວ ${dropped.length} ໜ່ວຍ ບໍ່ໄດ້ຢູ່ບ່ອນໃໝ່ ຈະຖືກຍົກເລີກ:\n${preview}${more}\n\n` +
           `ຕ້ອງການປ່ຽນແທ້ບໍ?`,
       );
@@ -500,7 +505,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                           {linesByDoc[d.doc_no].map((l, i) => (
                             <tr key={`${l.item_code}-${i}`}>
                               <td className="px-4 py-2"><span className="font-mono text-[11px] font-bold text-red-600 dark:text-red-400">{l.item_code}</span>{l.ref_doc_no && <span className="ml-1.5 rounded bg-zinc-100 px-1 text-[9px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" title="ບິນຂາຍຂອງແຖວນີ້">{l.ref_doc_no}</span>}<div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300">{l.item_name}</div></td>
-                              <td className="px-4 py-2 font-mono text-[11px] text-zinc-500">{[l.rack, l.location, l.pallet].filter(Boolean).join(" / ") || "—"}</td>
+                              <td title={nodeLabel(l)} className="px-4 py-2 text-[11px] text-zinc-500">{nodeName(l, binNames, "—")}</td>
                               <td className="px-4 py-2 text-right font-mono font-bold tabular-nums text-red-600 dark:text-red-400">{l.qty} <span className="text-[10px] text-zinc-400">{l.unit_code}</span></td>
                             </tr>
                           ))}
@@ -612,7 +617,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                                 : "bg-zinc-50 text-zinc-700 ring-zinc-200 dark:bg-zinc-950 dark:text-zinc-300 dark:ring-zinc-800"
                             }`}
                           >
-                            {!hasCurrent && <option value={nodeKey(node)}>{nodeLabel(node)} · ບໍ່ມີ stock ⚠</option>}
+                            {!hasCurrent && <option value={nodeKey(node)}>{nodeName(node, binNames, "(ສາງ)")} · ບໍ່ມີ stock ⚠</option>}
                             {options.map((o) => (
                               <option key={nodeKey(o)} value={nodeKey(o)}>
                                 {nodeLabel(o)} · ມີ {o.qty}{isSer ? ` · SN ${o.sn_qty}${o.sn_qty === 0 ? " ⚠" : ""}` : ""}

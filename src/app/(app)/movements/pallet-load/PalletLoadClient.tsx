@@ -7,6 +7,7 @@ import AdjustSerialModal, { type SerialPlan } from "../adjust/AdjustSerialModal"
 
 export type WarehouseOption = { code: string; name: string | null };
 type PalletOption = { code: string; name: string | null; location: string | null; rack: string | null };
+type NamedCode = { code: string; name: string | null };
 type Hit = { item_code: string; item_name: string | null; unit_code: string | null; balance_qty: string | null; is_isn: number | null };
 
 type Line = {
@@ -33,6 +34,7 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
   // ສາງ (`whCode`) ມາຈາກ pallet ທີ່ເລືອກ.
   const [whCode, setWhCode] = useState("");
   const [pallets, setPallets] = useState<(PalletOption & { wh_code: string })[]>([]);
+  const [binNames, setBinNames] = useState<Map<string, string>>(new Map());
   const [palletCode, setPalletCode] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [search, setSearch] = useState("");
@@ -53,6 +55,9 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
     [pallets, palletCode, whCode],
   );
   const palletGroups = useMemo(() => groupByWarehouse(pallets, (p) => p.wh_code, warehouses), [pallets, warehouses]);
+  /** ຊື່ຂອງ rack/location ຕາມກະແຈ `wh|code` — ຫຼາຍສາງໃນລາຍການດຽວ ຈຶ່ງຕ້ອງມີສາງນຳ. */
+  const binName = (wh: string, code: string | null | undefined) =>
+    (code ? binNames.get(`${wh}|${code}`) : null) ?? code ?? "";
   const rack = pallet?.rack ?? "";
   const loc = pallet?.location ?? "";
 
@@ -64,11 +69,20 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
         const all = await Promise.all(
           warehouses.map(async (w) => {
             const res = await fetch(`/api/stocktake/locations?wh=${encodeURIComponent(w.code)}`);
-            const data = (await res.json()) as { pallets?: PalletOption[] };
-            return (data.pallets ?? []).map((p) => ({ ...p, wh_code: w.code }));
+            const data = (await res.json()) as { pallets?: PalletOption[]; racks?: NamedCode[]; locations?: NamedCode[] };
+            return {
+              pallets: (data.pallets ?? []).map((p) => ({ ...p, wh_code: w.code })),
+              // ຊື່ຊັ້ນວາງ/ບ່ອນເກັບ ມາໃນຄຳຮ້ອງດຽວກັນຢູ່ແລ້ວ — ເກັບໄວ້ສະແດງແທນລະຫັດ
+              names: [...(data.racks ?? []), ...(data.locations ?? [])]
+                .filter((r) => r.name?.trim())
+                .map((r) => [`${w.code}|${r.code}`, (r.name as string).trim()] as const),
+            };
           }),
         );
-        if (!cancelled) setPallets(all.flat());
+        if (!cancelled) {
+          setPallets(all.flatMap((a) => a.pallets));
+          setBinNames(new Map(all.flatMap((a) => a.names)));
+        }
       } catch {
         if (!cancelled) showToast("err", "ໂຫຼດ pallet ບໍ່ສຳເລັດ");
       }
@@ -198,7 +212,7 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
                 <optgroup key={g.code} label={`${g.code}${warehouses.find((w) => w.code === g.code)?.name ? ` · ${warehouses.find((w) => w.code === g.code)?.name}` : ""} (${g.rows.length})`}>
                   {g.rows.map((p) => (
                     <option key={`${p.wh_code}|${p.code}`} value={`${p.wh_code}|${p.code}`}>
-                      {p.code}{p.location ? ` @ ${p.location}` : " (ສາງ)"}
+                      {p.code}{p.location ? ` @ ${binName(p.wh_code, p.location)}` : " (ສາງ)"}
                     </option>
                   ))}
                 </optgroup>
@@ -207,7 +221,7 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
           </div>
         </div>
         {pallet && (
-          <p className="mt-2 text-[11px] text-zinc-500">📦 {pallet.code} · ບ່ອນ: <span className="font-mono text-emerald-600 dark:text-emerald-400">{[rack, loc].filter(Boolean).join(" / ") || "(ສາງ)"}</span></p>
+          <p className="mt-2 text-[11px] text-zinc-500">📦 {pallet.code} · ບ່ອນ: <span title={[rack, loc].filter(Boolean).join(" / ")} className="font-mono text-emerald-600 dark:text-emerald-400">{[binName(whCode, rack), binName(whCode, loc)].filter(Boolean).join(" / ") || "(ສາງ)"}</span></p>
         )}
       </section>
 
