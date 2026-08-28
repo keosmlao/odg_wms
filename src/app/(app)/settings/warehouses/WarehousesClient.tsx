@@ -3,6 +3,11 @@
 import { Fragment, useMemo, useState } from "react";
 import type { Warehouse } from "@/app/api/admin/warehouses/route";
 import type { SnFlag } from "@/lib/warehouseConfig";
+import {
+  WAREHOUSE_KINDS,
+  WAREHOUSE_KIND_LABEL,
+  type WarehouseKind,
+} from "@/lib/warehouseKind";
 
 // Client-safe menu metadata (no server import). Order matches the row chips.
 const SN_MENUS: { key: SnFlag; label: string; full: string }[] = [
@@ -27,6 +32,9 @@ type FormState = {
   status: number;
   latitude: string;
   longitude: string;
+  kind: WarehouseKind;
+  /** ລະຫັດສາງແມ່ — ວ່າງ = ບໍ່ມີ (ໃຊ້ໄດ້ສະເພາະ kind = sub). */
+  parent_code: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -41,6 +49,8 @@ const EMPTY_FORM: FormState = {
   status: 1,
   latitude: "",
   longitude: "",
+  kind: "main",
+  parent_code: "",
 };
 
 function toForm(w: Warehouse): FormState {
@@ -56,6 +66,8 @@ function toForm(w: Warehouse): FormState {
     status: w.status ?? 1,
     latitude: w.latitude == null ? "" : String(w.latitude),
     longitude: w.longitude == null ? "" : String(w.longitude),
+    kind: w.kind ?? "main",
+    parent_code: w.parent_code ?? "",
   };
 }
 
@@ -93,7 +105,8 @@ type Structure = {
   canvas: Canvas | null;
 };
 
-const COL_COUNT = 9;
+// ລະຫັດ, ຊື່, ປະເພດ, ສາຂາ, ນາຍສາງ, ໂທ, ສະຖານະ, SN, ປຸ່ມ (+ checkbox ນອກ count)
+const COL_COUNT = 10;
 
 export default function WarehousesClient({
   initialWarehouses,
@@ -105,6 +118,7 @@ export default function WarehousesClient({
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">(
     "all",
   );
+  const [kindFilter, setKindFilter] = useState<"all" | WarehouseKind>("all");
   const [editing, setEditing] = useState<
     | { mode: "create" }
     | { mode: "edit"; warehouse: Warehouse }
@@ -117,20 +131,35 @@ export default function WarehousesClient({
     return warehouses.filter((w) => {
       if (statusFilter === "active" && w.status !== 1) return false;
       if (statusFilter === "inactive" && w.status === 1) return false;
+      if (kindFilter !== "all" && (w.kind ?? "main") !== kindFilter) return false;
       if (!q) return true;
       return (
         w.code.toLowerCase().includes(q) ||
         (w.name_1 ?? "").toLowerCase().includes(q) ||
         (w.name_2 ?? "").toLowerCase().includes(q) ||
-        (w.address ?? "").toLowerCase().includes(q)
+        (w.address ?? "").toLowerCase().includes(q) ||
+        // ຄົ້ນດ້ວຍລະຫັດສາງແມ່ ຈຶ່ງພິມ "1101" ແລ້ວເຫັນລູກຂອງມັນທັງໝົດ
+        (w.parent_code ?? "").toLowerCase().includes(q)
       );
     });
-  }, [warehouses, search, statusFilter]);
+  }, [warehouses, search, statusFilter, kindFilter]);
 
   const counts = useMemo(() => {
     const active = warehouses.filter((w) => w.status === 1).length;
-    return { active, inactive: warehouses.length - active };
+    const sub = warehouses.filter((w) => (w.kind ?? "main") === "sub").length;
+    return {
+      active,
+      inactive: warehouses.length - active,
+      sub,
+      main: warehouses.length - sub,
+    };
   }, [warehouses]);
+
+  /** ຊື່ສາງຕາມລະຫັດ — ໃຊ້ສະແດງສາງແມ່ໃນຕາຕະລາງ. */
+  const nameByCode = useMemo(
+    () => new Map(warehouses.map((w) => [w.code, w.name_1 ?? ""])),
+    [warehouses],
+  );
 
   function handleSaved(updated: Warehouse, mode: "create" | "edit") {
     if (mode === "create") {
@@ -302,6 +331,15 @@ export default function WarehousesClient({
           <option value="active">ໃຊ້ງານ ({counts.active})</option>
           <option value="inactive">ປິດໃຊ້ງານ ({counts.inactive})</option>
         </select>
+        <select
+          value={kindFilter}
+          onChange={(e) => setKindFilter(e.target.value as "all" | WarehouseKind)}
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        >
+          <option value="all">ທຸກປະເພດ ({warehouses.length})</option>
+          <option value="main">ສາງຫຼັກ ({counts.main})</option>
+          <option value="sub">ສາງຍ່ອຍ ({counts.sub})</option>
+        </select>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
           ສະແດງ {filtered.length} / {warehouses.length}
         </span>
@@ -408,6 +446,9 @@ export default function WarehousesClient({
                 <th className="w-8 px-1 py-2" />
                 <th className="px-4 py-2 font-medium">ລະຫັດ</th>
                 <th className="px-4 py-2 font-medium">ຊື່ສາງ</th>
+                <th className="px-4 py-2 font-medium" title="ສາງຫຼັກ = ຢືນດ້ວຍຕົນເອງ, ສາງຍ່ອຍ = ຂຶ້ນກັບສາງຫຼັກໜຶ່ງ">
+                  ປະເພດ
+                </th>
                 <th className="px-4 py-2 font-medium">ສາຂາ</th>
                 <th className="px-4 py-2 font-medium">ນາຍສາງ</th>
                 <th className="px-4 py-2 font-medium">ໂທ</th>
@@ -467,6 +508,25 @@ export default function WarehousesClient({
                       <div className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
                         {w.address}
                       </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {(w.kind ?? "main") === "sub" ? (
+                      <>
+                        <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                          ສາງຍ່ອຍ
+                        </span>
+                        <div className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+                          ↳ {w.parent_code ?? "—"}
+                          {w.parent_code && nameByCode.get(w.parent_code)
+                            ? ` ${nameByCode.get(w.parent_code)}`
+                            : ""}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                        ສາງຫຼັກ
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-xs">{w.branch_code ?? "—"}</td>
@@ -557,6 +617,7 @@ export default function WarehousesClient({
       {editing && (
         <EditDrawer
           mode={editing.mode}
+          warehouses={warehouses}
           initial={editing.mode === "edit" ? toForm(editing.warehouse) : EMPTY_FORM}
           onClose={() => setEditing(null)}
           onSaved={handleSaved}
@@ -576,11 +637,14 @@ export default function WarehousesClient({
 
 function EditDrawer({
   mode,
+  warehouses,
   initial,
   onClose,
   onSaved,
 }: {
   mode: "create" | "edit";
+  /** ໃຊ້ເປັນຕົວເລືອກ "ສາງແມ່" — ສະເພາະສາງຫຼັກ ແລະ ບໍ່ແມ່ນຕົນເອງ. */
+  warehouses: Warehouse[];
   initial: FormState;
   onClose: () => void;
   onSaved: (w: Warehouse, mode: "create" | "edit") => void;
@@ -593,12 +657,33 @@ function EditDrawer({
     setForm((f) => ({ ...f, [k]: v }));
   }
 
+  /**
+   * ສາງແມ່ທີ່ເລືອກໄດ້ — ສະເພາະ **ສາງຫຼັກ** ແລະ ບໍ່ແມ່ນຕົນເອງ (ຊັ້ນດຽວ, ບໍ່ວົນ).
+   * ຖ້າແມ່ປັດຈຸບັນຫຼຸດອອກຈາກລາຍການ (ຂໍ້ມູນເກົ່າ) ຍັງໃສ່ໄວ້ ເພື່ອບໍ່ໃຫ້ຄ່າຫາຍງຽບໆ.
+   */
+  const parentChoices = useMemo(() => {
+    const list: { code: string; name_1: string | null }[] = warehouses
+      .filter((w) => w.code !== form.code && (w.kind ?? "main") === "main")
+      .map((w) => ({ code: w.code, name_1: w.name_1 }));
+    const cur = form.parent_code.trim();
+    if (cur && !list.some((w) => w.code === cur)) {
+      const found = warehouses.find((w) => w.code === cur);
+      list.unshift({ code: cur, name_1: found?.name_1 ?? null });
+    }
+    return list;
+  }, [warehouses, form.code, form.parent_code]);
+
   async function handleSave() {
     setSaving(true);
     setError(null);
 
     if (!form.code.trim()) {
       setError("ກະລຸນາປ້ອນລະຫັດສາງ");
+      setSaving(false);
+      return;
+    }
+    if (form.kind === "sub" && !form.parent_code.trim()) {
+      setError("ສາງຍ່ອຍ ຕ້ອງເລືອກສາງແມ່");
       setSaving(false);
       return;
     }
@@ -625,6 +710,8 @@ function EditDrawer({
           status: form.status,
           latitude: form.latitude.trim() || null,
           longitude: form.longitude.trim() || null,
+          kind: form.kind,
+          parent_code: form.kind === "sub" ? form.parent_code.trim() || null : null,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -684,6 +771,48 @@ function EditDrawer({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
+            <div className={form.kind === "sub" ? "" : "col-span-2"}>
+              <Label>ປະເພດສາງ *</Label>
+              <select
+                value={form.kind}
+                onChange={(e) => {
+                  const kind = e.target.value as WarehouseKind;
+                  update("kind", kind);
+                  // ຍົກກັບເປັນສາງຫຼັກ = ບໍ່ມີແມ່ອີກ — ລ້າງໄວ້ ບໍ່ດັ່ງນັ້ນຄ່າເກົ່າຈະຖືກສົ່ງໄປ
+                  if (kind === "main") update("parent_code", "");
+                }}
+                className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+              >
+                {WAREHOUSE_KINDS.map((k) => (
+                  <option key={k.key} value={k.key}>
+                    {k.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {form.kind === "sub" && (
+              <div>
+                <Label>ຂຶ້ນກັບສາງຫຼັກ *</Label>
+                <select
+                  value={form.parent_code}
+                  onChange={(e) => update("parent_code", e.target.value)}
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                >
+                  <option value="">— ເລືອກສາງແມ່ —</option>
+                  {parentChoices.map((w) => (
+                    <option key={w.code} value={w.code}>
+                      {w.code} {w.name_1 ?? ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <p className="col-span-2 -mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              {form.kind === "sub"
+                ? WAREHOUSE_KINDS[1].hint
+                : WAREHOUSE_KINDS[0].hint}
+            </p>
+
             <div className="col-span-2">
               <Label>ຊື່ສາງ (ລາວ)</Label>
               <Input value={form.name_1} onChange={(v) => update("name_1", v)} />

@@ -12,6 +12,7 @@ import type {
   WarehouseSummary,
 } from "@/lib/coverage";
 import type { ItemAcrossResult as ItemAcross } from "@/lib/coverageItem";
+import { WAREHOUSE_KIND_LABEL, type WarehouseKind } from "@/lib/warehouseKind";
 
 /**
  * ປ້າຍ FSN — ຄວາມຖີ່ການເຄື່ອນໄຫວ (ຄົນລະເລື່ອງກັບ ABC ທີ່ເປັນມູນຄ່າ).
@@ -71,7 +72,14 @@ const PATTERN_VIEW: Record<DemandPattern, { label: string; cls: string; hint: st
   none: { label: "ບໍ່ຂາຍ", cls: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800", hint: "ບໍ່ມີການຂາຍໃນຊ່ວງ" },
 };
 
-export type WarehouseOption = { code: string; name: string | null };
+export type WarehouseOption = {
+  code: string;
+  name: string | null;
+  /** ສາງຫຼັກ ຫຼື ສາງຍ່ອຍ — ຕັ້ງທີ່ ຕັ້ງຄ່າ › ຈັດການສາງ. */
+  kind: WarehouseKind;
+  /** ລະຫັດສາງແມ່ (ມີສະເພາະສາງຍ່ອຍ). */
+  parent_code: string | null;
+};
 
 type Thresholds = { critical: number; low: number; over: number };
 
@@ -157,7 +165,21 @@ const ZONES: { prefix: string; label: string }[] = [
   { prefix: "14", label: "ປາກເຊ" },
 ];
 
-export default function CoverageClient({ warehouses }: { warehouses: WarehouseOption[] }) {
+export default function CoverageClient({
+  warehouses,
+  allWarehouses,
+}: {
+  /** ສາງທີ່ຜູ້ໃຊ້ມີສິດ — ໃຊ້ເລືອກສາງທີ່ຈະວິເຄາະ. */
+  warehouses: WarehouseOption[];
+  /**
+   * ສາງທັງໝົດໃນລະບົບ — ໃຊ້ເປັນ **ຕົ້ນທາງ** ຂອງໃບຂໍໂອນເທົ່ານັ້ນ.
+   *
+   * ການຂໍໂອນຄືການຂໍຂອງຈາກສາງຄົນອື່ນ ຈຶ່ງຕ້ອງເລືອກສາງທີ່ຕົນເອງບໍ່ມີສິດໄດ້ —
+   * ຖ້າໃຊ້ລາຍການທີ່ມີສິດ ຄົນທີ່ຄຸ້ມຄອງສາງດຽວຈະບໍ່ມີຕົ້ນທາງໃຫ້ເລືອກເລີຍ.
+   * ສິດຖືກບັງຄັບຢູ່ຝັ່ງ **ປາຍທາງ** ໃນ POST /api/movements/transfer-request.
+   */
+  allWarehouses: WarehouseOption[];
+}) {
   const codes = useMemo(() => warehouses.map((w) => w.code), [warehouses]);
 
   /**
@@ -285,6 +307,44 @@ export default function CoverageClient({ warehouses }: { warehouses: WarehouseOp
   const zones =
     warehouses.length > 1 ? ZONES.filter((z) => codes.some((c) => c.startsWith(z.prefix))) : [];
 
+  /**
+   * ຮຽງໃໝ່ໃຫ້ **ສາງຍ່ອຍຢູ່ຕິດກັບແມ່ຂອງມັນ** ແທນທີ່ຈະຮຽງຕາມລະຫັດຢ່າງດຽວ.
+   *
+   * ຄົນເລືອກສາງເປັນ "ຄອບຄົວ" ບໍ່ແມ່ນເປັນຕົວເລກ — ຖ້າ 1105 ເປັນຍ່ອຍຂອງ 1101
+   * ແຕ່ຢູ່ຫ່າງກັນ 4 ປຸ່ມ ຄົນຈະຕິກຂາດ. ຍ່ອຍທີ່ແມ່ບໍ່ຢູ່ໃນລາຍການ (ບໍ່ມີສິດ)
+   * ຖືກປະໄວ້ທ້າຍສຸດ ບໍ່ແມ່ນຖິ້ມ.
+   */
+  const orderedWarehouses = useMemo(() => {
+    const byParent = new Map<string, WarehouseOption[]>();
+    const roots: WarehouseOption[] = [];
+    const own = new Set(warehouses.map((w) => w.code));
+    for (const w of warehouses) {
+      if (w.kind === "sub" && w.parent_code && own.has(w.parent_code)) {
+        const list = byParent.get(w.parent_code) ?? [];
+        list.push(w);
+        byParent.set(w.parent_code, list);
+      } else {
+        roots.push(w);
+      }
+    }
+    return roots.flatMap((w) => [w, ...(byParent.get(w.code) ?? [])]);
+  }, [warehouses]);
+
+  /** ສາງຫຼັກທີ່ມີຍ່ອຍ — ໃຫ້ປຸ່ມ "ຫຼັກ + ຍ່ອຍ" ຕິກທັງຄອບຄົວເທື່ອດຽວ. */
+  const families = useMemo(() => {
+    if (warehouses.length < 2) return [];
+    const own = new Set(warehouses.map((w) => w.code));
+    const out: { parent: WarehouseOption; codes: string[] }[] = [];
+    for (const p of warehouses) {
+      if (p.kind === "sub") continue;
+      const kids = warehouses.filter(
+        (w) => w.kind === "sub" && w.parent_code === p.code && own.has(p.code),
+      );
+      if (kids.length > 0) out.push({ parent: p, codes: [p.code, ...kids.map((k) => k.code)] });
+    }
+    return out;
+  }, [warehouses]);
+
   return (
     <div className="space-y-4">
       {/* ── ຕົວກອງ ─────────────────────────────────────────────── */}
@@ -302,6 +362,17 @@ export default function CoverageClient({ warehouses }: { warehouses: WarehouseOp
                 {z.label}
               </button>
             ))}
+            {families.map((f) => (
+              <button
+                key={f.parent.code}
+                type="button"
+                onClick={() => setSelected(f.codes)}
+                title={`${f.parent.code} ${f.parent.name ?? ""} + ສາງຍ່ອຍ ${f.codes.length - 1} ສາງ`}
+                className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[10px] font-bold text-sky-700 transition hover:bg-sky-100 dark:bg-sky-950/60 dark:text-sky-300"
+              >
+                {f.parent.code} +ຍ່ອຍ {f.codes.length - 1}
+              </button>
+            ))}
             {selected.length > 0 && warehouses.length > 1 && (
               <button
                 type="button"
@@ -313,20 +384,27 @@ export default function CoverageClient({ warehouses }: { warehouses: WarehouseOp
             )}
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {warehouses.map((w) => {
+            {orderedWarehouses.map((w) => {
               const on = selected.includes(w.code);
+              const isSub = w.kind === "sub";
               return (
                 <button
                   key={w.code}
                   type="button"
                   onClick={() => toggle(w.code)}
-                  title={w.name ?? ""}
+                  title={
+                    isSub && w.parent_code
+                      ? `${w.name ?? ""} — ສາງຍ່ອຍຂອງ ${w.parent_code}`
+                      : `${w.name ?? ""}${w.kind === "main" ? ` — ${WAREHOUSE_KIND_LABEL.main}` : ""}`
+                  }
                   className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ring-1 transition ${
                     on
                       ? "bg-brand-500 text-white ring-brand-500"
                       : "bg-white text-zinc-600 ring-zinc-200 hover:ring-brand-300 dark:bg-zinc-950 dark:text-zinc-300 dark:ring-zinc-800"
                   }`}
                 >
+                  {/* ຍ່ອຍຢູ່ຕິດກັບແມ່ຢູ່ແລ້ວ — ໝາຍ ↳ ໃຫ້ຮູ້ວ່າອັນໃດຂຶ້ນກັບອັນໃດ */}
+                  {isSub && <span className="mr-1 opacity-60">↳</span>}
                   <span className="font-mono">{w.code}</span>
                   <span className="ml-1.5 hidden max-w-[9rem] truncate align-middle sm:inline-block">
                     {w.name}
@@ -489,7 +567,7 @@ export default function CoverageClient({ warehouses }: { warehouses: WarehouseOp
           </div>
         ) : active.summary ? (
           <WarehousePanel
-            warehouses={warehouses}
+            allWarehouses={allWarehouses}
             summary={active.summary}
             items={active.items}
             days={shownDays}
@@ -547,7 +625,7 @@ function verdict(rate: number, selling: number) {
 type SortKey = "risk" | "shortfall" | "sold" | "cover" | "excess" | "idle";
 
 function WarehousePanel({
-  warehouses,
+  allWarehouses,
   summary,
   items,
   days,
@@ -571,7 +649,7 @@ function WarehousePanel({
   idleDays,
   setIdleDays,
 }: {
-  warehouses: WarehouseOption[];
+  allWarehouses: WarehouseOption[];
   summary: WarehouseSummary;
   items: CoverageItem[];
   days: number;
@@ -925,7 +1003,7 @@ function WarehousePanel({
             picked={[...picked]
               .map((c) => items.find((i) => i.item_code === c))
               .filter((i): i is CoverageItem => Boolean(i))}
-            warehouses={warehouses}
+            allWarehouses={allWarehouses}
             onClear={() => setPicked(new Set())}
             onRemove={(code) =>
               setPicked((s) => {
@@ -1690,13 +1768,14 @@ function TreeRow({
 function TransferBar({
   summary,
   picked,
-  warehouses,
+  allWarehouses,
   onClear,
   onRemove,
 }: {
   summary: WarehouseSummary;
   picked: CoverageItem[];
-  warehouses: WarehouseOption[];
+  /** ທຸກສາງໃນລະບົບ — ຕົ້ນທາງບໍ່ຈຳກັດຢູ່ສາງທີ່ຕົນມີສິດ (ເບິ່ງ CoverageClient). */
+  allWarehouses: WarehouseOption[];
   onClear: () => void;
   onRemove: (code: string) => void;
 }) {
@@ -1736,6 +1815,8 @@ function TransferBar({
       const p = new URLSearchParams({
         wh: whFrom,
         items: picked.map((i) => i.item_code).join(","),
+        // ຕົ້ນທາງອາດເປັນສາງທີ່ຜູ້ໃຊ້ບໍ່ມີສິດ — ອ່ານຄົງເຫຼືອເພື່ອກັນການຂໍເກີນ
+        scope: "any",
       });
       const res = await fetch(`/api/movements/stock-check?${p}`);
       const json = (await res.json()) as {
@@ -1964,11 +2045,13 @@ function TransferBar({
           className={sel}
         >
           <option value="">— ເລືອກຕົ້ນທາງ —</option>
-          {warehouses
+          {allWarehouses
             .filter((w) => !destChoices.includes(w.code))
             .map((w) => (
               <option key={w.code} value={w.code}>
+                {w.kind === "sub" ? "↳ " : ""}
                 {w.code} {w.name}
+                {w.kind === "sub" && w.parent_code ? ` (ຍ່ອຍຂອງ ${w.parent_code})` : ""}
               </option>
             ))}
         </select>

@@ -5,7 +5,14 @@ import {
   type SnFlags,
   isSnFlag,
   setManyWarehousesSnFlag,
+  setWarehouseKind,
+  warehouseKindError,
 } from "@/lib/warehouseConfig";
+import {
+  type WarehouseKind,
+  isWarehouseKind,
+  toWarehouseKind,
+} from "@/lib/warehouseKind";
 
 export type Warehouse = {
   code: string;
@@ -20,6 +27,10 @@ export type Warehouse = {
   latitude: string | null;
   longitude: string | null;
   sn: SnFlags;
+  /** ສາງຫຼັກ ຫຼື ສາງຍ່ອຍ (WMS-only — ບໍ່ຢູ່ໃນ master ຂອງ ERP). */
+  kind: WarehouseKind;
+  /** ສາງແມ່ — ມີຄ່າສະເພາະສາງຍ່ອຍ. */
+  parent_code: string | null;
 };
 
 const SELECT_FIELDS = `
@@ -27,7 +38,9 @@ const SELECT_FIELDS = `
   branch_code, wh_manager, status, latitude, longitude
 `;
 
-type WhRow = Omit<Warehouse, "sn"> & {
+type WhRow = Omit<Warehouse, "sn" | "kind" | "parent_code"> & {
+  wh_kind: string | null;
+  parent_code: string | null;
   sn_receive: boolean;
   sn_issue: boolean;
   sn_issue_pick: boolean;
@@ -38,9 +51,13 @@ type WhRow = Omit<Warehouse, "sn"> & {
 };
 
 function rowToWarehouse(r: WhRow): Warehouse {
-  const { sn_receive, sn_issue, sn_issue_pick, sn_transfer, sn_pallet, sn_adjust, sn_return, ...rest } = r;
+  const { sn_receive, sn_issue, sn_issue_pick, sn_transfer, sn_pallet, sn_adjust, sn_return, wh_kind, ...rest } = r;
+  const kind = toWarehouseKind(wh_kind);
   return {
     ...rest,
+    kind,
+    // ສາງຫຼັກບໍ່ມີແມ່ — ລ້າງໃຫ້ ເຜື່ອຂໍ້ມູນເກົ່າຄ້າງໄວ້
+    parent_code: kind === "sub" ? rest.parent_code : null,
     sn: {
       receive: sn_receive ?? true,
       issue: sn_issue ?? true,
@@ -103,7 +120,9 @@ export async function GET() {
             COALESCE(c.sn_transfer, true)    AS sn_transfer,
             COALESCE(c.sn_pallet, true)   AS sn_pallet,
             COALESCE(c.sn_adjust, true)   AS sn_adjust,
-            COALESCE(c.sn_return, true)   AS sn_return
+            COALESCE(c.sn_return, true)   AS sn_return,
+            COALESCE(c.wh_kind, 'main')   AS wh_kind,
+            c.parent_code
      FROM public.ic_warehouse w
      LEFT JOIN public.odg_wms_warehouse_config c ON c.wh_code = w.code
      ORDER BY w.code`,
@@ -151,8 +170,13 @@ export async function POST(request: Request) {
 
   const status = body.status === 0 || body.status === false ? 0 : 1;
 
+  const kind: WarehouseKind = isWarehouseKind(body.kind) ? body.kind : "main";
+  const parentCode = kind === "sub" ? nullableStr(body.parent_code) : null;
+  const kindErr = await warehouseKindError(code, kind, parentCode);
+  if (kindErr) return NextResponse.json({ error: kindErr }, { status: 400 });
+
   try {
-    const rows = await query<Omit<Warehouse, "sn">>(
+    const rows = await query<Omit<Warehouse, "sn" | "kind" | "parent_code">>(
       `INSERT INTO public.ic_warehouse
          (code, name_1, name_2, address, telephone, fax,
           branch_code, wh_manager, status, latitude, longitude)
@@ -175,7 +199,14 @@ export async function POST(request: Request) {
     );
     // New warehouses default to SN-on for every menu (no config row needed).
     const sn: SnFlags = { receive: true, issue: true, issue_pick: true, transfer: true, pallet: true, adjust: true, return: true };
-    return NextResponse.json({ ok: true, warehouse: { ...rows[0], sn } });
+    // ຂຽນແຖວ config ສະເພາະສາງຍ່ອຍ — ສາງຫຼັກຄືຄ່າເລີ່ມຕົ້ນຢູ່ແລ້ວ ຈຶ່ງບໍ່ຕ້ອງມີແຖວ.
+    if (kind === "sub") {
+      await setWarehouseKind(code, kind, parentCode, guard.session.employee_code ?? null);
+    }
+    return NextResponse.json({
+      ok: true,
+      warehouse: { ...rows[0], sn, kind, parent_code: parentCode },
+    });
   } catch (err) {
     const e = err as { code?: string; message?: string };
     if (e.code === "23505") {

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { ROLE_LABEL_LO, accessibleWarehouses } from "@/lib/session-shared";
+import { warehouseTreeMap } from "@/lib/warehouseConfig";
 import { Hero, Notice, Chip } from "@/components/ui/Card";
 import { AlertIcon, TrendIcon } from "@/components/ui/Icons";
 import CoverageClient, { type WarehouseOption } from "./CoverageClient";
@@ -36,17 +37,24 @@ export default async function CoveragePage() {
     );
   }
 
+  // ດຶງເທື່ອດຽວແລ້ວແຍກສອງບົດບາດ: ວິເຄາະໄດ້ສະເພາະສາງທີ່ມີສິດ ແຕ່ **ຕົ້ນທາງ** ຂອງ
+  // ໃບຂໍໂອນຕ້ອງເປັນສາງໃດກໍ່ໄດ້ (ຄືກັບໜ້າ /movements/transfer-request).
+  const rows = await query<{ code: string; name: string | null }>(
+    `SELECT code, name_1 AS name FROM public.ic_warehouse
+     WHERE COALESCE(status, 1) = 1 AND code IS NOT NULL ORDER BY code`,
+  );
+  // ສາງຫຼັກ/ຍ່ອຍ ຢູ່ຕາຕະລາງ config ຂອງ WMS — ຕິດປ້າຍໃສ່ ເພື່ອໃຫ້ໜ້າຈໍຈັດກຸ່ມ
+  // "ຫຼັກ + ຍ່ອຍ" ໄດ້ ໂດຍບໍ່ຕ້ອງເດົາຈາກລະຫັດສາງ.
+  const tree = await warehouseTreeMap(rows.map((r) => r.code));
+  const allWarehouses: WarehouseOption[] = rows.map((r) => ({
+    ...r,
+    kind: tree[r.code]?.kind ?? "main",
+    parent_code: tree[r.code]?.parent_code ?? null,
+  }));
   const warehouses =
     accessible === null
-      ? await query<WarehouseOption>(
-          `SELECT code, name_1 AS name FROM public.ic_warehouse
-           WHERE COALESCE(status, 1) = 1 AND code IS NOT NULL ORDER BY code`,
-        )
-      : await query<WarehouseOption>(
-          `SELECT code, name_1 AS name FROM public.ic_warehouse
-           WHERE code = ANY($1) ORDER BY code`,
-          [accessible],
-        );
+      ? allWarehouses
+      : allWarehouses.filter((w) => accessible.includes(w.code));
 
   return (
     <div className="w-full space-y-5">
@@ -57,7 +65,7 @@ export default async function CoveragePage() {
         tone="navy"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}
       />
-      <CoverageClient warehouses={warehouses} />
+      <CoverageClient warehouses={warehouses} allWarehouses={allWarehouses} />
     </div>
   );
 }

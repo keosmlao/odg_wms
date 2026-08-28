@@ -1,5 +1,10 @@
 import type { PoolClient } from "pg";
 import { query } from "@/lib/db";
+import {
+  DEFAULT_WAREHOUSE_KIND,
+  type WarehouseKind,
+  toWarehouseKind,
+} from "@/lib/warehouseKind";
 
 /** Minimal querier shape — the shared pool, or a transaction client. */
 type Querier = Pick<PoolClient, "query">;
@@ -179,4 +184,130 @@ export async function setManyWarehousesSnFlag(
 
 export function isSnFlag(v: unknown): v is SnFlag {
   return typeof v === "string" && v in FLAG_COLUMN;
+}
+
+/** ສາງຫຼັກ/ຍ່ອຍ ຂອງສາງໜຶ່ງ — ຮູບແບບທີ່ໜ້າອື່ນເອົາໄປໃຊ້ຕໍ່ໄດ້. */
+export type WarehouseTree = { kind: WarehouseKind; parent_code: string | null };
+
+const DEFAULT_TREE: WarehouseTree = { kind: DEFAULT_WAREHOUSE_KIND, parent_code: null };
+
+/**
+ * ສາງຫຼັກ/ຍ່ອຍ ຂອງຫຼາຍສາງ keyed ດ້ວຍລະຫັດສາງ.
+ *
+ * ສາງທີ່ບໍ່ມີແຖວ config (ຫຼື ຍັງບໍ່ໄດ້ run migration 041) ຄືນເປັນ "ສາງຫຼັກ
+ * ບໍ່ມີແມ່" — ຄືສະພາບກ່ອນມີຄຸນສົມບັດນີ້ ຈຶ່ງບໍ່ມີໜ້າໃດພັງລະຫວ່າງ deploy.
+ */
+export async function warehouseTreeMap(
+  whCodes: string[],
+): Promise<Record<string, WarehouseTree>> {
+  const out: Record<string, WarehouseTree> = {};
+  for (const code of whCodes) out[code] = { ...DEFAULT_TREE };
+  if (whCodes.length === 0) return out;
+  try {
+    const rows = await query<{ wh_code: string; wh_kind: string | null; parent_code: string | null }>(
+      `SELECT wh_code, wh_kind, parent_code
+       FROM public.odg_wms_warehouse_config
+       WHERE wh_code = ANY($1)`,
+      [whCodes],
+    );
+    for (const r of rows) {
+      const kind = toWarehouseKind(r.wh_kind);
+      out[r.wh_code] = { kind, parent_code: kind === "sub" ? r.parent_code : null };
+    }
+  } catch {
+    // ຍັງບໍ່ໄດ້ run migration 041 — ໃຊ້ຄ່າເລີ່ມຕົ້ນ
+  }
+  return out;
+}
+
+/**
+ * ຕັ້ງສາງຫຼັກ/ຍ່ອຍ ຂອງສາງໜຶ່ງ.
+ *
+ * `parent` ຖືກລ້າງເປັນ null ສະເໝີເມື່ອ kind = main — ບໍ່ດັ່ງນັ້ນສາງທີ່ຖືກ
+ * ຍົກຂຶ້ນເປັນຫຼັກຈະຍັງແບກລະຫັດແມ່ເກົ່າໄວ້ ແລະ CHECK ຢູ່ DB ຈະປະຕິເສດ.
+ */
+export async function setWarehouseKind(
+  whCode: string,
+  kind: WarehouseKind,
+  parent: string | null,
+  updatedBy: string | null,
+  client?: Querier,
+): Promise<void> {
+  const parentCode = kind === "sub" ? parent : null;
+  const sql = `
+    INSERT INTO public.odg_wms_warehouse_config (wh_code, wh_kind, parent_code, updated_at, updated_by)
+    VALUES ($1, $2, $3, now(), $4)
+    ON CONFLICT (wh_code)
+    DO UPDATE SET wh_kind = EXCLUDED.wh_kind,
+                  parent_code = EXCLUDED.parent_code,
+                  updated_at = now(),
+                  updated_by = EXCLUDED.updated_by`;
+  if (client) await client.query(sql, [whCode, kind, parentCode, updatedBy]);
+  else await query(sql, [whCode, kind, parentCode, updatedBy]);
+}
+
+/**
+ * ຕັດສາງຍ່ອຍທຸກສາງອອກຈາກແມ່ທີ່ຖືກລຶບ — ກັບໄປເປັນ "ສາງຫຼັກ".
+ *
+ * ປະໄວ້ຊື່ໆບໍ່ໄດ້: parent_code ຈະຊີ້ໄປສາງທີ່ບໍ່ມີແລ້ວ ແລະ ໜ້າຈັດການສາງຈະ
+ * ສະແດງແມ່ເປັນລະຫັດເປົ່າໆທີ່ບໍ່ມີໃຜແກ້ໄດ້.
+ */
+export async function detachChildWarehouses(parentCode: string): Promise<number> {
+  try {
+    const rows = await query<{ wh_code: string }>(
+      `UPDATE public.odg_wms_warehouse_config
+          SET wh_kind = 'main', parent_code = NULL, updated_at = now()
+        WHERE parent_code = $1
+        RETURNING wh_code`,
+      [parentCode],
+    );
+    return rows.length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * ກວດຄວາມສົມເຫດສົມຜົນຂອງ ສາງຫຼັກ/ຍ່ອຍ ກ່ອນບັນທຶກ — ຄືນຂໍ້ຄວາມຜິດພາດ (ພາສາລາວ)
+ * ຫຼື null ຖ້າຜ່ານ.
+ *
+ * ຈຳກັດໃຫ້ເລິກພຽງ **ຊັ້ນດຽວ**: ຍ່ອຍຂອງຍ່ອຍ ຈະເຮັດໃຫ້ທຸກໜ້າທີ່ລວມຍອດ "ສາງຫຼັກ
+ * + ຍ່ອຍ" ຕ້ອງໄລ່ຕົ້ນໄມ້ແບບ recursive ໂດຍບໍ່ມີໃຜຮ້ອງຂໍ.
+ */
+export async function warehouseKindError(
+  whCode: string,
+  kind: WarehouseKind,
+  parent: string | null,
+): Promise<string | null> {
+  if (kind === "main") return null;
+
+  if (!parent) return "ສາງຍ່ອຍ ຕ້ອງລະບຸສາງແມ່";
+  if (parent === whCode) return "ສາງເປັນແມ່ຂອງຕົນເອງບໍ່ໄດ້";
+
+  const exists = await query<{ code: string }>(
+    `SELECT code FROM public.ic_warehouse WHERE code = $1`,
+    [parent],
+  );
+  if (exists.length === 0) return `ບໍ່ພົບສາງແມ່ ${parent}`;
+
+  try {
+    const parentRow = await query<{ wh_kind: string | null }>(
+      `SELECT wh_kind FROM public.odg_wms_warehouse_config WHERE wh_code = $1`,
+      [parent],
+    );
+    if (toWarehouseKind(parentRow[0]?.wh_kind) === "sub") {
+      return `${parent} ເປັນສາງຍ່ອຍຢູ່ແລ້ວ — ສາງແມ່ຕ້ອງເປັນສາງຫຼັກ`;
+    }
+
+    const children = await query<{ wh_code: string }>(
+      `SELECT wh_code FROM public.odg_wms_warehouse_config WHERE parent_code = $1`,
+      [whCode],
+    );
+    if (children.length > 0) {
+      return `ສາງນີ້ມີສາງຍ່ອຍ ${children.length} ສາງຢູ່ແລ້ວ — ປ່ຽນເປັນສາງຍ່ອຍບໍ່ໄດ້`;
+    }
+  } catch {
+    // ຍັງບໍ່ໄດ້ run migration 041 — ປ່ອຍໃຫ້ຜ່ານ ແລ້ວໃຫ້ການບັນທຶກລົ້ມເອງ
+  }
+  return null;
 }

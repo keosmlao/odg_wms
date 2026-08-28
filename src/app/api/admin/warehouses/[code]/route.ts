@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { requireManager } from "@/lib/session";
 import type { Warehouse } from "../route";
-import { isSnFlag, setWarehouseSnFlag, warehouseSnFlags } from "@/lib/warehouseConfig";
+import {
+  detachChildWarehouses,
+  isSnFlag,
+  setWarehouseKind,
+  setWarehouseSnFlag,
+  warehouseKindError,
+  warehouseSnFlags,
+} from "@/lib/warehouseConfig";
+import { type WarehouseKind, isWarehouseKind } from "@/lib/warehouseKind";
 
 const SELECT_FIELDS = `
   code, name_1, name_2, address, telephone, fax,
@@ -42,7 +50,12 @@ export async function PUT(
 
   const status = body.status === 0 || body.status === false ? 0 : 1;
 
-  const rows = await query<Omit<Warehouse, "sn">>(
+  const kind: WarehouseKind = isWarehouseKind(body.kind) ? body.kind : "main";
+  const parentCode = kind === "sub" ? nullableStr(body.parent_code) : null;
+  const kindErr = await warehouseKindError(code, kind, parentCode);
+  if (kindErr) return NextResponse.json({ error: kindErr }, { status: 400 });
+
+  const rows = await query<Omit<Warehouse, "sn" | "kind" | "parent_code">>(
     `UPDATE public.ic_warehouse
      SET name_1 = $2,
          name_2 = $3,
@@ -75,10 +88,18 @@ export async function PUT(
     return NextResponse.json({ error: "ບໍ່ພົບສາງ" }, { status: 404 });
   }
 
+  // ສາງຫຼັກ/ຍ່ອຍ ຢູ່ໃນ config ຂອງ WMS ບໍ່ແມ່ນ master ຂອງ ERP — ບັນທຶກແຍກ.
+  await setWarehouseKind(code, kind, parentCode, guard.session.employee_code ?? null);
+  // ຍົກຂຶ້ນເປັນສາງຫຼັກແລ້ວຍັງມີລູກຄ້າງ ບໍ່ເປັນຫຍັງ (ຊັ້ນດຽວຄືເກົ່າ) — ແຕ່ຖ້າຖືກ
+  // ຫຼຸດເປັນຍ່ອຍ warehouseKindError ຂ້າງເທິງໄດ້ປະຕິເສດໄປແລ້ວ.
+
   // SN menu flags are managed separately (the matrix / single PATCH), so the
   // edit form only touches warehouse fields — return the current flags.
   const sn = await warehouseSnFlags(code);
-  return NextResponse.json({ ok: true, warehouse: { ...rows[0], sn } });
+  return NextResponse.json({
+    ok: true,
+    warehouse: { ...rows[0], sn, kind, parent_code: parentCode },
+  });
 }
 
 /** Flip one SN menu flag for one warehouse. Body: { flag, value: boolean }. */
@@ -144,6 +165,8 @@ export async function DELETE(
       `DELETE FROM public.wms_user_warehouse WHERE warehouse_code = $1`,
       [code],
     );
+    // ສາງຍ່ອຍທີ່ຂຶ້ນກັບສາງນີ້ ຕ້ອງກັບໄປເປັນສາງຫຼັກ ບໍ່ດັ່ງນັ້ນຈະຊີ້ຫາແມ່ທີ່ບໍ່ມີ.
+    await detachChildWarehouses(code);
     // And its WMS config row.
     await query(
       `DELETE FROM public.odg_wms_warehouse_config WHERE wh_code = $1`,

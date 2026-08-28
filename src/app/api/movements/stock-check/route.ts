@@ -25,9 +25,14 @@ export async function GET(request: Request) {
   const wh = url.searchParams.get("wh")?.trim() ?? "";
   if (!wh) return NextResponse.json({ error: "ກະລຸນາລະບຸສາງ" }, { status: 400 });
 
-  const accessible = accessibleWarehouses(session);
-  if (Array.isArray(accessible) && !accessible.includes(wh)) {
-    return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
+  // ໃບຂໍໂອນກວດຄົງເຫຼືອຂອງສາງ **ຕົ້ນທາງ** ຊຶ່ງໂດຍທຳມະຊາດແມ່ນສາງຄົນອື່ນ — ຄືກັບ
+  // /api/movements/items/search?scope=any. ອ່ານຢ່າງດຽວ ແລະ ສິດຖືກບັງຄັບຢູ່ຝັ່ງ
+  // ປາຍທາງໃນ POST /api/movements/transfer-request.
+  if (url.searchParams.get("scope") !== "any") {
+    const accessible = accessibleWarehouses(session);
+    if (Array.isArray(accessible) && !accessible.includes(wh)) {
+      return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງສາງນີ້" }, { status: 403 });
+    }
   }
 
   const items = [
