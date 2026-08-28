@@ -300,6 +300,22 @@ export default function CoverageClient({
     }
   }
 
+  /**
+   * ແລ່ນວິເຄາະເອງເທື່ອດຽວຕອນເປີດໜ້າ — **ສະເພາະເມື່ອມີສາງຖືກເລືອກໄວ້ແລ້ວ**
+   * ຄື ຜູ້ໃຊ້ທີ່ຄຸ້ມຄອງສາງດຽວ (ເບິ່ງ state `selected` ຂ້າງເທິງ).
+   *
+   * ຄົນທີ່ມີຫຼາຍສາງເລີ່ມຕົ້ນດ້ວຍ 0 ສາງ ຈຶ່ງບໍ່ມີຫຍັງໃຫ້ແລ່ນຢູ່ແລ້ວ ແລະ ຍັງບໍ່ຖືກ
+   * ບັງຄັບໃຫ້ລໍ 3–6 ວິນາທີຕໍ່ສາງທີ່ຕົນເອງອາດບໍ່ໄດ້ຢາກເບິ່ງ ຄືເຫດຜົນເດີມ.
+   */
+  const didAutoRun = useRef(false);
+  useEffect(() => {
+    if (didAutoRun.current || selected.length === 0) return;
+    didAutoRun.current = true;
+    void load();
+    // ຕັ້ງໃຈໃຫ້ແລ່ນເທື່ອດຽວຕອນ mount ເທົ່ານັ້ນ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const toggle = (code: string) =>
     setSelected((s) => (s.includes(code) ? s.filter((c) => c !== code) : [...s, code]));
 
