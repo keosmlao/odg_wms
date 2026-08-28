@@ -1784,6 +1784,88 @@ function TreeRow({
  * ຈຳນວນເຕັມ — ໃບຂໍໂອນຂອງຈິງບໍ່ຂໍເປັນເສດ — ແຕ່ **ຜູ້ໃຊ້ແກ້ໄດ້ທຸກແຖວ** ກ່ອນສ້າງ
  * ແລະ ຕັ້ງເປັນ 0 ເພື່ອຂ້າມແຖວນັ້ນກໍ່ໄດ້.
  */
+/** ໜຶ່ງໃບຂໍໂອນທີ່ລະບົບແນະນຳ — ໜຶ່ງກຸ່ມ = ໜຶ່ງສາງຕົ້ນທາງ = ໜຶ່ງໃບ. */
+type SourceGroup = {
+  wh_code: string;
+  wh_name: string | null;
+  /** ລາຍການທີ່ສາງນີ້ມີ **ຄົບ** ຕາມຈຳນວນທີ່ຂໍ. */
+  full: string[];
+  /** ລາຍການທີ່ມີແຕ່ **ບໍ່ຄົບ** — ຂໍໄດ້ເທົ່າທີ່ມີ. */
+  partial: { item_code: string; have: number }[];
+};
+
+/**
+ * ຈັດລາຍການທີ່ຕິກໄວ້ ເຂົ້າໃບຂໍໂອນຕໍ່ສາງ — **1 ໃບ = 1 ສາງຕົ້ນທາງ**.
+ *
+ * ວິທີ: ໄລ່ແບບ greedy ເອົາສາງທີ່ຈ່າຍໄດ້**ຄົບ**ຫຼາຍລາຍການທີ່ສຸດກ່ອນ ແລ້ວຕັດ
+ * ລາຍການເຫຼົ່ານັ້ນອອກ ວົນຈົນບໍ່ມີສາງໃດຈ່າຍຄົບໄດ້ອີກ. ທີ່ເຫຼືອຈຶ່ງຈັດແບບ
+ * "ບໍ່ຄົບ" ໄປສາງທີ່ມີຫຼາຍທີ່ສຸດຂອງລາຍການນັ້ນ.
+ *
+ * ເປັນຫຍັງ greedy: ນີ້ຄື set-cover ຊຶ່ງຫາຄຳຕອບດີທີ່ສຸດແມ່ນ NP-hard — ແຕ່ສິ່ງທີ່
+ * ຄົນຢາກໄດ້ຄື "ໃບໜ້ອຍທີ່ສຸດເທົ່າທີ່ເປັນໄປໄດ້" ບໍ່ແມ່ນຄຳຕອບທີ່ພິສູດໄດ້ວ່າດີສຸດ.
+ */
+function planSources(
+  need: { item_code: string; qty: number }[],
+  stock: Map<string, Map<string, number>>,
+  warehouses: { code: string; name: string | null }[],
+): { groups: SourceGroup[]; missing: string[] } {
+  const left = new Map(need.map((n) => [n.item_code, n.qty]));
+  const nameOf = (c: string) => warehouses.find((w) => w.code === c)?.name ?? null;
+  const groups: SourceGroup[] = [];
+
+  // ຮອບທີ 1 — ເອົາສາງທີ່ຈ່າຍຄົບໄດ້ຫຼາຍລາຍການທີ່ສຸດ ເທື່ອລະສາງ
+  for (;;) {
+    let best: { code: string; name: string | null } | null = null;
+    let bestItems: string[] = [];
+    for (const w of warehouses) {
+      const items: string[] = [];
+      for (const [code, qty] of left) {
+        if ((stock.get(code)?.get(w.code) ?? 0) >= qty) items.push(code);
+      }
+      if (items.length > bestItems.length) {
+        best = { code: w.code, name: w.name };
+        bestItems = items;
+      }
+    }
+    if (!best || bestItems.length === 0) break;
+    groups.push({ wh_code: best.code, wh_name: best.name, full: bestItems, partial: [] });
+    for (const c of bestItems) left.delete(c);
+  }
+
+  // ຮອບທີ 2 — ທີ່ເຫຼືອ: ໄປສາງທີ່ມີຫຼາຍທີ່ສຸດ ເຖິງຈະບໍ່ຄົບ
+  const missing: string[] = [];
+  for (const [code] of left) {
+    const per = stock.get(code);
+    let bestWh: string | null = null;
+    let bestQty = 0;
+    if (per) {
+      for (const [wh, qty] of per) {
+        if (qty > bestQty) {
+          bestQty = qty;
+          bestWh = wh;
+        }
+      }
+    }
+    if (!bestWh) {
+      missing.push(code);
+      continue;
+    }
+    const g = groups.find((x) => x.wh_code === bestWh);
+    if (g) g.partial.push({ item_code: code, have: bestQty });
+    else
+      groups.push({
+        wh_code: bestWh,
+        wh_name: nameOf(bestWh),
+        full: [],
+        partial: [{ item_code: code, have: bestQty }],
+      });
+  }
+
+  // ໃບທີ່ຂໍໄດ້ຫຼາຍລາຍການທີ່ສຸດຂຶ້ນກ່ອນ — ຄົນມັກເຮັດໃບໃຫຍ່ກ່ອນ
+  groups.sort((a, b) => b.full.length + b.partial.length - (a.full.length + a.partial.length));
+  return { groups, missing };
+}
+
 function TransferBar({
   summary,
   picked,
@@ -1815,6 +1897,15 @@ function TransferBar({
    */
   const [avail, setAvail] = useState<Record<string, number> | null>(null);
   const [availBusy, setAvailBusy] = useState(false);
+
+  /** ແຜນ "ຄວນຂໍຈາກສາງໃດແດ່" — null = ຍັງບໍ່ໄດ້ຖາມ. */
+  const [plan, setPlan] = useState<{ groups: SourceGroup[]; missing: string[] } | null>(null);
+  const [planBusy, setPlanBusy] = useState(false);
+  /**
+   * ລາຍການທີ່ຈຳກັດໄວ້ສຳລັບໃບປັດຈຸບັນ — null = ທຸກລາຍການທີ່ຕິກ.
+   * ຕັ້ງເມື່ອຄົນເລືອກໃບໃດໃບໜຶ່ງຈາກແຜນ ເພາະ 1 ໃບ = 1 ສາງ.
+   */
+  const [only, setOnly] = useState<Set<string> | null>(null);
 
   /** ລະຫັດທີ່ຕິກໄວ້ — ໃຊ້ເປັນ dep ເພື່ອກວດຄືນເມື່ອຕິກເພີ່ມ/ເອົາອອກ. */
   /**
@@ -1889,13 +1980,68 @@ function TransferBar({
   };
   const qtyOf = (i: CoverageItem) => edited[i.item_code] ?? packedOf(i);
 
-  const lines = picked
+  const allLines = picked
     .map((i) => ({ item: i, qty: qtyOf(i) }))
     .filter((l) => l.qty > 0);
-  const skipped = picked.length - lines.length;
+  /** ແຖວທີ່ຈະເຂົ້າໃບປັດຈຸບັນ — ຕັດຕາມກຸ່ມທີ່ເລືອກຈາກແຜນ (ຖ້າມີ). */
+  const lines = only ? allLines.filter((l) => only.has(l.item.item_code)) : allLines;
+  const skipped = picked.length - allLines.length;
   const totalValue = lines.reduce((s, l) => s + l.qty * l.item.avg_cost, 0);
   /** ແຖວທີ່ຂໍເກີນຄົງເຫຼືອຂອງຕົ້ນທາງ. */
   const over = avail === null ? [] : lines.filter((l) => l.qty > (avail[l.item.item_code] ?? 0));
+
+  /**
+   * ຖາມວ່າ "ລາຍການເຫຼົ່ານີ້ ຄວນຂໍຈາກສາງໃດແດ່" — ດຶງຄົງເຫຼືອຂ້າມສາງຫຼັກເທື່ອດຽວ
+   * ແລ້ວຈັດເປັນໃບຕໍ່ສາງຢູ່ຝັ່ງນີ້ ເພາະຈຳນວນທີ່ຂໍ (ປັດຫົວໜ່ວຍ/ພິມແກ້ເອງ) ຮູ້ຢູ່ນີ້.
+   */
+  async function loadPlan() {
+    if (allLines.length === 0) {
+      setMsg({ ok: false, text: "ລາຍການທີ່ຕິກ ບໍ່ມີຈຳນວນທີ່ຕ້ອງເຕີມ" });
+      return;
+    }
+    setPlanBusy(true);
+    setMsg(null);
+    try {
+      const p = new URLSearchParams({
+        items: allLines.map((l) => l.item.item_code).join(","),
+        exclude: destChoices.join(","),
+      });
+      const res = await fetch(`/api/movements/stock-across?${p}`);
+      const json = (await res.json()) as {
+        warehouses?: { code: string; name: string | null }[];
+        rows?: { item_code: string; wh_code: string; on_hand: number }[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setMsg({ ok: false, text: json.error ?? "ຫາສາງຕົ້ນທາງບໍ່ສຳເລັດ" });
+        return;
+      }
+      const stock = new Map<string, Map<string, number>>();
+      for (const r of json.rows ?? []) {
+        const per = stock.get(r.item_code) ?? new Map<string, number>();
+        per.set(r.wh_code, r.on_hand);
+        stock.set(r.item_code, per);
+      }
+      setPlan(
+        planSources(
+          allLines.map((l) => ({ item_code: l.item.item_code, qty: l.qty })),
+          stock,
+          json.warehouses ?? [],
+        ),
+      );
+    } catch {
+      setMsg({ ok: false, text: "ຕິດຕໍ່ເຊີບເວີບໍ່ໄດ້" });
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  /** ເລືອກໃບໜຶ່ງຈາກແຜນ — ຕັ້ງຕົ້ນທາງ ແລະ ຈຳກັດລາຍການໃຫ້ເທົ່າໃບນັ້ນ. */
+  function useGroup(g: SourceGroup) {
+    setFrom(g.wh_code);
+    setOnly(new Set([...g.full, ...g.partial.map((x) => x.item_code)]));
+    setMsg(null);
+  }
 
   async function create() {
     if (!from) return setMsg({ ok: false, text: "ກະລຸນາເລືອກສາງຕົ້ນທາງ" });
@@ -1925,7 +2071,16 @@ function TransferBar({
         setMsg({ ok: false, text: json.error ?? "ສ້າງໃບຂໍໂອນບໍ່ສຳເລັດ" });
       } else {
         setMsg({ ok: true, text: `ສ້າງໃບຂໍໂອນແລ້ວ ${json.doc_no ?? ""} (${lines.length} ລາຍການ)` });
-        onClear();
+        if (only) {
+          // ໃບຕໍ່ສາງ: ເອົາອອກສະເພາະທີ່ຫາກໍ່ຂໍ ເພື່ອໃຫ້ເຮັດໃບຕໍ່ໄປຂອງແຜນໄດ້ເລີຍ
+          for (const l of lines) onRemove(l.item.item_code);
+          setPlan((prev) =>
+            prev ? { ...prev, groups: prev.groups.filter((g) => g.wh_code !== from) } : prev,
+          );
+          setOnly(null);
+        } else {
+          onClear();
+        }
       }
     } catch {
       setMsg({ ok: false, text: "ຕິດຕໍ່ເຊີບເວີບໍ່ໄດ້" });
@@ -1945,8 +2100,15 @@ function TransferBar({
           <span className="text-[12px] font-bold text-zinc-700 dark:text-zinc-200">
             ລາຍການທີ່ຈະຂໍໂອນ
             <span className="ml-1.5 text-[11px] font-normal text-zinc-400">
-              {lines.length} ລາຍການ · ປະມານ {money(totalValue)} ບາດ
+              {/* ໂໝດແຜນ: ນັບສະເພາະໃບປັດຈຸບັນ ຈຶ່ງຕ້ອງບອກໃຫ້ຊັດວ່ານັບຈາກເທົ່າໃດ */}
+              {only ? `${lines.length} / ${allLines.length}` : lines.length} ລາຍການ · ປະມານ{" "}
+              {money(totalValue)} ບາດ
             </span>
+            {only && (
+              <span className="ml-1.5 rounded-full bg-brand-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                ໃບຂອງ {from}
+              </span>
+            )}
           </span>
           <div className="flex items-center gap-3">
             <label
@@ -1974,13 +2136,26 @@ function TransferBar({
         <div className="max-h-56 overflow-y-auto">
           {picked.map((i) => {
             const q = qtyOf(i);
+            // ຢູ່ນອກໃບປັດຈຸບັນ = ຍັງຕິກໄວ້ ແຕ່ບໍ່ເຂົ້າໃບນີ້ — ຕ້ອງເຫັນຕ່າງກັນ
+            // ບໍ່ດັ່ງນັ້ນຄົນຈະນຶກວ່າຂໍໄປໝົດແລ້ວ
+            const inDoc = !only || only.has(i.item_code);
             return (
               <div
                 key={i.item_code}
                 className={`flex items-center gap-2 border-b border-zinc-50 px-3 py-1.5 last:border-0 dark:border-zinc-800/60 ${
-                  q <= 0 ? "opacity-45" : ""
+                  q <= 0 || !inDoc ? "opacity-45" : ""
                 }`}
               >
+                {only && (
+                  <span
+                    className={`shrink-0 text-[10px] font-bold ${
+                      inDoc ? "text-brand-500" : "text-zinc-300 dark:text-zinc-600"
+                    }`}
+                    title={inDoc ? `ຢູ່ໃນໃບຂອງ ${from}` : "ບໍ່ຢູ່ໃນໃບນີ້ — ຢູ່ໃບອື່ນຂອງແຜນ"}
+                  >
+                    {inDoc ? "●" : "○"}
+                  </span>
+                )}
                 <span className="font-mono text-[10px] font-bold text-brand-600 dark:text-brand-400">
                   {i.item_code}
                 </span>
@@ -2067,11 +2242,97 @@ function TransferBar({
         </div>
       </div>
 
+      {/* ── ແຜນ "ຄວນຂໍຈາກສາງໃດແດ່" — 1 ກຸ່ມ = 1 ໃບ ─────────────── */}
+      {plan && (
+        <div className="mb-2 rounded-xl bg-sky-50/70 p-3 ring-1 ring-sky-200 dark:bg-sky-950/30 dark:ring-sky-900">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-[11px] font-bold text-sky-800 dark:text-sky-300">
+              ແນະນຳ: ຕ້ອງອອກ {plan.groups.length} ໃບ (1 ໃບ = 1 ສາງ)
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setPlan(null);
+                setOnly(null);
+              }}
+              className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold text-sky-700 transition hover:bg-sky-100 dark:text-sky-300 dark:hover:bg-sky-900/50"
+            >
+              ປິດ
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {plan.groups.map((g, idx) => {
+              const total = g.full.length + g.partial.length;
+              const on = from === g.wh_code && only !== null;
+              return (
+                <div
+                  key={g.wh_code}
+                  className={`flex flex-wrap items-center gap-2 rounded-lg px-2.5 py-1.5 ring-1 ${
+                    on
+                      ? "bg-white ring-brand-400 dark:bg-zinc-900"
+                      : "bg-white/70 ring-sky-100 dark:bg-zinc-900/60 dark:ring-sky-900/60"
+                  }`}
+                >
+                  <span className="text-[10px] font-bold text-zinc-400">ໃບ {idx + 1}</span>
+                  <span className="font-mono text-[12px] font-bold">{g.wh_code}</span>
+                  <span className="max-w-[12rem] truncate text-[11px] text-zinc-500">{g.wh_name}</span>
+                  <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                    ຄົບ {g.full.length}
+                  </span>
+                  {g.partial.length > 0 && (
+                    <span
+                      className="text-[11px] font-semibold text-amber-700 dark:text-amber-400"
+                      title="ມີແຕ່ບໍ່ຄົບຕາມຈຳນວນທີ່ຂໍ — ຂໍໄດ້ເທົ່າທີ່ມີ"
+                    >
+                      ບໍ່ຄົບ {g.partial.length}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => useGroup(g)}
+                    className={`ml-auto rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                      on
+                        ? "bg-brand-500 text-white"
+                        : "bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900"
+                    }`}
+                  >
+                    {on ? `ເລືອກຢູ່ (${total})` : `ໃຊ້ໃບນີ້ (${total})`}
+                  </button>
+                </div>
+              );
+            })}
+            {plan.groups.length === 0 && (
+              <p className="text-[11px] text-zinc-500">ບໍ່ມີສາງຫຼັກໃດມີລາຍການເຫຼົ່ານີ້ເລີຍ</p>
+            )}
+            {plan.missing.length > 0 && (
+              <p className="text-[11px] font-semibold text-red-700 dark:text-red-400">
+                ບໍ່ມີສາງໃດມີ {plan.missing.length} ລາຍການ — {plan.missing.slice(0, 5).join(", ")}
+                {plan.missing.length > 5 ? " ..." : ""}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2.5">
+        <button
+          type="button"
+          onClick={() => void loadPlan()}
+          disabled={planBusy}
+          title="ກວດຄົງເຫຼືອທຸກສາງຫຼັກ ແລ້ວແບ່ງເປັນໃບຂໍໂອນຕໍ່ສາງ"
+          className="rounded-lg bg-sky-600 px-3 py-1.5 text-[12px] font-bold text-white transition hover:bg-sky-500 disabled:opacity-60"
+        >
+          {planBusy ? "ກຳລັງຫາ..." : "ແນະນຳຕົ້ນທາງ"}
+        </button>
         <span className="text-[11px] text-zinc-500">ຈາກສາງຫຼັກ</span>
         <select
           value={from}
-          onChange={(e) => setFrom(e.target.value)}
+          onChange={(e) => {
+            setFrom(e.target.value);
+            // ປ່ຽນຕົ້ນທາງເອງ = ອອກຈາກໃບທີ່ແຜນຈັດໄວ້ ບໍ່ດັ່ງນັ້ນຈະຂໍລາຍການຂອງ
+            // ສາງໜຶ່ງ ໄປໃສ່ອີກສາງໜຶ່ງໂດຍບໍ່ຮູ້ຕົວ
+            setOnly(null);
+          }}
           className={sel}
         >
           <option value="">— ເລືອກຕົ້ນທາງ —</option>
