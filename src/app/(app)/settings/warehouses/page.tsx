@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { Warehouse } from "@/app/api/admin/warehouses/route";
-import { toWarehouseKind } from "@/lib/warehouseKind";
+import { warehouseTreeMap } from "@/lib/warehouseConfig";
 import WarehousesClient from "./WarehousesClient";
 import { Hero, Chip, KpiCard } from "@/components/ui/Card";
 import {
@@ -48,19 +48,17 @@ export default async function WarehousesPage() {
   const defaultSn = { receive: true, issue: true, issue_pick: true, transfer: true, pallet: true, adjust: true, return: true };
   for (const w of warehouses) {
     w.sn = { ...defaultSn };
-    // ສາງທີ່ຍັງບໍ່ໄດ້ຕັ້ງ = ສາງຫຼັກ (ເບິ່ງ migration 041)
+    // ສາງທີ່ຍັງບໍ່ໄດ້ຕັ້ງ = ສາງຫຼັກ (ເບິ່ງ migration 041/042)
     w.kind = "main";
-    w.parent_code = null;
+    w.parent_codes = [];
   }
   try {
     const cfg = await query<{
       wh_code: string;
       sn_receive: boolean; sn_issue: boolean; sn_issue_pick: boolean; sn_transfer: boolean;
       sn_pallet: boolean; sn_adjust: boolean; sn_return: boolean;
-      wh_kind: string | null; parent_code: string | null;
     }>(
-      `SELECT wh_code, sn_receive, sn_issue, sn_issue_pick, sn_transfer, sn_pallet, sn_adjust, sn_return,
-              wh_kind, parent_code
+      `SELECT wh_code, sn_receive, sn_issue, sn_issue_pick, sn_transfer, sn_pallet, sn_adjust, sn_return
        FROM public.odg_wms_warehouse_config`,
     );
     const byCode = new Map(cfg.map((c) => [c.wh_code, c]));
@@ -71,12 +69,17 @@ export default async function WarehousesPage() {
           receive: c.sn_receive, issue: c.sn_issue, issue_pick: c.sn_issue_pick, transfer: c.sn_transfer,
           pallet: c.sn_pallet, adjust: c.sn_adjust, return: c.sn_return,
         };
-        w.kind = toWarehouseKind(c.wh_kind);
-        w.parent_code = w.kind === "sub" ? c.parent_code : null;
       }
     }
   } catch {
     // columns not present yet — keep defaults
+  }
+
+  // ສາງຫຼັກ/ຍ່ອຍ + ສາງແມ່ — ຕົວຊ່ວຍນີ້ທົນກັບ DB ທີ່ຍັງບໍ່ໄດ້ run 041/042 ຢູ່ແລ້ວ
+  const tree = await warehouseTreeMap(warehouses.map((w) => w.code));
+  for (const w of warehouses) {
+    w.kind = tree[w.code]?.kind ?? "main";
+    w.parent_codes = tree[w.code]?.parent_codes ?? [];
   }
 
   const rackCount = Number.parseInt(rackCountRow[0]?.n ?? "0", 10) || 0;

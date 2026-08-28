@@ -33,8 +33,8 @@ type FormState = {
   latitude: string;
   longitude: string;
   kind: WarehouseKind;
-  /** ລະຫັດສາງແມ່ — ວ່າງ = ບໍ່ມີ (ໃຊ້ໄດ້ສະເພາະ kind = sub). */
-  parent_code: string;
+  /** ລະຫັດສາງແມ່ທັງໝົດ — ຍ່ອຍໜຶ່ງຂຶ້ນກັບໄດ້ຫຼາຍສາງຫຼັກ. */
+  parent_codes: string[];
 };
 
 const EMPTY_FORM: FormState = {
@@ -50,7 +50,7 @@ const EMPTY_FORM: FormState = {
   latitude: "",
   longitude: "",
   kind: "main",
-  parent_code: "",
+  parent_codes: [],
 };
 
 function toForm(w: Warehouse): FormState {
@@ -67,7 +67,7 @@ function toForm(w: Warehouse): FormState {
     latitude: w.latitude == null ? "" : String(w.latitude),
     longitude: w.longitude == null ? "" : String(w.longitude),
     kind: w.kind ?? "main",
-    parent_code: w.parent_code ?? "",
+    parent_codes: w.parent_codes ?? [],
   };
 }
 
@@ -139,7 +139,7 @@ export default function WarehousesClient({
         (w.name_2 ?? "").toLowerCase().includes(q) ||
         (w.address ?? "").toLowerCase().includes(q) ||
         // ຄົ້ນດ້ວຍລະຫັດສາງແມ່ ຈຶ່ງພິມ "1101" ແລ້ວເຫັນລູກຂອງມັນທັງໝົດ
-        (w.parent_code ?? "").toLowerCase().includes(q)
+        (w.parent_codes ?? []).some((c) => c.toLowerCase().includes(q))
       );
     });
   }, [warehouses, search, statusFilter, kindFilter]);
@@ -516,11 +516,16 @@ export default function WarehousesClient({
                         <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-950 dark:text-sky-300">
                           ສາງຍ່ອຍ
                         </span>
-                        <div className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-                          ↳ {w.parent_code ?? "—"}
-                          {w.parent_code && nameByCode.get(w.parent_code)
-                            ? ` ${nameByCode.get(w.parent_code)}`
-                            : ""}
+                        <div className="mt-0.5 space-y-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+                          {(w.parent_codes ?? []).length === 0 ? (
+                            <div>↳ —</div>
+                          ) : (
+                            (w.parent_codes ?? []).map((c) => (
+                              <div key={c} title={nameByCode.get(c) ?? ""}>
+                                ↳ {c} {nameByCode.get(c) ?? ""}
+                              </div>
+                            ))
+                          )}
                         </div>
                       </>
                     ) : (
@@ -665,13 +670,23 @@ function EditDrawer({
     const list: { code: string; name_1: string | null }[] = warehouses
       .filter((w) => w.code !== form.code && (w.kind ?? "main") === "main")
       .map((w) => ({ code: w.code, name_1: w.name_1 }));
-    const cur = form.parent_code.trim();
-    if (cur && !list.some((w) => w.code === cur)) {
-      const found = warehouses.find((w) => w.code === cur);
-      list.unshift({ code: cur, name_1: found?.name_1 ?? null });
+    // ແມ່ທີ່ຕັ້ງໄວ້ແລ້ວແຕ່ຫຼຸດອອກຈາກລາຍການ (ຂໍ້ມູນເກົ່າ) ຍັງໃສ່ໄວ້ ບໍ່ໃຫ້ຄ່າຫາຍງຽບໆ
+    for (const cur of form.parent_codes) {
+      if (!list.some((w) => w.code === cur)) {
+        const found = warehouses.find((w) => w.code === cur);
+        list.unshift({ code: cur, name_1: found?.name_1 ?? null });
+      }
     }
     return list;
-  }, [warehouses, form.code, form.parent_code]);
+  }, [warehouses, form.code, form.parent_codes]);
+
+  const toggleParent = (code: string) =>
+    setForm((f) => ({
+      ...f,
+      parent_codes: f.parent_codes.includes(code)
+        ? f.parent_codes.filter((c) => c !== code)
+        : [...f.parent_codes, code],
+    }));
 
   async function handleSave() {
     setSaving(true);
@@ -682,8 +697,8 @@ function EditDrawer({
       setSaving(false);
       return;
     }
-    if (form.kind === "sub" && !form.parent_code.trim()) {
-      setError("ສາງຍ່ອຍ ຕ້ອງເລືອກສາງແມ່");
+    if (form.kind === "sub" && form.parent_codes.length === 0) {
+      setError("ສາງຍ່ອຍ ຕ້ອງເລືອກສາງແມ່ຢ່າງໜ້ອຍ 1 ສາງ");
       setSaving(false);
       return;
     }
@@ -711,7 +726,7 @@ function EditDrawer({
           latitude: form.latitude.trim() || null,
           longitude: form.longitude.trim() || null,
           kind: form.kind,
-          parent_code: form.kind === "sub" ? form.parent_code.trim() || null : null,
+          parent_codes: form.kind === "sub" ? form.parent_codes : [],
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -779,7 +794,7 @@ function EditDrawer({
                   const kind = e.target.value as WarehouseKind;
                   update("kind", kind);
                   // ຍົກກັບເປັນສາງຫຼັກ = ບໍ່ມີແມ່ອີກ — ລ້າງໄວ້ ບໍ່ດັ່ງນັ້ນຄ່າເກົ່າຈະຖືກສົ່ງໄປ
-                  if (kind === "main") update("parent_code", "");
+                  if (kind === "main") update("parent_codes", []);
                 }}
                 className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
               >
@@ -791,20 +806,29 @@ function EditDrawer({
               </select>
             </div>
             {form.kind === "sub" && (
-              <div>
-                <Label>ຂຶ້ນກັບສາງຫຼັກ *</Label>
-                <select
-                  value={form.parent_code}
-                  onChange={(e) => update("parent_code", e.target.value)}
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-                >
-                  <option value="">— ເລືອກສາງແມ່ —</option>
+              <div className="col-span-2">
+                <Label>ຂຶ້ນກັບສາງຫຼັກ * ({form.parent_codes.length})</Label>
+                {/* ຕິກໄດ້ຫຼາຍອັນ — ຍ່ອຍໜຶ່ງຮັບໃຊ້ໄດ້ຫຼາຍສາງຫຼັກ */}
+                <div className="max-h-52 space-y-0.5 overflow-y-auto rounded-lg border border-zinc-300 p-2 dark:border-zinc-700">
+                  {parentChoices.length === 0 && (
+                    <p className="px-1 py-2 text-xs text-zinc-500">ບໍ່ມີສາງຫຼັກໃຫ້ເລືອກ</p>
+                  )}
                   {parentChoices.map((w) => (
-                    <option key={w.code} value={w.code}>
-                      {w.code} {w.name_1 ?? ""}
-                    </option>
+                    <label
+                      key={w.code}
+                      className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={form.parent_codes.includes(w.code)}
+                        onChange={() => toggleParent(w.code)}
+                        className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 dark:border-zinc-700"
+                      />
+                      <span className="font-mono text-xs">{w.code}</span>
+                      <span className="truncate text-zinc-600 dark:text-zinc-300">{w.name_1 ?? ""}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
             )}
             <p className="col-span-2 -mt-1 text-xs text-zinc-500 dark:text-zinc-400">

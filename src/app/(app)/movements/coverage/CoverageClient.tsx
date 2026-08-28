@@ -77,8 +77,8 @@ export type WarehouseOption = {
   name: string | null;
   /** ສາງຫຼັກ ຫຼື ສາງຍ່ອຍ — ຕັ້ງທີ່ ຕັ້ງຄ່າ › ຈັດການສາງ. */
   kind: WarehouseKind;
-  /** ລະຫັດສາງແມ່ (ມີສະເພາະສາງຍ່ອຍ). */
-  parent_code: string | null;
+  /** ລະຫັດສາງແມ່ທັງໝົດ (ມີສະເພາະສາງຍ່ອຍ — ໜຶ່ງຍ່ອຍມີໄດ້ຫຼາຍແມ່). */
+  parent_codes: string[];
 };
 
 type Thresholds = { critical: number; low: number; over: number };
@@ -319,10 +319,13 @@ export default function CoverageClient({
     const roots: WarehouseOption[] = [];
     const own = new Set(warehouses.map((w) => w.code));
     for (const w of warehouses) {
-      if (w.kind === "sub" && w.parent_code && own.has(w.parent_code)) {
-        const list = byParent.get(w.parent_code) ?? [];
+      // ຍ່ອຍມີໄດ້ຫຼາຍແມ່ — ວາງໄວ້ໃຕ້ **ແມ່ທຳອິດທີ່ຕົນເຫັນ** ເທົ່ານັ້ນ ບໍ່ດັ່ງນັ້ນ
+      // ປຸ່ມດຽວກັນຈະຂຶ້ນຫຼາຍບ່ອນ ແລ້ວຄົນຈະນຶກວ່າເປັນຄົນລະສາງ.
+      const host = w.kind === "sub" ? w.parent_codes.find((c) => own.has(c)) : undefined;
+      if (host) {
+        const list = byParent.get(host) ?? [];
         list.push(w);
-        byParent.set(w.parent_code, list);
+        byParent.set(host, list);
       } else {
         roots.push(w);
       }
@@ -338,7 +341,7 @@ export default function CoverageClient({
     for (const p of warehouses) {
       if (p.kind === "sub") continue;
       const kids = warehouses.filter(
-        (w) => w.kind === "sub" && w.parent_code === p.code && own.has(p.code),
+        (w) => w.kind === "sub" && w.parent_codes.includes(p.code) && own.has(p.code),
       );
       if (kids.length > 0) out.push({ parent: p, codes: [p.code, ...kids.map((k) => k.code)] });
     }
@@ -393,8 +396,8 @@ export default function CoverageClient({
                   type="button"
                   onClick={() => toggle(w.code)}
                   title={
-                    isSub && w.parent_code
-                      ? `${w.name ?? ""} — ສາງຍ່ອຍຂອງ ${w.parent_code}`
+                    isSub && w.parent_codes.length > 0
+                      ? `${w.name ?? ""} — ສາງຍ່ອຍຂອງ ${w.parent_codes.join(", ")}`
                       : `${w.name ?? ""}${w.kind === "main" ? ` — ${WAREHOUSE_KIND_LABEL.main}` : ""}`
                   }
                   className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ring-1 transition ${

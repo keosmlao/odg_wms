@@ -49,7 +49,7 @@ export default async function CoveragePage() {
   const allWarehouses: WarehouseOption[] = rows.map((r) => ({
     ...r,
     kind: tree[r.code]?.kind ?? "main",
-    parent_code: tree[r.code]?.parent_code ?? null,
+    parent_codes: tree[r.code]?.parent_codes ?? [],
   }));
   const warehouses =
     accessible === null
