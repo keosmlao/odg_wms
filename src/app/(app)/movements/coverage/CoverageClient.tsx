@@ -72,6 +72,15 @@ const PATTERN_VIEW: Record<DemandPattern, { label: string; cls: string; hint: st
   none: { label: "ບໍ່ຂາຍ", cls: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800", hint: "ບໍ່ມີການຂາຍໃນຊ່ວງ" },
 };
 
+/** ຄົງເຫຼືອ/ແບ່ງໄດ້ ຂອງລາຍການໜຶ່ງ ຢູ່ສາງຫຼັກໜຶ່ງ — ມາຈາກ /api/movements/stock-across. */
+export type CrossRow = {
+  item_code: string;
+  wh_code: string;
+  on_hand: number;
+  /** ແບ່ງໃຫ້ສາງອື່ນໄດ້ເທົ່າໃດ ໂດຍຕົນເອງຍັງພໍໃຊ້ເຖິງຂີດສ່ຽງ. */
+  spare: number;
+};
+
 export type WarehouseOption = {
   code: string;
   name: string | null;
@@ -711,6 +720,14 @@ function WarehousePanel({
 
   /** ລາຍການທີ່ຕິກໄວ້ເພື່ອສ້າງໃບຂໍໂອນ. */
   const [picked, setPicked] = useState<Set<string>>(new Set());
+
+  /**
+   * "ມີຢູ່ສາງອື່ນບໍ" ຂອງລາຍການທີ່ຕ້ອງເຕີມ — ດຶງເທື່ອດຽວ ໃຊ້ 2 ບ່ອນ: ຄໍລຳໃນ
+   * ຕາຕະລາງ ແລະ ການແບ່ງໃບໃນແຖບຂໍໂອນ. ໜ້ານີ້ບອກໄດ້ຢູ່ແລ້ວວ່າ "ຂາດເທົ່າໃດ" —
+   * ຄຳຖາມຕໍ່ໄປສະເໝີຄື "ແລ້ວມີໃຜແບ່ງໃຫ້ໄດ້ບໍ".
+   */
+  const [crossRows, setCrossRows] = useState<CrossRow[] | null>(null);
+  const [crossBusy, setCrossBusy] = useState(false);
   const togglePick = (code: string) =>
     setPicked((s) => {
       const n = new Set(s);
@@ -813,6 +830,80 @@ function WarehousePanel({
     });
     return buildTree(base, treeLevels);
   }, [items, status, q, sort, abc, pattern, trend, fsn, stock, idleDays, treeLevels]);
+
+  /** ລາຍການທີ່ຕ້ອງເຕີມ ໃນສິ່ງທີ່ເຫັນຢູ່ — ຄຳຖາມ "ມີໃຜແບ່ງໃຫ້ໄດ້ບໍ" ຖາມສະເພາະພວກນີ້. */
+  const needCodes = useMemo(
+    () =>
+      [
+        ...new Set([
+          // ອັນທີ່ຕິກໄວ້ມາກ່ອນ — ຕົວກອງອາດປ່ຽນຈົນມັນບໍ່ຢູ່ໃນຈໍແລ້ວ ແຕ່ແຖບຂໍໂອນ
+          // ຍັງຕ້ອງຮູ້ວ່າໃຜແບ່ງໃຫ້ໄດ້
+          ...picked,
+          ...shown.filter((i) => i.shortfall > 0).map((i) => i.item_code),
+        ]),
+      ]
+        // API ຮັບສູງສຸດ 300 ລະຫັດ — ຕັດຢູ່ນີ້ ດີກວ່າໃຫ້ຝັ່ງ server ຕັດງຽບໆ
+        .slice(0, 300),
+    [shown, picked],
+  );
+  const needKey = needCodes.join(",");
+
+  /**
+   * ດຶງ "ສາງອື່ນມີບໍ" ຫຼັງຕົວກອງນິ້ງ 700ms.
+   *
+   * ຜູກກັບສິ່ງທີ່ **ເຫັນຢູ່** ບໍ່ແມ່ນທັງສາງ ເພາະຄົນຕັດສິນໃຈຈາກສິ່ງທີ່ເຫັນ ແລະ
+   * ການຄິດຄົງເຫຼືອ ERP ຂອງ 2,897 ລາຍການ ຂ້າມທຸກສາງ ບໍ່ຄຸ້ມກັບຄຳຕອບທີ່ບໍ່ມີໃຜເບິ່ງ.
+   */
+  useEffect(() => {
+    if (needCodes.length === 0) {
+      setCrossRows(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setCrossBusy(true);
+      try {
+        const p = new URLSearchParams({
+          items: needCodes.join(","),
+          exclude: summary.wh_code.split("+").join(","),
+          days: String(days),
+          low: String(thresholds.low),
+        });
+        const res = await fetch(`/api/movements/stock-across?${p}`);
+        const json = (await res.json()) as { rows?: CrossRow[] };
+        setCrossRows(res.ok ? (json.rows ?? []) : null);
+      } catch {
+        setCrossRows(null);
+      } finally {
+        setCrossBusy(false);
+      }
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needKey, days, thresholds.low, summary.wh_code]);
+
+  /** ສາງທີ່ແບ່ງໃຫ້ໄດ້ຫຼາຍທີ່ສຸດ ຕໍ່ລາຍການ — null = ບໍ່ມີໃຜແບ່ງໄດ້. */
+  const bestOther = useMemo(() => {
+    const m = new Map<string, { wh: string; qty: number }>();
+    for (const r of crossRows ?? []) {
+      if (r.spare <= 0) continue;
+      const cur = m.get(r.item_code);
+      if (!cur || r.spare > cur.qty) m.set(r.item_code, { wh: r.wh_code, qty: r.spare });
+    }
+    return m;
+  }, [crossRows]);
+
+  /**
+   * ລາຍການທີ່ "ຕິກທັງໝົດ" ຈະຕິກ — ຂ້າມອັນທີ່**ບໍ່ມີສາງໃດແບ່ງໄດ້**.
+   *
+   * ຕິກມັນມາກໍ່ບໍ່ມີໃບຂໍໂອນໃດຮັບໄດ້ ມີແຕ່ເຮັດໃຫ້ບັນຊີຍາວຂຶ້ນ — ພວກນັ້ນເປັນ
+   * ວຽກສັ່ງຊື້. ກ່ອນຂໍ້ມູນມາຮອດ ຖືວ່າຕິກໄດ້ໝົດຄືເກົ່າ.
+   */
+  const selectable = useMemo(
+    () => (crossRows ? shown.filter((i) => i.shortfall <= 0 || bestOther.has(i.item_code)) : shown),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shown, crossRows, bestOther],
+  );
+
 
   return (
     <div className="space-y-4">
@@ -1025,6 +1116,8 @@ function WarehousePanel({
             allWarehouses={allWarehouses}
             days={days}
             low={thresholds.low}
+            crossRows={crossRows}
+            crossBusy={crossBusy}
             onClear={() => setPicked(new Set())}
             onRemove={(code) =>
               setPicked((s) => {
@@ -1069,13 +1162,17 @@ function WarehousePanel({
                 <th className="px-2 py-2.5">
                   <input
                     type="checkbox"
-                    title="ເລືອກທັງໝົດທີ່ເຫັນ"
                     className="h-3.5 w-3.5 accent-brand-500"
-                    checked={shown.length > 0 && shown.every((i) => picked.has(i.item_code))}
+                    title={
+                      crossRows
+                        ? "ເລືອກທັງໝົດທີ່ເຫັນ — ຂ້າມອັນທີ່ບໍ່ມີສາງໃດແບ່ງໄດ້"
+                        : "ເລືອກທັງໝົດທີ່ເຫັນ"
+                    }
+                    checked={selectable.length > 0 && selectable.every((i) => picked.has(i.item_code))}
                     onChange={(e) =>
                       setPicked(
                         e.target.checked
-                          ? new Set([...picked, ...shown.map((i) => i.item_code)])
+                          ? new Set([...picked, ...selectable.map((i) => i.item_code)])
                           : new Set([...picked].filter((c) => !shown.some((i) => i.item_code === c))),
                       )
                     }
@@ -1089,13 +1186,19 @@ function WarehousePanel({
                 <th className="px-3 py-2.5 text-right">ສະເລ່ຍ/ມື້</th>
                 <th className="px-3 py-2.5 text-right">ວັນທີ່ພໍໃຊ້</th>
                 <th className="px-3 py-2.5 text-right">ຕ້ອງເຕີມ</th>
+                <th
+                  className="px-3 py-2.5 text-right"
+                  title="ສາງຫຼັກທີ່ແບ່ງໃຫ້ໄດ້ຫຼາຍທີ່ສຸດ ໂດຍຕົນເອງຍັງພໍໃຊ້ — ບໍ່ມີ = ຕ້ອງສັ່ງຊື້"
+                >
+                  ມີຢູ່ສາງອື່ນ
+                </th>
                 <th className="px-3 py-2.5 text-right">WMS ຕ່າງ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {shown.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-sm text-zinc-400">
+                  <td colSpan={11} className="px-4 py-12 text-center text-sm text-zinc-400">
                     ບໍ່ມີລາຍການ
                   </td>
                 </tr>
@@ -1280,6 +1383,40 @@ function WarehousePanel({
                         </span>
                       ) : (
                         <span className="text-zinc-300 dark:text-zinc-600">—</span>
+                      )}
+                    </td>
+                    {/* ມີຢູ່ສາງອື່ນບໍ — ຄຳຖາມທີ່ຕາມມາທັນທີຫຼັງ "ຕ້ອງເຕີມ" */}
+                    <td className="px-3 py-2.5 text-right font-mono text-[11px] tabular-nums">
+                      {i.shortfall <= 0 ? (
+                        <span className="text-zinc-300 dark:text-zinc-600">—</span>
+                      ) : !crossRows ? (
+                        <span className="text-zinc-300 dark:text-zinc-600">
+                          {crossBusy ? "ກຳລັງກວດ..." : ""}
+                        </span>
+                      ) : (
+                        (() => {
+                          const b = bestOther.get(i.item_code);
+                          if (!b)
+                            return (
+                              <span
+                                className="text-amber-600 dark:text-amber-400"
+                                title="ບໍ່ມີສາງຫຼັກໃດແບ່ງໃຫ້ໄດ້ — ຂໍໂອນບໍ່ໄດ້ ຕ້ອງສັ່ງຊື້"
+                              >
+                                ຕ້ອງສັ່ງຊື້
+                              </span>
+                            );
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => setLookup(i)}
+                              title={`${b.wh} ແບ່ງໄດ້ ${fmt(b.qty, 0)} — ກົດເບິ່ງທຸກສາງ`}
+                              className="rounded px-1 font-bold text-emerald-700 transition hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                            >
+                              {b.wh}
+                              <div className="font-normal text-zinc-400">{fmt(b.qty, 0)}</div>
+                            </button>
+                          );
+                        })()
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono text-[11px] tabular-nums">
@@ -1792,6 +1929,8 @@ function TransferBar({
   allWarehouses,
   days,
   low,
+  crossRows,
+  crossBusy,
   onClear,
   onRemove,
 }: {
@@ -1802,6 +1941,9 @@ function TransferBar({
   /** ຊ່ວງທີ່ວິເຄາະ ແລະ ຂີດ "ສ່ຽງ" — ໃຊ້ຄິດວ່າສາງຕົ້ນທາງແບ່ງໄດ້ເທົ່າໃດ. */
   days: number;
   low: number;
+  /** ຄົງເຫຼືອຂ້າມສາງ ທີ່ຕາຕະລາງດຶງມາແລ້ວ — ໃຊ້ຮ່ວມກັນ ບໍ່ໃຫ້ຍິງຊ້ຳ. */
+  crossRows: CrossRow[] | null;
+  crossBusy: boolean;
   onClear: () => void;
   onRemove: (code: string) => void;
 }) {
@@ -1821,25 +1963,29 @@ function TransferBar({
    * ຈາກສາງທີ່ມີພຽງ 6 ໄດ້ຢ່າງງຽບໆ ແລ້ວໃບຂໍໂອນນັ້ນກໍ່ຈ່າຍບໍ່ໄດ້.
    */
 
-  /**
-   * ຄົງເຫຼືອຂອງ **ທຸກສາງຫຼັກ** ຕໍ່ລາຍການທີ່ຕິກ — ໃຊ້ 2 ຢ່າງພ້ອມກັນ:
-   * ຈັດອັນດັບ dropdown ຕົ້ນທາງ ແລະ ບອກຄົງເຫຼືອຕົ້ນທາງຕໍ່ແຖວ. ຄຳຮ້ອງດຽວ.
-   */
-  const [cross, setCross] = useState<{
-    /** ຈຳນວນທີ່ **ແບ່ງໄດ້** ຕໍ່ (ລາຍການ, ສາງ) — spare ຫຼື on_hand ຕາມໂໝດ. */
-    give: Map<string, Map<string, number>>;
-    /** ຄົງເຫຼືອດິບ — ໃຊ້ສະແດງໃນແຖວ ແລະ ແຍກ "ບໍ່ມີໃຜມີ" ອອກຈາກ "ແບ່ງບໍ່ໄດ້". */
-    onHand: Map<string, Map<string, number>>;
-  } | null>(null);
-  const [crossBusy, setCrossBusy] = useState(false);
-  /**
-   * ນັບຄວາມຕ້ອງການຂອງສາງຕົ້ນທາງ ຫຼື ບໍ່.
-   *
-   * ເປີດ (ຄ່າເລີ່ມຕົ້ນ) = ຂໍໄດ້ແຕ່ສ່ວນທີ່ເຂົາເຫຼືອຫຼັງກັນໄວ້ໃຊ້ເອງເຖິງຂີດສ່ຽງ —
-   * ບໍ່ດັ່ງນັ້ນຄືການຍ້າຍບັນຫາໄປໃສ່ສາງທີ່ຈ່າຍໃຫ້. ປິດໄດ້ ເພາະບາງເທື່ອຂອງດ່ວນ
-   * ຈິງໆ ແລະ ຄົນຕັດສິນໃຈເອງດີກວ່າ.
-   */
   const [respectNeed, setRespectNeed] = useState(true);
+
+  /**
+   * ຈັດ crossRows ເປັນແຜນທີ່ພ້ອມໃຊ້ — `give` ປ່ຽນຕາມສະວິດ "ເຫຼືອໃຫ້ຕົ້ນທາງໃຊ້ເອງ"
+   * ຈຶ່ງບໍ່ຕ້ອງຍິງ API ໃໝ່ເມື່ອຄົນສະຫຼັບມັນ.
+   */
+  const cross = useMemo(() => {
+    if (!crossRows) return null;
+    const give = new Map<string, Map<string, number>>();
+    const onHand = new Map<string, Map<string, number>>();
+    for (const r of crossRows) {
+      const amount = respectNeed ? r.spare : r.on_hand;
+      if (amount > 0) {
+        const per = give.get(r.item_code) ?? new Map<string, number>();
+        per.set(r.wh_code, amount);
+        give.set(r.item_code, per);
+      }
+      const raw = onHand.get(r.item_code) ?? new Map<string, number>();
+      raw.set(r.wh_code, r.on_hand);
+      onHand.set(r.item_code, raw);
+    }
+    return { give, onHand };
+  }, [crossRows, respectNeed]);
   /** ເປີດແຖວເລືອກສາງເອງ — ພັບໄວ້ ເພາະທາງຫຼັກຄືປຸ່ມດຽວ. */
   const [manual, setManual] = useState(false);
 
@@ -1860,63 +2006,6 @@ function TransferBar({
   const sourceChoices = allWarehouses.filter(
     (w) => w.kind === "main" && !destChoices.includes(w.code),
   );
-
-  const pickedKey = picked.map((i) => i.item_code).sort().join(",");
-
-  /**
-   * ກວດຄົງເຫຼືອທຸກສາງຫຼັກເທື່ອດຽວ ເມື່ອລາຍການທີ່ຕິກ (ຫຼື ໂໝດ) ປ່ຽນ.
-   *
-   * ຫ່າງ 700ms ກ່ອນຍິງ ເພາະຄົນຕິກຫຼາຍລາຍການຕິດກັນ — ຍິງທຸກເທື່ອທີ່ຕິກ
-   * ຄືການເອົາວຽກໜັກຂອງ DB ມາຜູກກັບຄວາມໄວມືຂອງຄົນໃຊ້.
-   */
-  useEffect(() => {
-    if (picked.length === 0) {
-      setCross(null);
-      return;
-    }
-    const t = setTimeout(() => void loadCross(), 700);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickedKey, respectNeed]);
-
-  async function loadCross() {
-    setCrossBusy(true);
-    try {
-      const p = new URLSearchParams({
-        items: picked.map((i) => i.item_code).join(","),
-        exclude: destChoices.join(","),
-        days: String(days),
-        low: String(low),
-      });
-      const res = await fetch(`/api/movements/stock-across?${p}`);
-      const json = (await res.json()) as {
-        rows?: { item_code: string; wh_code: string; on_hand: number; spare: number }[];
-        error?: string;
-      };
-      if (!res.ok) {
-        setMsg({ ok: false, text: json.error ?? "ກວດຄົງເຫຼືອຂ້າມສາງບໍ່ສຳເລັດ" });
-        return;
-      }
-      const give = new Map<string, Map<string, number>>();
-      const onHand = new Map<string, Map<string, number>>();
-      for (const r of json.rows ?? []) {
-        const amount = respectNeed ? r.spare : r.on_hand;
-        if (amount > 0) {
-          const per = give.get(r.item_code) ?? new Map<string, number>();
-          per.set(r.wh_code, amount);
-          give.set(r.item_code, per);
-        }
-        const raw = onHand.get(r.item_code) ?? new Map<string, number>();
-        raw.set(r.wh_code, r.on_hand);
-        onHand.set(r.item_code, raw);
-      }
-      setCross({ give, onHand });
-    } catch {
-      setMsg({ ok: false, text: "ຕິດຕໍ່ເຊີບເວີບໍ່ໄດ້" });
-    } finally {
-      setCrossBusy(false);
-    }
-  }
 
   /**
    * ຈຳນວນທີ່ຜູ້ໃຊ້ພິມແກ້ເອງ — ເກັບແຕ່ **ຕົວທີ່ຖືກແກ້** ສ່ວນທີ່ເຫຼືອຄິດຈາກ
