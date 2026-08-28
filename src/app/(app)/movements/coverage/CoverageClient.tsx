@@ -1995,6 +1995,24 @@ function TransferBar({
         .sort((a, b) => b.c.full - a.c.full || b.c.partial - a.c.partial);
   const suggestedCodes = new Set(suggested.map((x) => x.w.code));
 
+  /**
+   * ສາງທີ່ແບ່ງໃຫ້ລາຍການໜຶ່ງໄດ້ຫຼາຍທີ່ສຸດ — ຕອບ "ຄວນຂໍຈາກໃສ" ໃນແຖວຂອງມັນເອງ
+   * ຈຶ່ງບໍ່ຕ້ອງມີຕາຕະລາງແຜນແຍກອີກໜ່ວຍ.
+   */
+  const bestFor = (code: string): { wh: string; qty: number } | null => {
+    const per = cross?.give.get(code);
+    if (!per) return null;
+    let wh: string | null = null;
+    let qty = 0;
+    for (const [w, q] of per) {
+      if (q > qty) {
+        qty = q;
+        wh = w;
+      }
+    }
+    return wh ? { wh, qty } : null;
+  };
+
   /** ລາຍການທີ່ບໍ່ມີສາງແນະນຳໃດຈ່າຍໄດ້ເລີຍ — ບອກເປັນຕົວເລກ ບໍ່ໃຫ້ຫາຍງຽບໆ. */
   const uncovered = !cross
     ? 0
@@ -2071,29 +2089,127 @@ function TransferBar({
 
   return (
     <div className="border-b border-brand-100 bg-brand-50/70 px-4 py-3 dark:border-brand-900 dark:bg-brand-950/30">
+      {/* ── ຂັ້ນທີ 1: ຕັດສິນໃຈຕົ້ນທາງ — ລາຍການລຸ່ມນີ້ຂຶ້ນກັບມັນ ────────── */}
+      <div className="mb-3 rounded-xl bg-white p-3 ring-1 ring-brand-200 dark:bg-zinc-900 dark:ring-brand-900">
+        <p className="mb-2 text-[11px] font-bold text-zinc-500 dark:text-zinc-400">
+          1 ໃບຂໍໂອນ = 1 ສາງຕົ້ນທາງ — ເລືອກສາງ ແລ້ວລາຍການລຸ່ມນີ້ຈະຖືກຕັດໃຫ້ເທົ່າທີ່ເຂົາແບ່ງໄດ້
+        </p>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className="text-[11px] text-zinc-500">ຈາກສາງຫຼັກ</span>
+        <select
+          value={from}
+          onChange={(e) => chooseSource(e.target.value)}
+          className={sel}
+        >
+          <option value="">
+            {crossBusy ? "— ກຳລັງກວດທຸກສາງ... —" : "— ເລືອກຕົ້ນທາງ —"}
+          </option>
+          {/* ແນະນຳ: ຮຽງຕາມຈຳນວນລາຍການທີ່ຈ່າຍໄດ້ ພ້ອມບອກຕົວເລກໃນປ້າຍເລີຍ */}
+          {suggested.length > 0 && (
+            <optgroup label="ແນະນຳ — ຈ່າຍໄດ້ຫຼາຍທີ່ສຸດ">
+              {suggested.map(({ w, c }) => (
+                <option key={w.code} value={w.code}>
+                  {w.code} {w.name} — ຈ່າຍໄດ້ {c.full + c.partial}/{allLines.length}
+                  {c.partial > 0 ? ` (ບໍ່ຄົບ ${c.partial})` : ""}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          <optgroup label={suggested.length > 0 ? "ສາງອື່ນ" : "ສາງຫຼັກທັງໝົດ"}>
+            {sourceChoices
+              .filter((w) => !suggestedCodes.has(w.code))
+              .map((w) => (
+                <option key={w.code} value={w.code}>
+                  {w.code} {w.name}
+                </option>
+              ))}
+          </optgroup>
+        </select>
+        <label
+          className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-500"
+          title="ຂໍໄດ້ແຕ່ສ່ວນທີ່ສາງຕົ້ນທາງເຫຼືອຫຼັງກັນໄວ້ໃຊ້ເອງເຖິງຂີດສ່ຽງ — ປິດ = ຂໍໄດ້ເຖິງຄົງເຫຼືອທັງໝົດ"
+        >
+          <input
+            type="checkbox"
+            checked={respectNeed}
+            onChange={(e) => setRespectNeed(e.target.checked)}
+            className="h-3.5 w-3.5 rounded"
+          />
+          ເຫຼືອໃຫ້ຕົ້ນທາງໃຊ້ເອງ
+        </label>
+        {cross && uncovered > 0 && (
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+            <span title="ບໍ່ມີສາງຫຼັກໃດແບ່ງໃຫ້ໄດ້ — ຕ້ອງສັ່ງຊື້ ຫຼື ປິດ 'ເຫຼືອໃຫ້ຕົ້ນທາງໃຊ້ເອງ'">
+              ບໍ່ມີໃຜແບ່ງໄດ້ {uncovered}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                // ປະໄວ້ໃນລາຍການກໍ່ບໍ່ມີໃຜເອົາໄປໃສ່ໃບໃດໄດ້ — ເອົາອອກໃຫ້ຕາສະອາດ
+                for (const l of allLines) {
+                  if (!bestFor(l.item.item_code)) onRemove(l.item.item_code);
+                }
+              }}
+              className="rounded-md bg-amber-600 px-2 py-0.5 text-[10px] font-bold text-white transition hover:bg-amber-700"
+            >
+              ເອົາອອກ
+            </button>
+          </span>
+        )}
+        <span className="text-[11px] text-zinc-500">ໄປສາງ</span>
+        {destChoices.length > 1 ? (
+          <select value={to} onChange={(e) => setTo(e.target.value)} className={sel}>
+            {destChoices.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        ) : (
+          <span className="rounded-lg bg-white px-2.5 py-1.5 font-mono text-[12px] font-bold ring-1 ring-zinc-200 dark:bg-zinc-950 dark:ring-zinc-800">
+            {to}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => void create()}
+          disabled={busy || !from || lines.length === 0}
+          className="ml-auto rounded-lg bg-brand-600 px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+        >
+          {busy ? "ກຳລັງສ້າງ..." : `ສ້າງໃບຂໍໂອນ (${lines.length})`}
+        </button>
+      </div>
+
+      </div>
+
       {/* ── ລາຍການທີ່ຈະຂໍໂອນ ພ້ອມຈຳນວນ (ແກ້ໄດ້) ─────────────────── */}
       <div className="mb-3 overflow-hidden rounded-xl bg-white ring-1 ring-brand-200 dark:bg-zinc-900 dark:ring-brand-900">
         <div className="flex items-center justify-between border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
-          <span className="text-[12px] font-bold text-zinc-700 dark:text-zinc-200">
-            ລາຍການທີ່ຈະຂໍໂອນ
-            <span className="ml-1.5 text-[11px] font-normal text-zinc-400">
-              {/* ໂໝດແຜນ: ນັບສະເພາະໃບປັດຈຸບັນ ຈຶ່ງຕ້ອງບອກໃຫ້ຊັດວ່ານັບຈາກເທົ່າໃດ */}
-              {only ? `${lines.length} / ${allLines.length}` : lines.length} ລາຍການ · ປະມານ{" "}
-              {money(totalValue)} ບາດ
-            </span>
-            {only && (
+          <span className="flex flex-wrap items-center gap-x-1.5 text-[12px] font-bold text-zinc-700 dark:text-zinc-200">
+            {only ? (
               <>
-                <span className="ml-1.5 rounded-full bg-brand-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                <span className="rounded-full bg-brand-500 px-2 py-0.5 text-[10px] font-bold text-white">
                   ໃບຂອງ {from}
+                </span>
+                {/* ໃນໃບນີ້ / ຍັງເຫຼືອ — ຄົນຕ້ອງຮູ້ວ່າຍັງຕ້ອງອອກອີກຈັກໃບ */}
+                <span className="text-[11px] font-normal text-zinc-500">
+                  ໃບນີ້ <b className="text-brand-600 dark:text-brand-400">{lines.length}</b> ·
+                  ຍັງເຫຼືອ <b>{allLines.length - lines.length}</b> ລາຍການ · ປະມານ {money(totalValue)}{" "}
+                  ບາດ
                 </span>
                 <button
                   type="button"
                   onClick={() => setOnly(null)}
                   title="ເອົາທຸກລາຍການທີ່ຕິກໃສ່ໃບນີ້ ເຖິງຕົ້ນທາງຈະບໍ່ມີ"
-                  className="ml-1.5 text-[10px] font-bold text-zinc-400 underline transition hover:text-zinc-600 dark:hover:text-zinc-200"
+                  className="text-[10px] font-bold text-zinc-400 underline transition hover:text-zinc-600 dark:hover:text-zinc-200"
                 >
                   ຂໍທຸກລາຍການ ({allLines.length})
                 </button>
+              </>
+            ) : (
+              <>
+                ລາຍການທີ່ຈະຂໍໂອນ
+                <span className="text-[11px] font-normal text-zinc-400">
+                  {lines.length} ລາຍການ · ປະມານ {money(totalValue)} ບາດ
+                </span>
               </>
             )}
           </span>
@@ -2154,6 +2270,36 @@ function TransferBar({
                 </span>
                 <span className="shrink-0 text-[10px] text-zinc-400" title="ຄົງເຫຼືອຂອງສາງປາຍທາງ">
                   ມີ {fmt(i.on_hand, 0)}
+                </span>
+                {/* ຄວນຂໍຈາກໃສ — ຕອບຢູ່ໃນແຖວຂອງລາຍການເອງ */}
+                <span className="w-32 shrink-0 text-right text-[10px]">
+                  {(() => {
+                    if (!cross) return null;
+                    const b = bestFor(i.item_code);
+                    if (!b)
+                      return (
+                        <span
+                          className="text-amber-600 dark:text-amber-400"
+                          title="ບໍ່ມີສາງຫຼັກໃດແບ່ງໃຫ້ໄດ້ — ຕ້ອງສັ່ງຊື້"
+                        >
+                          ບໍ່ມີໃຜແບ່ງ
+                        </span>
+                      );
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => chooseSource(b.wh)}
+                        title={`${b.wh} ແບ່ງໄດ້ ${fmt(b.qty, 0)} — ກົດເພື່ອຕັ້ງເປັນຕົ້ນທາງ`}
+                        className={`rounded px-1.5 py-0.5 font-mono font-bold transition ${
+                          from === b.wh
+                            ? "bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-300"
+                            : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        }`}
+                      >
+                        → {b.wh}
+                      </button>
+                    );
+                  })()}
                 </span>
                 {/* ຄົງເຫຼືອຂອງສາງຕົ້ນທາງ — ຂໍເກີນທີ່ເຂົາມີບໍ່ໄດ້ */}
                 <span className="w-24 shrink-0 text-right text-[10px]">
@@ -2227,79 +2373,6 @@ function TransferBar({
             );
           })}
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2.5">
-        <span className="text-[11px] text-zinc-500">ຈາກສາງຫຼັກ</span>
-        <select
-          value={from}
-          onChange={(e) => chooseSource(e.target.value)}
-          className={sel}
-        >
-          <option value="">
-            {crossBusy ? "— ກຳລັງກວດທຸກສາງ... —" : "— ເລືອກຕົ້ນທາງ —"}
-          </option>
-          {/* ແນະນຳ: ຮຽງຕາມຈຳນວນລາຍການທີ່ຈ່າຍໄດ້ ພ້ອມບອກຕົວເລກໃນປ້າຍເລີຍ */}
-          {suggested.length > 0 && (
-            <optgroup label="ແນະນຳ — ຈ່າຍໄດ້ຫຼາຍທີ່ສຸດ">
-              {suggested.map(({ w, c }) => (
-                <option key={w.code} value={w.code}>
-                  {w.code} {w.name} — ຈ່າຍໄດ້ {c.full + c.partial}/{allLines.length}
-                  {c.partial > 0 ? ` (ບໍ່ຄົບ ${c.partial})` : ""}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          <optgroup label={suggested.length > 0 ? "ສາງອື່ນ" : "ສາງຫຼັກທັງໝົດ"}>
-            {sourceChoices
-              .filter((w) => !suggestedCodes.has(w.code))
-              .map((w) => (
-                <option key={w.code} value={w.code}>
-                  {w.code} {w.name}
-                </option>
-              ))}
-          </optgroup>
-        </select>
-        <label
-          className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-500"
-          title="ຂໍໄດ້ແຕ່ສ່ວນທີ່ສາງຕົ້ນທາງເຫຼືອຫຼັງກັນໄວ້ໃຊ້ເອງເຖິງຂີດສ່ຽງ — ປິດ = ຂໍໄດ້ເຖິງຄົງເຫຼືອທັງໝົດ"
-        >
-          <input
-            type="checkbox"
-            checked={respectNeed}
-            onChange={(e) => setRespectNeed(e.target.checked)}
-            className="h-3.5 w-3.5 rounded"
-          />
-          ເຫຼືອໃຫ້ຕົ້ນທາງໃຊ້ເອງ
-        </label>
-        {cross && uncovered > 0 && (
-          <span
-            className="text-[11px] font-semibold text-amber-700 dark:text-amber-400"
-            title="ບໍ່ມີສາງຫຼັກໃດແບ່ງໃຫ້ໄດ້ — ຕ້ອງສັ່ງຊື້ ຫຼື ປິດ 'ເຫຼືອໃຫ້ຕົ້ນທາງໃຊ້ເອງ'"
-          >
-            ບໍ່ມີໃຜແບ່ງໄດ້ {uncovered}
-          </span>
-        )}
-        <span className="text-[11px] text-zinc-500">ໄປສາງ</span>
-        {destChoices.length > 1 ? (
-          <select value={to} onChange={(e) => setTo(e.target.value)} className={sel}>
-            {destChoices.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        ) : (
-          <span className="rounded-lg bg-white px-2.5 py-1.5 font-mono text-[12px] font-bold ring-1 ring-zinc-200 dark:bg-zinc-950 dark:ring-zinc-800">
-            {to}
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={() => void create()}
-          disabled={busy}
-          className="rounded-lg bg-brand-600 px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
-        >
-          {busy ? "ກຳລັງສ້າງ..." : `ສ້າງໃບຂໍໂອນ (${lines.length})`}
-        </button>
       </div>
 
       {/* ຂໍເກີນທີ່ຕົ້ນທາງມີ — ບອກ ແລະ ໃຫ້ປັບລົງໄດ້ໃນປຸ່ມດຽວ */}
