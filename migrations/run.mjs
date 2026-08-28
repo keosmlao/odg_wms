@@ -38,13 +38,34 @@ function loadEnv() {
 }
 
 /** ໄຟລ໌ .sql ທັງໝົດ ຮຽງຕາມຊື່ (ເລກນຳໜ້າ = ລຳດັບ). */
+const sha256 = (text) => createHash("sha256").update(text).digest("hex");
+
+/**
+ * checksum ຄິດຈາກເນື້ອໃນທີ່ **ປັບ line ending ເປັນ LF ແລ້ວ**.
+ *
+ * ເປັນຫຍັງ: repo ນີ້ຖືກແກ້ຢູ່ Windows (core.autocrlf → CRLF) ແຕ່ແລ່ນຢູ່
+ * Linux (LF). ໄຟລ໌ດຽວກັນຈຶ່ງໃຫ້ hash ຕ່າງກັນສອງຝັ່ງ — `status` ຢູ່ server ເຄີຍ
+ * ລາຍງານ "ຖືກແກ້ຫຼັງ run 37 ໄຟລ໌" ທັງທີ່ບໍ່ມີໃຜແຕະ SQL ເລີຍ.
+ * ຄຳເຕືອນທີ່ຮ້ອງຜິດທຸກເທື່ອ ຄືຄຳເຕືອນທີ່ຄົນເຊົາອ່ານ.
+ */
+const canonical = (sql) => sql.replace(/\r\n/g, "\n");
+
+/** ໄຟລ໌ .sql ທັງໝົດ ຮຽງຕາມຊື່ (ເລກນຳໜ້າ = ລຳດັບ). */
 function localMigrations() {
   return readdirSync(HERE)
     .filter((f) => f.endsWith(".sql"))
     .sort()
     .map((filename) => {
-      const sql = readFileSync(join(HERE, filename), "utf8");
-      return { filename, sql, checksum: createHash("sha256").update(sql).digest("hex") };
+      const raw = readFileSync(join(HERE, filename), "utf8");
+      const sql = canonical(raw);
+      return {
+        filename,
+        sql,
+        checksum: sha256(sql),
+        // hash ແບບເກົ່າ (ກ່ອນປັບ LF) — ledger ທີ່ບັນທຶກຈາກ Windows ຖືເປັນ
+        // ຄ່ານີ້. ຈື່ໄວ້ເພື່ອແຍກ "ຕ່າງແຕ່ line ending" ອອກຈາກ "ຖືກແກ້ແທ້".
+        legacy: [sha256(raw), sha256(sql.replace(/\n/g, "\r\n"))],
+      };
     });
 }
 
@@ -72,7 +93,11 @@ async function collect(c) {
   const files = localMigrations();
   const rows = files.map((f) => {
     const a = applied.get(f.filename);
-    return { ...f, state: !a ? "pending" : a.checksum === f.checksum ? "applied" : "changed", appliedAt: a?.applied_at };
+    // ຕ່າງແຕ່ line ending → ຖືວ່າ run ແລ້ວ ແຕ່ໝາຍ stale ໄວ້ໃຫ້ `up` ຂຽນ
+    // checksum ໃໝ່ທັບ ເພື່ອໃຫ້ ledger ກັບມາກົງກັນທັງສອງເຄື່ອງ.
+    const stale = Boolean(a) && a.checksum !== f.checksum && f.legacy.includes(a.checksum);
+    const state = !a ? "pending" : a.checksum === f.checksum || stale ? "applied" : "changed";
+    return { ...f, state, stale, appliedAt: a?.applied_at };
   });
   const orphans = [...applied.keys()].filter((k) => !files.some((f) => f.filename === k));
   return { rows, orphans };
@@ -104,11 +129,17 @@ async function main() {
     const { rows, orphans } = await collect(c);
     const pending = rows.filter((r) => r.state === "pending");
     const changed = rows.filter((r) => r.state === "changed");
+    const stale = rows.filter((r) => r.stale);
 
     if (cmd === "status") {
       for (const r of rows) console.log(`${label[r.state]}  ${r.filename}`);
       for (const o of orphans) console.log(`  ORPHAN   ${o} (ຢູ່ໃນ DB ແຕ່ບໍ່ມີໄຟລ໌ແລ້ວ)`);
       console.log(`\n${rows.length} ໄຟລ໌ · run ແລ້ວ ${rows.length - pending.length - changed.length} · ຄ້າງ ${pending.length}${changed.length ? ` · ຖືກແກ້ຫຼັງ run ${changed.length}` : ""}`);
+      if (stale.length > 0) {
+        console.log(
+          `(${stale.length} ໄຟລ໌ມີ checksum ເກົ່າແບບ CRLF ໃນ ledger — up ຈະປັບໃຫ້ເອງ)`,
+        );
+      }
       if (pending.length > 0) console.log(`\nrun ດ້ວຍ:  node migrations/run.mjs up`);
       return;
     }
@@ -143,6 +174,17 @@ async function main() {
     }
 
     // cmd === "up"
+    // ປັບ checksum ເກົ່າ (CRLF) ໃຫ້ເປັນແບບ LF ກ່ອນ — ເຮັດຢູ່ນີ້ ບໍ່ແມ່ນຢູ່
+    // `status` ທີ່ສັນຍາວ່າບໍ່ແຕະ DB.
+    if (stale.length > 0) {
+      for (const r of stale) {
+        await c.query(
+          `UPDATE public.odg_wms_schema_migration SET checksum = $2 WHERE filename = $1`,
+          [r.filename, r.checksum],
+        );
+      }
+      console.log(`ປັບ checksum ຂອງ ${stale.length} ໄຟລ໌ໃຫ້ເປັນແບບ LF (ບໍ່ໄດ້ run ຊ້ຳ)\n`);
+    }
     if (changed.length > 0) {
       console.log(`⚠️  ${changed.length} ໄຟລ໌ຖືກແກ້ຫຼັງ run ໄປແລ້ວ (ຈະບໍ່ run ຊ້ຳ): ${changed.map((r) => r.filename).join(", ")}\n`);
     }
