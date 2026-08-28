@@ -1840,6 +1840,8 @@ function TransferBar({
    * ຈິງໆ ແລະ ຄົນຕັດສິນໃຈເອງດີກວ່າ.
    */
   const [respectNeed, setRespectNeed] = useState(true);
+  /** ເປີດແຖວເລືອກສາງເອງ — ພັບໄວ້ ເພາະທາງຫຼັກຄືປຸ່ມດຽວ. */
+  const [manual, setManual] = useState(false);
 
   /**
    * ລາຍການທີ່ຈຳກັດໄວ້ສຳລັບໃບປັດຈຸບັນ — null = ທຸກລາຍການທີ່ຕິກ.
@@ -2013,6 +2015,43 @@ function TransferBar({
     return wh ? { wh, qty } : null;
   };
 
+  /**
+   * ແບ່ງລາຍການທີ່ຕິກ ອອກເປັນໃບຕໍ່ສາງ — ຜົນນີ້ຄືສິ່ງທີ່ປຸ່ມ "ສ້າງໃຫ້ໝົດ" ຈະເຮັດ.
+   *
+   * greedy: ເອົາສາງທີ່ແບ່ງໃຫ້ໄດ້ຫຼາຍລາຍການທີ່ສຸດກ່ອນ ຕັດອອກ ແລ້ວວົນຕໍ່. ນີ້ຄື
+   * set-cover ຊຶ່ງຄຳຕອບດີສຸດເປັນ NP-hard — ແຕ່ສິ່ງທີ່ຄົນຢາກໄດ້ຄື "ໃບໜ້ອຍທີ່ສຸດ
+   * ເທົ່າທີ່ເປັນໄປໄດ້" ບໍ່ແມ່ນຄຳຕອບທີ່ພິສູດໄດ້ວ່າດີສຸດ.
+   *
+   * ລາຍການທີ່ບໍ່ມີໃຜແບ່ງໄດ້ ບໍ່ເຂົ້າໃບໃດ — ມັນເປັນວຽກສັ່ງຊື້ ບໍ່ແມ່ນວຽກຂໍໂອນ.
+   */
+  const autoDocs: { wh: string; name: string | null; items: string[] }[] = (() => {
+    if (!cross || allLines.length === 0) return [];
+    const left = new Map(allLines.map((l) => [l.item.item_code, l.qty]));
+    const out: { wh: string; name: string | null; items: string[] }[] = [];
+    for (;;) {
+      let bestWh: string | null = null;
+      let bestItems: string[] = [];
+      for (const w of sourceChoices) {
+        const items: string[] = [];
+        for (const [code] of left) {
+          if ((cross.give.get(code)?.get(w.code) ?? 0) > 0) items.push(code);
+        }
+        if (items.length > bestItems.length) {
+          bestWh = w.code;
+          bestItems = items;
+        }
+      }
+      if (!bestWh || bestItems.length === 0) break;
+      out.push({
+        wh: bestWh,
+        name: sourceChoices.find((w) => w.code === bestWh)?.name ?? null,
+        items: bestItems,
+      });
+      for (const c of bestItems) left.delete(c);
+    }
+    return out;
+  })();
+
   /** ລາຍການທີ່ບໍ່ມີສາງແນະນຳໃດຈ່າຍໄດ້ເລີຍ — ບອກເປັນຕົວເລກ ບໍ່ໃຫ້ຫາຍງຽບໆ. */
   const uncovered = !cross
     ? 0
@@ -2037,6 +2076,57 @@ function TransferBar({
       .filter((l) => (cross.give.get(l.item.item_code)?.get(code) ?? 0) > 0)
       .map((l) => l.item.item_code);
     setOnly(can.length > 0 && can.length < allLines.length ? new Set(can) : null);
+  }
+
+  /**
+   * ສ້າງທຸກໃບຂອງແຜນ ຕາມລຳດັບ.
+   *
+   * ຍິງເທື່ອລະໃບ (ບໍ່ພ້ອມກັນ) ເພາະແຕ່ລະໃບຈອງເລກເອກະສານຈາກ ERP — ຍິງພ້ອມກັນ
+   * ຈະແຍ່ງເລກກັນເອງ. ໃບໃດລົ້ມ ກໍ່ຢຸດແລ້ວບອກວ່າສຳເລັດໄປແລ້ວຈັກໃບ ບໍ່ໃຫ້ຄົນ
+   * ນຶກວ່າບໍ່ມີຫຍັງເກີດຂຶ້ນ.
+   */
+  async function createAll() {
+    if (autoDocs.length === 0) return;
+    setBusy(true);
+    setMsg(null);
+    const done: string[] = [];
+    try {
+      for (const doc of autoDocs) {
+        const picks = allLines.filter((l) => doc.items.includes(l.item.item_code));
+        const res = await fetch("/api/movements/transfer-request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            wh_from: doc.wh,
+            wh_to: to,
+            remark: "ຈາກໜ້າວິເຄາະຄວາມພຽງພໍ",
+            lines: picks.map((l) => ({
+              item_code: l.item.item_code,
+              item_name: l.item.item_name,
+              unit_code: l.item.unit_code,
+              qty: l.qty,
+            })),
+          }),
+        });
+        const json = (await res.json()) as { doc_no?: string; error?: string };
+        if (!res.ok) {
+          setMsg({
+            ok: false,
+            text: `${done.length > 0 ? `ສ້າງແລ້ວ ${done.join(", ")} — ` : ""}ໃບຂອງ ${doc.wh} ລົ້ມ: ${json.error ?? "ບໍ່ສຳເລັດ"}`,
+          });
+          return;
+        }
+        done.push(`${json.doc_no ?? "?"} (${doc.wh}, ${picks.length})`);
+        for (const l of picks) onRemove(l.item.item_code);
+      }
+      setMsg({ ok: true, text: `ສ້າງແລ້ວ ${done.length} ໃບ — ${done.join(" · ")}` });
+      setFrom("");
+      setOnly(null);
+    } catch {
+      setMsg({ ok: false, text: "ຕິດຕໍ່ເຊີບເວີບໍ່ໄດ້" });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function create() {
@@ -2091,9 +2181,55 @@ function TransferBar({
     <div className="border-b border-brand-100 bg-brand-50/70 px-4 py-3 dark:border-brand-900 dark:bg-brand-950/30">
       {/* ── ຂັ້ນທີ 1: ຕັດສິນໃຈຕົ້ນທາງ — ລາຍການລຸ່ມນີ້ຂຶ້ນກັບມັນ ────────── */}
       <div className="mb-3 rounded-xl bg-white p-3 ring-1 ring-brand-200 dark:bg-zinc-900 dark:ring-brand-900">
-        <p className="mb-2 text-[11px] font-bold text-zinc-500 dark:text-zinc-400">
-          1 ໃບຂໍໂອນ = 1 ສາງຕົ້ນທາງ — ເລືອກສາງ ແລ້ວລາຍການລຸ່ມນີ້ຈະຖືກຕັດໃຫ້ເທົ່າທີ່ເຂົາແບ່ງໄດ້
-        </p>
+        {/* ── ທາງຫຼັກ: ບອກວ່າຈະເຮັດຫຍັງ ແລ້ວກົດເທື່ອດຽວ ──────────── */}
+        {crossBusy && !cross ? (
+          <p className="text-[12px] text-zinc-500">ກຳລັງກວດວ່າສາງໃດແບ່ງໃຫ້ໄດ້...</p>
+        ) : autoDocs.length === 0 ? (
+          <p className="text-[12px] font-semibold text-amber-700 dark:text-amber-400">
+            ບໍ່ມີສາງຫຼັກໃດແບ່ງລາຍການເຫຼົ່ານີ້ໃຫ້ໄດ້ — ຕ້ອງສັ່ງຊື້
+          </p>
+        ) : (
+          <>
+            <p className="text-[12px] text-zinc-700 dark:text-zinc-200">
+              ຈະສ້າງ <b>{autoDocs.length}</b> ໃບ —{" "}
+              {autoDocs.map((d, n) => (
+                <span key={d.wh}>
+                  {n > 0 ? " · " : ""}
+                  <b className="font-mono">{d.wh}</b> {d.name} ({d.items.length} ລາຍການ)
+                </span>
+              ))}
+            </p>
+            {uncovered > 0 && (
+              <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+                ອີກ {uncovered} ລາຍການ ບໍ່ມີໃຜແບ່ງໄດ້ → ຕ້ອງສັ່ງຊື້ ຈະບໍ່ຢູ່ໃນໃບໃດ
+              </p>
+            )}
+          </>
+        )}
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void createAll()}
+            disabled={busy || autoDocs.length === 0}
+            className="rounded-lg bg-brand-600 px-5 py-2 text-[13px] font-bold text-white transition hover:bg-brand-700 disabled:opacity-40"
+          >
+            {busy
+              ? "ກຳລັງສ້າງ..."
+              : `ສ້າງໃບຂໍໂອນໃຫ້ໝົດ (${autoDocs.length} ໃບ)`}
+          </button>
+          <button
+            type="button"
+            onClick={() => setManual((v) => !v)}
+            className="text-[11px] font-semibold text-zinc-500 underline-offset-2 transition hover:text-zinc-800 hover:underline dark:hover:text-zinc-200"
+          >
+            ເລືອກສາງເອງ {manual ? "▴" : "▾"}
+          </button>
+        </div>
+
+        {/* ── ທາງເລືອກ: ຄົນທີ່ຢາກຄຸມເອງເປັນໃບໆ ─────────────────── */}
+        {manual && (
+          <div className="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="text-[11px] text-zinc-500">ຈາກສາງຫຼັກ</span>
         <select
@@ -2178,6 +2314,8 @@ function TransferBar({
         </button>
       </div>
 
+          </div>
+        )}
       </div>
 
       {/* ── ລາຍການທີ່ຈະຂໍໂອນ ພ້ອມຈຳນວນ (ແກ້ໄດ້) ─────────────────── */}
