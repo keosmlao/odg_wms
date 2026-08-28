@@ -1798,6 +1798,17 @@ function TransferBar({
   const [availBusy, setAvailBusy] = useState(false);
 
   /** ລະຫັດທີ່ຕິກໄວ້ — ໃຊ້ເປັນ dep ເພື່ອກວດຄືນເມື່ອຕິກເພີ່ມ/ເອົາອອກ. */
+  /**
+   * ຕົ້ນທາງທີ່ເລືອກໄດ້ — **ສະເພາະສາງຫຼັກ**.
+   *
+   * ສາງຍ່ອຍບໍ່ແມ່ນບ່ອນທີ່ຈ່າຍອອກ — ຂໍຈາກມັນແມ່ນການແຍ່ງຂອງທີ່ຕົວມັນເອງ
+   * ກໍ່ໄດ້ມາຈາກສາງຫຼັກ ແລ້ວຈະພາໃຫ້ຂອງແກ່ງກັນລະຫວ່າງຍ່ອຍ. ຈຶ່ງບັງຄັບໃຫ້
+   * ໃບຂໍໂອນອອກຈາກສາງຫຼັກທົ່ວດຽວ.
+   */
+  const sourceChoices = allWarehouses.filter(
+    (w) => w.kind === "main" && !destChoices.includes(w.code),
+  );
+
   const pickedKey = picked.map((i) => i.item_code).sort().join(",");
 
   useEffect(() => {
@@ -2038,22 +2049,18 @@ function TransferBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2.5">
-        <span className="text-[11px] text-zinc-500">ຈາກສາງ</span>
+        <span className="text-[11px] text-zinc-500">ຈາກສາງຫຼັກ</span>
         <select
           value={from}
           onChange={(e) => setFrom(e.target.value)}
           className={sel}
         >
           <option value="">— ເລືອກຕົ້ນທາງ —</option>
-          {allWarehouses
-            .filter((w) => !destChoices.includes(w.code))
-            .map((w) => (
-              <option key={w.code} value={w.code}>
-                {w.kind === "sub" ? "↳ " : ""}
-                {w.code} {w.name}
-                {w.kind === "sub" && w.parent_code ? ` (ຍ່ອຍຂອງ ${w.parent_code})` : ""}
-              </option>
-            ))}
+          {sourceChoices.map((w) => (
+            <option key={w.code} value={w.code}>
+              {w.code} {w.name}
+            </option>
+          ))}
         </select>
         <span className="text-[11px] text-zinc-500">ໄປສາງ</span>
         {destChoices.length > 1 ? (
