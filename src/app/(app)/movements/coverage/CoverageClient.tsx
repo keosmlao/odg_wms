@@ -165,8 +165,13 @@ export default function CoverageClient({ warehouses }: { warehouses: WarehouseOp
    *
    * ການວິເຄາະສາງໜຶ່ງໃຊ້ 3–6 ວິນາທີ (ຄິດຄົງເຫຼືອ ERP) — ຖ້າຕັ້ງຄ່າເລີ່ມຕົ້ນເປັນ
    * ຫຼາຍສາງ ຄົນທີ່ຫາກໍ່ເປີດໜ້າຈະຖືກບັງຄັບໃຫ້ລໍຜົນທີ່ຕົນເອງອາດບໍ່ໄດ້ຢາກເບິ່ງ.
+   *
+   * ຂໍ້ຍົກເວັ້ນ: ຜູ້ໃຊ້ທີ່ມີສິດເຫັນ**ສາງດຽວ** ບໍ່ມີຫຍັງໃຫ້ເລືອກ — ຕິກເອງໃຫ້ເລີຍ
+   * ເພື່ອໃຫ້ກົດ "ວິເຄາະ" ໄດ້ທັນທີ (ຍັງບໍ່ແລ່ນເອງ ຜູ້ໃຊ້ຕັ້ງຂີດກ່ອນໄດ້).
    */
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(() =>
+    warehouses.length === 1 ? [warehouses[0].code] : [],
+  );
   const [days, setDays] = useState(90);
   const [critical, setCritical] = useState(7);
   const [low, setLow] = useState(14);
@@ -276,7 +281,9 @@ export default function CoverageClient({ warehouses }: { warehouses: WarehouseOp
   const toggle = (code: string) =>
     setSelected((s) => (s.includes(code) ? s.filter((c) => c !== code) : [...s, code]));
 
-  const zones = ZONES.filter((z) => codes.some((c) => c.startsWith(z.prefix)));
+  /** ປຸ່ມເລືອກໄວຕາມໂຊນ — ມີຄວາມໝາຍສະເພາະເມື່ອມີຫຼາຍກວ່າ 1 ສາງໃຫ້ເລືອກ. */
+  const zones =
+    warehouses.length > 1 ? ZONES.filter((z) => codes.some((c) => c.startsWith(z.prefix))) : [];
 
   return (
     <div className="space-y-4">
@@ -295,7 +302,7 @@ export default function CoverageClient({ warehouses }: { warehouses: WarehouseOp
                 {z.label}
               </button>
             ))}
-            {selected.length > 0 && (
+            {selected.length > 0 && warehouses.length > 1 && (
               <button
                 type="button"
                 onClick={() => setSelected([])}
