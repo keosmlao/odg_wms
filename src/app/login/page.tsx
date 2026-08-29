@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CheckIcon, EyeIcon, EyeOffIcon, UserIcon } from "@/components/ui/Icons";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -41,7 +42,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="grid flex-1 lg:grid-cols-2">
+    <div className="relative grid flex-1 lg:grid-cols-2">
+      {/* ສະຫຼັບໂໝດສີໄດ້ຕັ້ງແຕ່ກ່ອນເຂົ້າລະບົບ — ຄົນເຂົ້າກະດົນເຊົ້າມືດໆ ຢູ່ສາງ
+          ບໍ່ຄວນຕ້ອງທົນຈໍຂາວຈົນກວ່າຈະ login ສຳເລັດ. */}
+      <div className="absolute right-4 top-4 z-10">
+        <ThemeToggle />
+      </div>
       {/* Brand panel (desktop) */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-brand-900 via-brand-600 to-aqua-500 p-12 text-white lg:flex">
         <div aria-hidden className="pointer-events-none absolute -top-32 -right-24 h-96 w-96 rounded-full bg-white/10 blur-3xl" />

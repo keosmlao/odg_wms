@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/Toast";
 import { AlertIcon, SearchIcon } from "@/components/ui/Icons";
 import {
   DEFECT_STATUS,
@@ -67,7 +67,7 @@ export default function DefectItemClient({
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openRef, setOpenRef] = useState<string | null>(null);
-  const [confirmBulk, setConfirmBulk] = useState(false);
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [lightbox, setLightbox] = useState<{ photos: DefectImage[]; index: number; caption: string } | null>(null);
   const [broken, setBroken] = useState<Record<string, true>>({});
@@ -145,25 +145,53 @@ export default function DefectItemClient({
 
   const issued = status === DEFECT_STATUS.dispatched;
 
-  async function bulkIssue() {
+  /** ຮຽກ API ເບີກຈ່າຍ/ຄືນ ສຳລັບຊຸດ ref ທີ່ລະບຸ. ຄືນ true ເມື່ອສຳເລັດ. */
+  async function applyBulk(refs: string[], undo: boolean) {
+    if (refs.length === 0) return false;
     setBusy(true);
     setErr(null);
     try {
       const res = await fetch("/api/defects/withdraw-bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refs: [...selected], undo: issued }),
+        body: JSON.stringify({ refs, undo }),
       });
       const data = (await res.json()) as { changed?: number; error?: string };
       if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
-      setSelected(new Set());
       await reload();
+      return true;
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "ບໍ່ສຳເລັດ");
+      const text = e instanceof Error ? e.message : "ບໍ່ສຳເລັດ";
+      setErr(text);
+      toast.show({ message: text, tone: "error" });
+      return false;
     } finally {
       setBusy(false);
-      setConfirmBulk(false);
     }
+  }
+
+  /**
+   * ເບີກຈ່າຍ / ຍົກເລີກ ຫຼາຍລາຍການພ້ອມກັນ.
+   *
+   * ເຮັດເລີຍ ແລ້ວໃຫ້ປຸ່ມ “ຍົກເລີກ” 6 ວິນາທີ ແທນກ່ອງຖາມຢືນຢັນ — API ຮັບ `undo`
+   * ຢູ່ແລ້ວ ຈຶ່ງຄືນສະພາບເກົ່າໄດ້ຄົບຖ້ວນດ້ວຍ ref ຊຸດເກົ່າ.
+   */
+  async function bulkIssue() {
+    const refs = [...selected];
+    const wasIssued = issued;
+    const qty = selectedQty;
+    const unit = rows[0]?.unit_code ?? "";
+    const ok = await applyBulk(refs, wasIssued);
+    if (!ok) return;
+    setSelected(new Set());
+    toast.show({
+      message: wasIssued
+        ? `ຍົກເລີກການເບີກຈ່າຍ ${refs.length} ລາຍການ`
+        : `ເບີກຈ່າຍ ${refs.length} ລາຍການແລ້ວ`,
+      detail: `${fmtQty(qty)} ${unit}`,
+      tone: "ok",
+      undo: { onUndo: () => void applyBulk(refs, !wasIssued) },
+    });
   }
 
   const selectedQty = rows
@@ -193,7 +221,7 @@ export default function DefectItemClient({
           {selected.size > 0 && (
             <button
               type="button"
-              onClick={() => setConfirmBulk(true)}
+              onClick={() => void bulkIssue()}
               disabled={busy}
               className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50 ${
                 issued
@@ -468,20 +496,6 @@ export default function DefectItemClient({
         </div>
       )}
 
-      <ConfirmModal
-        open={confirmBulk}
-        busy={busy}
-        tone={issued ? "primary" : "danger"}
-        title={issued ? `ຍົກເລີກການເບີກຈ່າຍ ${selected.size} ລາຍການ?` : `ເບີກຈ່າຍ ${selected.size} ລາຍການ?`}
-        message={
-          issued
-            ? `${selected.size} ລາຍການ (${fmtQty(selectedQty)} ${rows[0]?.unit_code ?? ""}) ຈະກັບໄປຢູ່ລາຍງານ "ຍັງບໍ່ເບີກຈ່າຍ"`
-            : `${selected.size} ລາຍການ (${fmtQty(selectedQty)} ${rows[0]?.unit_code ?? ""}) ຈະຍ້າຍໄປລາຍງານ "ເບີກຈ່າຍແລ້ວ"`
-        }
-        confirmLabel={issued ? "ຍົກເລີກການເບີກຈ່າຍ" : "ເບີກຈ່າຍ"}
-        onConfirm={() => void bulkIssue()}
-        onCancel={() => setConfirmBulk(false)}
-      />
     </div>
   );
 }

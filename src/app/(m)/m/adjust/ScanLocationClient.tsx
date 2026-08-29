@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import BarcodeScanner from "@/components/BarcodeScanner";
+import { feedback } from "@/lib/feedback";
 
 export type WarehouseOption = { code: string; name: string | null };
 
@@ -34,6 +35,15 @@ export default function ScanLocationClient({
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  /**
+   * ຕັ້ງຂໍ້ຄວາມຜິດພາດ ພ້ອມສັ່ນສອງຈັງຫວະ.
+   * ຄົນຍິງເຄື່ອງບໍ່ໄດ້ຈ້ອງຈໍຕະຫຼອດ — ຖ້າຜິດຕ້ອງຮູ້ສຶກໄດ້ດ້ວຍມື.
+   */
+  function setErrFx(message: string | null) {
+    setErr(message);
+    if (message) feedback("error");
+  }
   const [cam, setCam] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -55,26 +65,26 @@ export default function ScanLocationClient({
     const value = raw.trim();
     if (!value || !wh) return;
     setBusy(true);
-    setErr(null);
+    setErrFx(null);
     try {
       const res = await fetch(
         `/api/movements/scan?code=${encodeURIComponent(value)}&wh=${encodeURIComponent(wh)}`,
       );
       const json = (await res.json()) as ScanResult;
       if (!res.ok) {
-        setErr(json.error ?? "ຄົ້ນຫາບໍ່ສຳເລັດ");
+        setErrFx(json.error ?? "ຄົ້ນຫາບໍ່ສຳເລັດ");
       } else if (json.kind === "location" && json.location) {
         const l = json.location;
         router.push(`/m/adjust/${encodeURIComponent(l.wh_code)}/${encodeURIComponent(l.code)}`);
         return;
       } else if (json.kind === "item") {
         // ຍິງສິນຄ້າກ່ອນເລືອກ location ບໍ່ໄດ້ — ບອກໃຫ້ຊັດ ບໍ່ແມ່ນປ່ອຍງຽບ
-        setErr("ນີ້ແມ່ນລະຫັດສິນຄ້າ — ໃຫ້ຍິງປ້າຍ location ກ່ອນ ແລ້ວຈຶ່ງຍິງສິນຄ້າ");
+        setErrFx("ນີ້ແມ່ນລະຫັດສິນຄ້າ — ໃຫ້ຍິງປ້າຍ location ກ່ອນ ແລ້ວຈຶ່ງຍິງສິນຄ້າ");
       } else {
-        setErr(`ບໍ່ພົບ "${value}" ໃນລະບົບ`);
+        setErrFx(`ບໍ່ພົບ "${value}" ໃນລະບົບ`);
       }
     } catch {
-      setErr("ຕິດຕໍ່ເຊີບເວີບໍ່ໄດ້");
+      setErrFx("ຕິດຕໍ່ເຊີບເວີບໍ່ໄດ້");
     } finally {
       setBusy(false);
       setCode("");

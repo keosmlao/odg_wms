@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/Icons";
 import type { CountedLine, LocationOption, RackOption } from "./page";
 import { locLabel } from "@/lib/locationLabel";
+import { feedback } from "@/lib/feedback";
 
 type ItemHit = {
   item_code: string;
@@ -191,12 +192,10 @@ export default function Counter({
     return () => clearTimeout(t);
   }, [search, sessionId]);
 
-  function vibrate(pattern: number | number[]) {
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(pattern);
-  }
+  // ສັ່ນ + ສຽງ ຜ່ານ src/lib/feedback.ts — ຮູບແບບດຽວກັນທັງແອັບ
   function showToast(kind: "ok" | "err", text: string) {
     setToast({ kind, text });
-    vibrate(kind === "ok" ? 30 : [60, 30, 60]);
+    feedback(kind === "ok" ? "ok" : "error");
     setTimeout(() => setToast(null), 2500);
   }
 
@@ -231,7 +230,7 @@ export default function Counter({
     const code = text.trim();
     setSelected(null);
     setSearch(code);
-    vibrate(50);
+    feedback("tap");
     setTimeout(() => searchInputRef.current?.focus(), 50);
   }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { WarehouseGroup } from "@/components/ui/WarehouseGroup";
+import { DataList } from "@/components/ui/DataList";
 
 export type WarehouseOption = { code: string; name: string | null };
 type Mover = { item_code: string; item_name: string | null; unit_code: string | null; qin: string; qout: string; outmoves: number };
@@ -138,21 +139,56 @@ function WhMovers({ r, sort, setSort, loading }: { r: WhResult; sort: SortKey; s
             ))}
           </div>
         </div>
-        <table className="w-full text-sm">
-          <thead><tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/50"><th className="px-4 py-2.5 w-10">#</th><th className="px-4 py-2.5">ສິນຄ້າ</th><th className="px-4 py-2.5 text-right">ເຂົ້າ</th><th className="px-4 py-2.5 text-right">ອອກ</th><th className="px-4 py-2.5 text-center">ຄັ້ງ(ອອກ)</th></tr></thead>
-          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {sorted.length === 0 && !loading && <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-zinc-400">ບໍ່ມີຂໍ້ມູນ</td></tr>}
-            {sorted.map((m, i) => (
-              <tr key={m.item_code} className="transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
-                <td className="px-4 py-2.5 text-center font-mono text-xs text-zinc-400">{i + 1}</td>
-                <td className="px-4 py-2.5"><span className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{m.item_code}</span><div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300" title={m.item_name ?? ""}>{m.item_name}</div></td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400">{Number.parseFloat(m.qin) > 0 ? fmt(m.qin) : "—"}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums text-rose-600 dark:text-rose-400">{Number.parseFloat(m.qout) > 0 ? fmt(m.qout) : "—"}<span className="ml-1 text-[10px] text-zinc-400">{m.unit_code}</span></td>
-                <td className="px-4 py-2.5 text-center text-zinc-500">{m.outmoves}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {/* ຕາຕະລາງເທິງຄອມ / ບັດເທິງມືຖື — ນິຍາມຖັນເທື່ອດຽວ (ui/DataList) */}
+        <DataList
+          rows={sorted}
+          rowKey={(m) => m.item_code}
+          empty={loading ? "ກຳລັງໂຫຼດ..." : "ບໍ່ມີຂໍ້ມູນ"}
+          columns={[
+            {
+              header: "#",
+              align: "center",
+              card: "hidden",
+              className: "w-10 font-mono text-xs text-zinc-400",
+              cell: (_m, i) => i + 1,
+            },
+            {
+              header: "ສິນຄ້າ",
+              card: "title",
+              cell: (m) => (
+                <>
+                  <span className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{m.item_code}</span>
+                  <div className="max-w-md truncate text-[13px] text-zinc-700 dark:text-zinc-300" title={m.item_name ?? ""}>{m.item_name}</div>
+                </>
+              ),
+            },
+            {
+              header: "ອອກ",
+              align: "right",
+              card: "value",
+              cell: (m) => (
+                <span className="font-mono tabular-nums text-rose-600 dark:text-rose-400">
+                  {Number.parseFloat(m.qout) > 0 ? fmt(m.qout) : "—"}
+                  <span className="ml-1 text-[10px] text-zinc-400">{m.unit_code}</span>
+                </span>
+              ),
+            },
+            {
+              header: "ເຂົ້າ",
+              align: "right",
+              cell: (m) => (
+                <span className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {Number.parseFloat(m.qin) > 0 ? fmt(m.qin) : "—"}
+                </span>
+              ),
+            },
+            {
+              header: "ຄັ້ງ(ອອກ)",
+              align: "center",
+              cell: (m) => <span className="text-zinc-500">{m.outmoves}</span>,
+            },
+          ]}
+        />
       </section>
     </div>
   );

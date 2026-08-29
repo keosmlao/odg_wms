@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Montserrat, Noto_Sans_Lao } from "next/font/google";
 import PWARegister from "@/components/PWARegister";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 // Brand typeface per the ODIEN Mall guideline (p.6). The Lao counterpart in the
@@ -67,6 +68,10 @@ export default function RootLayout({
       className={`${montserrat.variable} ${geistMono.variable} ${notoSansLao.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      {/* ຕັ້ງ data-theme ກ່ອນ paint ຄັ້ງທຳອິດ — ບໍ່ດັ່ງນັ້ນຄົນທີ່ເລືອກໂໝດມືດ
+          ຈະເຫັນຈໍຂາວແວັບໜຶ່ງທຸກເທື່ອທີ່ໂຫຼດໜ້າ. ຕ້ອງເປັນ script ທຳມະດາ
+          ບໍ່ແມ່ນ next/script ເພາະຕ້ອງແລ່ນກ່ອນ hydration. */}
+      <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       <body className="min-h-full flex flex-col overflow-x-hidden" suppressHydrationWarning>
         <PWARegister />
         {children}

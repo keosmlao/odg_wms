@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import BarcodeScanner from "@/components/BarcodeScanner";
+import { feedback } from "@/lib/feedback";
 
 type Line = {
   item_code: string;
@@ -135,8 +136,9 @@ export default function CountClient({
         },
         ...s,
       ]);
-      if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(40);
+      feedback("ok");
     } catch {
+      feedback("error");
       setErr("ຕິດຕໍ່ເຊີບເວີບໍ່ໄດ້");
     } finally {
       setBusy(false);

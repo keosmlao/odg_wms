@@ -4,51 +4,30 @@ import { useEffect, useMemo, useState } from "react";
 import Barcode from "@/components/Barcode";
 import { ChevronRightIcon } from "@/components/ui/Icons";
 import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
+import {
+  PICK_TYPES,
+  buildPlan,
+  fmtQty,
+  type PickPendingDoc,
+  type PickSrcLine,
+  type PickTask,
+} from "@/lib/pickPlan";
 
 export type WarehouseOption = { code: string; name: string | null };
-type DocLine = { item_code: string; item_name: string | null; unit_code: string | null; remaining: string };
-type PendingDoc = { doc_no: string; wh_code: string; doc_date: string | null; cust_code: string | null; cust_name: string | null; line_count: number; remaining_qty: string; lines: DocLine[] };
-type Loc = { rack: string; location: string; pallet: string; qty: string };
-type SrcLine = { item_code: string; item_name: string | null; unit_code: string | null; is_isn: number | null; src_qty: string; remaining: string; locations: Loc[] };
-type Task = { key: string; sortKey: string; loc: string; barcode: string; rack: string; pallet: string; item_code: string; item_name: string | null; unit: string | null; qty: number; short: boolean };
 
-const TYPES = [
-  { v: "req", label: "ໃບຂໍເບີກ", flag: 122 },
-  { v: "transfer", label: "ໃບຂໍໂອນ", flag: 124 },
-  { v: "sale", label: "ບິນຂາຍ", flag: 44 },
-];
+// ຕົວແບບຂໍ້ມູນ ແລະ ການວາງແຜນຢູ່ທີ່ src/lib/pickPlan.ts — ໜ້າມືຖື (/m/pick)
+// ໃຊ້ຊຸດດຽວກັນ ເພື່ອໃຫ້ລຳດັບການຍ່າງເກັບຕົງກັນທັງສອງໜ້າ.
+type PendingDoc = PickPendingDoc;
+type SrcLine = PickSrcLine;
+type Task = PickTask;
 
-function fmt(v: string | number) {
-  const n = typeof v === "number" ? v : Number.parseFloat(v);
-  return Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "0";
-}
+const TYPES = PICK_TYPES;
+
+const fmt = fmtQty;
 function ddmm(d: string | null) {
   if (!d) return "—";
   const [y, m, day] = d.split("-");
   return day ? `${day}-${m}-${y}` : d;
-}
-
-/** Greedy pick allocation: fill each line's remaining qty from its locations
- *  (smallest location code first), then order all tasks by location for one walk. */
-function buildPlan(lines: SrcLine[]): Task[] {
-  const tasks: Task[] = [];
-  for (const l of lines) {
-    let need = Number.parseFloat(l.remaining) || 0;
-    const locs = [...l.locations].sort((a, b) => (a.location || a.rack).localeCompare(b.location || b.rack));
-    for (const loc of locs) {
-      if (need <= 0.0001) break;
-      const avail = Number.parseFloat(loc.qty) || 0;
-      const take = Math.min(need, avail);
-      if (take <= 0.0001) continue;
-      const label = [loc.rack, loc.location, loc.pallet].filter(Boolean).join(" / ") || "(ສາງ)";
-      tasks.push({ key: `${l.item_code}@${loc.location}@${loc.pallet}`, sortKey: loc.location || loc.rack || "~", loc: label, barcode: loc.location || loc.rack || loc.pallet || "", rack: loc.rack, pallet: loc.pallet, item_code: l.item_code, item_name: l.item_name, unit: l.unit_code, qty: take, short: false });
-      need -= take;
-    }
-    if (need > 0.0001) {
-      tasks.push({ key: `${l.item_code}@short`, sortKey: "~~~", loc: "⚠ ບໍ່ພໍ stock", barcode: "", rack: "", pallet: "", item_code: l.item_code, item_name: l.item_name, unit: l.unit_code, qty: need, short: true });
-    }
-  }
-  return tasks.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 }
 
 export default function PickClient({ warehouses }: { warehouses: WarehouseOption[] }) {

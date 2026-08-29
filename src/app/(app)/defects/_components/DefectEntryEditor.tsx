@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/Toast";
 import { AlertIcon, CheckIcon, PlusIcon } from "@/components/ui/Icons";
 import {
   DEFECT_GRADES,
@@ -53,7 +53,7 @@ export default function DefectEntryEditor({
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
-  const [confirmIssue, setConfirmIssue] = useState(false);
+  const toast = useToast();
   const [broken, setBroken] = useState<Record<number, true>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -96,25 +96,46 @@ export default function DefectEntryEditor({
     }
   }
 
-  async function toggleIssue() {
+  /**
+   * ເບີກຈ່າຍ / ຍົກເລີກການເບີກຈ່າຍ.
+   *
+   * ບໍ່ມີກ່ອງຖາມ “ແນ່ໃຈບໍ່?” ອີກຕໍ່ໄປ — ການກະທຳນີ້ຄືນຄ່າໄດ້ (API ຮັບ `undo`)
+   * ຈຶ່ງເຮັດເລີຍແລ້ວໃຫ້ປຸ່ມ “ຍົກເລີກ” ຢູ່ໃນແຈ້ງເຕືອນ. ໄວກວ່າ ແລະ ປອດໄພກວ່າ:
+   * ກ່ອງຖາມຢືນຢັນທີ່ຂຶ້ນທຸກເທື່ອ ສຸດທ້າຍຄົນຈະກົດ “ຕົກລົງ” ໂດຍບໍ່ອ່ານ.
+   */
+  async function setIssued(next: boolean) {
     setBusy(true);
     setMsg(null);
     try {
-      const undo = entry.status === DEFECT_STATUS.dispatched;
       const res = await fetch(`/api/defects/${encodeURIComponent(entry.code_ref)}/withdraw`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ undo }),
+        body: JSON.stringify({ undo: !next }),
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       onChanged();
+      return true;
     } catch (e) {
-      setMsg({ tone: "err", text: e instanceof Error ? e.message : "ບໍ່ສຳເລັດ" });
+      const text = e instanceof Error ? e.message : "ບໍ່ສຳເລັດ";
+      setMsg({ tone: "err", text });
+      toast.show({ message: text, tone: "error" });
+      return false;
     } finally {
       setBusy(false);
-      setConfirmIssue(false);
     }
+  }
+
+  async function toggleIssue() {
+    const wasIssued = entry.status === DEFECT_STATUS.dispatched;
+    const ok = await setIssued(!wasIssued);
+    if (!ok) return;
+    toast.show({
+      message: wasIssued ? "ຍົກເລີກການເບີກຈ່າຍແລ້ວ" : "ເບີກຈ່າຍອອກແລ້ວ",
+      detail: `#${entry.code_ref} · ${fmtQty(entry.qty)} ${entry.unit_code ?? ""}`,
+      tone: "ok",
+      undo: { onUndo: () => void setIssued(wasIssued) },
+    });
   }
 
   async function upload(files: FileList) {
@@ -278,7 +299,7 @@ export default function DefectEntryEditor({
         </button>
         <button
           type="button"
-          onClick={() => setConfirmIssue(true)}
+          onClick={() => void toggleIssue()}
           disabled={busy}
           className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-50 ${
             issued
@@ -291,20 +312,6 @@ export default function DefectEntryEditor({
         </button>
       </div>
 
-      <ConfirmModal
-        open={confirmIssue}
-        busy={busy}
-        tone={issued ? "primary" : "danger"}
-        title={issued ? "ຍົກເລີກການເບີກຈ່າຍ?" : "ເບີກຈ່າຍລາຍການນີ້ອອກ?"}
-        message={
-          issued
-            ? `ລາຍການ #${entry.code_ref} ຈະກັບໄປຢູ່ລາຍງານ "ຍັງບໍ່ເບີກຈ່າຍ"`
-            : `ລາຍການ #${entry.code_ref} (${fmtQty(entry.qty)} ${entry.unit_code ?? ""}) ຈະຍ້າຍໄປລາຍງານ "ເບີກຈ່າຍແລ້ວ"`
-        }
-        confirmLabel={issued ? "ຍົກເລີກການເບີກຈ່າຍ" : "ເບີກຈ່າຍ"}
-        onConfirm={() => void toggleIssue()}
-        onCancel={() => setConfirmIssue(false)}
-      />
     </div>
   );
 }

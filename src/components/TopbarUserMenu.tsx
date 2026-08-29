@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Session, WmsRole } from "@/lib/session-shared";
 import { ROLE_LABEL_LO } from "@/lib/session-shared";
 import { ChevronRightIcon, LogOutIcon } from "@/components/ui/Icons";
+import ThemeToggle from "@/components/ui/ThemeToggle";
+import SoundToggle from "@/components/ui/SoundToggle";
 
 const roleColorMap: Record<WmsRole, string> = {
   manager:
@@ -128,7 +130,16 @@ export default function TopbarUserMenu({ session }: { session: Session }) {
               )}
             </div>
           </div>
+          {/* ຄ່າຂອງເຄື່ອງ — ໂໝດສີ ແລະ ສຽງ. ເກັບໄວ້ໃນເຄື່ອງນີ້ ບໍ່ຜູກກັບບັນຊີ
+              ເພາະຄົນດຽວກັນໃຊ້ມືຖືໃນສາງ ແລະ ຄອມໃນຫ້ອງການ. */}
+          <div className="border-b border-zinc-100 px-3 py-3 dark:border-zinc-800">
+            <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+              ໂໝດສີ
+            </p>
+            <ThemeToggle variant="segmented" className="w-full justify-between" />
+          </div>
           <div className="p-1">
+            <SoundToggle />
             <button
               type="button"
               onClick={handleLogout}

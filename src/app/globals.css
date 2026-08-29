@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Dark mode is driven by an explicit `data-theme` attribute on <html>, not by
+   prefers-color-scheme alone. An inline script in the root layout resolves the
+   stored preference (or the OS setting when it is "system") to a literal
+   "light"/"dark" value BEFORE first paint, so the attribute is always present
+   and there is no flash. This is what lets the topbar toggle win over the OS —
+   ໃນສາງແສງບໍ່ຄົງທີ່ ຄົນຕ້ອງສະຫຼັບເອງໄດ້. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
   --background: #fafafa;
   --foreground: #18181b;
@@ -60,8 +68,17 @@
   --font-mono: var(--font-geist-mono);
 }
 
+[data-theme="dark"] {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --surface: #18181b;
+  --border: #27272a;
+}
+
+/* Fallback for the split second before the inline script runs, and for the rare
+   client that blocks it: honour the OS setting when no attribute is stamped. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --background: #09090b;
     --foreground: #fafafa;
     --surface: #18181b;
@@ -70,9 +87,18 @@
 }
 
 /* Global UI scale: Tailwind sizes are rem-based, so shrinking the root font
-   tightens fonts, spacing, and component sizes everywhere at once. */
+   tightens fonts, spacing, and component sizes everywhere at once.
+   ແຕ່ການຫຍໍ້ນີ້ແມ່ນສຳລັບ **desktop ເທົ່ານັ້ນ** — ເທິງມືຖືມັນເຮັດໃຫ້ຕົວໜັງສື
+   ນ້ອຍເກີນອ່ານ ໂດຍສະເພາະພະນັກງານທີ່ຖືເຄື່ອງຍິງມືໜຶ່ງ ກົດຈໍອີກມືໜຶ່ງ.
+   ຈຶ່ງຄືນເປັນ 16px ເມື່ອຈໍແຄບກວ່າ md. */
 html {
   font-size: 87.5%; /* 14px base (default 16px) */
+}
+
+@media (max-width: 767px) {
+  html {
+    font-size: 100%; /* 16px — ຂະໜາດອ່ານໄດ້ຈິງເທິງມືຖື */
+  }
 }
 
 body {
@@ -91,6 +117,21 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Touch targets. Anything inside a `.touch-ui` subtree (the mobile layout, and
+   any drawer/sheet that opts in) gets a 48px minimum hit area on coarse
+   pointers — ປຸ່ມໃຫຍ່ = ຜິດພາດໜ້ອຍ, ບໍ່ແມ່ນເລື່ອງຄວາມສວຍ. Explicitly opted
+   out with `.tap-auto` for chips and inline icon buttons that must stay small. */
+@media (pointer: coarse) {
+  .touch-ui button:not(.tap-auto),
+  .touch-ui [role="button"]:not(.tap-auto),
+  .touch-ui a[data-tap]:not(.tap-auto),
+  .touch-ui select:not(.tap-auto),
+  .touch-ui input:not([type="checkbox"]):not([type="radio"]):not(.tap-auto),
+  .touch-ui textarea:not(.tap-auto) {
+    min-height: 48px;
+  }
+}
+
 /* Brand mesh: Deep Blue → Sky Blue → Orange, the guideline's gradient trio (p.17). */
 @utility bg-mesh {
   background-image:
@@ -99,13 +140,11 @@ body {
     radial-gradient(at 50% 100%, rgb(246 146 30 / 0.05) 0px, transparent 50%);
 }
 
-@media (prefers-color-scheme: dark) {
-  .bg-mesh {
-    background-image:
-      radial-gradient(at 0% 0%, rgb(44 111 182 / 0.16) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgb(75 199 239 / 0.1) 0px, transparent 50%),
-      radial-gradient(at 50% 100%, rgb(246 146 30 / 0.07) 0px, transparent 50%);
-  }
+[data-theme="dark"] .bg-mesh {
+  background-image:
+    radial-gradient(at 0% 0%, rgb(44 111 182 / 0.16) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgb(75 199 239 / 0.1) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgb(246 146 30 / 0.07) 0px, transparent 50%);
 }
 
 @utility surface {
@@ -128,6 +167,40 @@ body {
   box-shadow:
     0 10px 24px -8px rgb(0 0 0 / 0.1),
     0 4px 8px -4px rgb(0 0 0 / 0.05);
+}
+
+/* Toast / undo bar entrance. Kept short (160ms) — the undo bar must be readable
+   the instant it appears, it is not a decorative animation. */
+@keyframes wms-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@utility animate-toast-in {
+  animation: wms-toast-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Countdown bar under a toast: the remaining time is visible, so nobody has to
+   guess how long they still have to take an action back. */
+@keyframes wms-undo-bar {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-toast-in {
+    animation: none;
+  }
 }
 
 /* Rotate the balance-tree chevron when its own <details> is open (reliable
