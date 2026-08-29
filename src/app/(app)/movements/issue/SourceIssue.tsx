@@ -273,6 +273,9 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   const [lines, setLines] = useState<WorkingLine[]>([]);
   const [pendingPicks, setPendingPicks] = useState<PendingPick[]>([]);
   const [loadingLines, setLoadingLines] = useState(false);
+  // ແຖວທີ່ກາງລາຍການສິນຄ້າອອກ. ເມື່ອກ່ອນເປັນ <details> ລະບັດ — ດຽວນີ້ເປັນຕາຕະລາງ
+  // ຈຶ່ງຕ້ອງຈື່ເອງວ່າແຖວໃດເປີດຢູ່.
+  const [openDocs, setOpenDocs] = useState<Set<string>>(new Set());
 
   const [serialPickerFor, setSerialPickerFor] = useState<string | null>(null);
   const [serialSearch, setSerialSearch] = useState("");
@@ -414,6 +417,15 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
     // Nothing allocatable (all locations zero) → one empty row on the first loc.
     if (allocs.length === 0) allocs.push({ ...base, key: `${l.item_code}#a0`, selIdx: 0, qty: "" });
     return allocs;
+  }
+
+  /** ກາງ/ຍຸບລາຍການສິນຄ້າຂອງໃບໜຶ່ງໃນຕາຕະລາງ. */
+  function toggleDoc(key: string) {
+    setOpenDocs((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
   }
 
   async function openDoc(doc: PendingDoc) {
@@ -863,78 +875,154 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                       </span>
                     }
                   >
-                    <div className="space-y-4">
-                {g.rows.map((d) => {
-                  const cleaned = parseAndCleanRemark(d.remark);
-                  const customerDisplay = cleaned.customer || d.cust_name?.trim() || d.cust_code || "—";
-                  const today = new Date().toISOString().slice(0, 10);
-                  const overdueWant = !!d.want_date && d.want_date < today;
-                  const typeLabel = SOURCE_TYPES.find((t) => t.key === type)?.label;
-                  let typeBadge = "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300";
-                  if (type === "transfer") typeBadge = "bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300";
-                  else if (type === "sale") typeBadge = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300";
-                  return (
-                    <details key={`${d.wh_code}-${d.doc_no}`} open={docs.length <= 4} className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-                      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-5 py-3.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 font-mono text-[10px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">{d.wh_code.slice(-2)}</div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{d.doc_no}</span>
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">ຄ້າງຈ່າຍ</span>
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${typeBadge}`}>{typeLabel}</span>
-                            {overdueWant && <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">ກາຍກຳນົດ</span>}
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-                            {d.doc_date && <span className="inline-flex items-center gap-1"><CalendarIcon className="h-3 w-3" />ອອກເອກະສານ {fmtDate(d.doc_date)}{d.doc_time ? ` ${d.doc_time.slice(0, 5)}` : ""}</span>}
-                            <Elapsed since={d.created_at} />
-                            {d.want_date && <span className={`inline-flex items-center gap-1 ${overdueWant ? "font-bold text-red-600 dark:text-red-400" : ""}`}><CalendarIcon className="h-3 w-3" />ຕ້ອງການ {fmtDate(d.want_date)}</span>}
-                            <span className="inline-flex items-center gap-1"><UserIcon className="h-3 w-3" />{customerDisplay}</span>
-                            <span className="inline-flex items-center gap-1"><BuildingIcon className="h-3 w-3" />{d.wh_code}{warehouses.find((w) => w.code === d.wh_code)?.name ? ` · ${warehouses.find((w) => w.code === d.wh_code)?.name}` : ""}</span>
-                            {cleaned.address && <span className="inline-flex items-center gap-1"><MapPinIcon className="h-3 w-3" />{cleaned.address}</span>}
-                            {cleaned.phone && <span className="inline-flex items-center gap-1"><PhoneIcon className="h-3 w-3" />{cleaned.phone}</span>}
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <div className="text-right">
-                            <div className="text-[10px] uppercase text-zinc-400">ຄ້າງເບີກ</div>
-                            <div className="font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatQty(d.remaining_qty)}</div>
-                            <div className="text-[10px] text-zinc-400">{d.line_count} ລາຍການ</div>
-                            {Number.parseFloat(d.pending_qty ?? "0") > 0 && (
-                              <div className="mt-0.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" title="ຢູ່ໃນໃບ pick ທີ່ຍັງບໍ່ໄດ້ຢືນຢັນ — ຫັກອອກຈາກຄ້າງເບີກແລ້ວ">
-                                ໃນໃບ pick {formatQty(d.pending_qty)}
-                              </div>
-                            )}
-                          </div>
-                          <button type="button" onClick={(e) => { e.preventDefault(); openDoc(d); }} disabled={loadingLines} className="rounded-lg bg-gradient-to-r from-red-500 to-orange-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:shadow active:scale-95 disabled:opacity-50 cursor-pointer">ສ້າງໃບຈ່າຍ →</button>
-                        </div>
-                      </summary>
-                      {d.lines.length > 0 && (
-                        <div className="border-t border-zinc-100 dark:border-zinc-800">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/50">
-                                <th className="px-4 py-2">ສິນຄ້າ</th>
-                                <th className="px-4 py-2 text-right">ຄ້າງເບີກ</th>
+                    {/* ຕາຕະລາງ — ໜຶ່ງແຖວຕໍ່ໜຶ່ງໃບ. ເມື່ອກ່ອນເປັນບັດຊ້ອນກັນ
+                        ຊຶ່ງເປັນຕາຕະລາງທີ່ຖືກຂຽນດ້ວຍ div: ຂໍ້ມູນຢູ່ຄົນລະບ່ອນທຸກແຖວ
+                        ຈຶ່ງທຽບກັນບໍ່ໄດ້. ຖັນທີ່ຕົງກັນເຮັດໃຫ້ກວາດຕາລົງມາແລ້ວ
+                        ຮູ້ທັນທີວ່າໃບໃດຄ້າງດົນທີ່ສຸດ ຫຼື ຄ້າງເບີກຫຼາຍທີ່ສຸດ. */}
+                    <div className="hidden overflow-x-auto rounded-2xl bg-white ring-1 ring-zinc-200 md:block dark:bg-zinc-900 dark:ring-zinc-800">
+                      <table className="w-full min-w-[900px] text-sm">
+                        <thead>
+                          <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-800/50">
+                            <th scope="col" className="w-8 px-2 py-2.5"><span className="sr-only">ກາງລາຍການ</span></th>
+                            <th scope="col" className="px-3 py-2.5">ເລກໃບ</th>
+                            <th scope="col" className="px-3 py-2.5">ອອກເອກະສານ</th>
+                            <th scope="col" className="px-3 py-2.5">ຄ້າງມາແລ້ວ</th>
+                            <th scope="col" className="hidden px-3 py-2.5 xl:table-cell">ຕ້ອງການ</th>
+                            <th scope="col" className="px-3 py-2.5">ລູກຄ້າ</th>
+                            <th scope="col" className="hidden px-3 py-2.5 lg:table-cell">ສາງ</th>
+                            <th scope="col" className="px-3 py-2.5 text-right">ຄ້າງເບີກ</th>
+                            <th scope="col" className="px-3 py-2.5 text-right">ລາຍການ</th>
+                            <th scope="col" className="px-3 py-2.5 text-right"><span className="sr-only">ດຳເນີນການ</span></th>
+                          </tr>
+                        </thead>
+                        {g.rows.map((d) => {
+                          const key = `${d.wh_code}-${d.doc_no}`;
+                          const cleaned = parseAndCleanRemark(d.remark);
+                          const customerDisplay = cleaned.customer || d.cust_name?.trim() || d.cust_code || "—";
+                          const today = new Date().toISOString().slice(0, 10);
+                          const overdueWant = !!d.want_date && d.want_date < today;
+                          const typeLabel = SOURCE_TYPES.find((t) => t.key === type)?.label;
+                          let typeBadge = "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300";
+                          if (type === "transfer") typeBadge = "bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300";
+                          else if (type === "sale") typeBadge = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300";
+                          const expanded = openDocs.has(key);
+                          const pendingPick = Number.parseFloat(d.pending_qty ?? "0") > 0;
+                          return (
+                            <tbody key={key} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                              <tr className={expanded ? "bg-red-50/40 dark:bg-red-950/10" : "transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40"}>
+                                <td className="px-2 py-2.5 align-top">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleDoc(key)}
+                                    aria-expanded={expanded}
+                                    aria-label={expanded ? `ຍຸບລາຍການຂອງ ${d.doc_no}` : `ກາງລາຍການຂອງ ${d.doc_no}`}
+                                    disabled={d.lines.length === 0}
+                                    className="rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-30 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                                  >
+                                    <ChevronRightIcon className={`h-4 w-4 transition-transform ${expanded ? "rotate-90" : ""}`} />
+                                  </button>
+                                </td>
+                                <td className="px-3 py-2.5 align-top">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{d.doc_no}</span>
+                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${typeBadge}`}>{typeLabel}</span>
+                                    {overdueWant && <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">ກາຍກຳນົດ</span>}
+                                  </div>
+                                  {(cleaned.address || cleaned.phone) && (
+                                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-zinc-400">
+                                      {cleaned.address && <span className="inline-flex items-center gap-1"><MapPinIcon className="h-2.5 w-2.5" />{cleaned.address}</span>}
+                                      {cleaned.phone && <span className="inline-flex items-center gap-1"><PhoneIcon className="h-2.5 w-2.5" />{cleaned.phone}</span>}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 align-top font-mono text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400">
+                                  {d.doc_date ? `${fmtDate(d.doc_date)}${d.doc_time ? ` ${d.doc_time.slice(0, 5)}` : ""}` : "—"}
+                                </td>
+                                <td className="px-3 py-2.5 align-top text-[11px]"><Elapsed since={d.created_at} /></td>
+                                <td className={`hidden px-3 py-2.5 align-top font-mono text-[11px] tabular-nums xl:table-cell ${overdueWant ? "font-bold text-red-600 dark:text-red-400" : "text-zinc-500 dark:text-zinc-400"}`}>
+                                  {d.want_date ? fmtDate(d.want_date) : "—"}
+                                </td>
+                                <td className="max-w-[16rem] px-3 py-2.5 align-top">
+                                  <span className="block truncate text-xs text-zinc-700 dark:text-zinc-300" title={customerDisplay}>{customerDisplay}</span>
+                                </td>
+                                <td className="hidden px-3 py-2.5 align-top lg:table-cell">
+                                  <span className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400" title={warehouses.find((w) => w.code === d.wh_code)?.name ?? undefined}>{d.wh_code}</span>
+                                </td>
+                                <td className="px-3 py-2.5 text-right align-top">
+                                  <div className="font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{formatQty(d.remaining_qty)}</div>
+                                  {pendingPick && (
+                                    <div className="mt-0.5 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" title="ຢູ່ໃນໃບ pick ທີ່ຍັງບໍ່ໄດ້ຢືນຢັນ — ຫັກອອກຈາກຄ້າງເບີກແລ້ວ">
+                                      ໃນໃບ pick {formatQty(d.pending_qty)}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 text-right align-top font-mono text-sm tabular-nums text-zinc-600 dark:text-zinc-300">{d.line_count}</td>
+                                <td className="px-3 py-2.5 text-right align-top">
+                                  <button type="button" onClick={() => openDoc(d)} disabled={loadingLines} className="cursor-pointer whitespace-nowrap rounded-lg bg-gradient-to-r from-red-500 to-orange-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:shadow active:scale-95 disabled:opacity-50">ສ້າງໃບຈ່າຍ →</button>
+                                </td>
                               </tr>
-                            </thead>
-                            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                              {d.lines.map((l, idx) => (
-                                <tr key={`${d.doc_no}-${l.item_code}-${idx}`}>
-                                  <td className="px-4 py-2">
-                                    <div className="font-mono text-[11px] font-bold text-red-600 dark:text-red-400">{l.item_code}</div>
-                                    <div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={l.item_name ?? ""}>{l.item_name ?? "—"}</div>
+                              {expanded && d.lines.length > 0 && (
+                                <tr className="bg-zinc-50/60 dark:bg-zinc-950/40">
+                                  <td colSpan={10} className="px-3 pb-3 pt-0">
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                                          <th scope="col" className="py-1.5 pl-9">ສິນຄ້າ</th>
+                                          <th scope="col" className="py-1.5 pr-3 text-right">ຄ້າງເບີກ</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-zinc-200/70 dark:divide-zinc-800">
+                                        {d.lines.map((l, idx) => (
+                                          <tr key={`${d.doc_no}-${l.item_code}-${idx}`}>
+                                            <td className="py-1.5 pl-9">
+                                              <span className="font-mono text-[11px] font-bold text-red-600 dark:text-red-400">{l.item_code}</span>
+                                              <span className="ml-2 text-xs text-zinc-700 dark:text-zinc-300" title={l.item_name ?? ""}>{l.item_name ?? "—"}</span>
+                                            </td>
+                                            <td className="py-1.5 pr-3 text-right font-mono text-xs font-semibold tabular-nums text-zinc-700 dark:text-zinc-300">
+                                              {formatQty(l.remaining)}<span className="ml-1 text-[10px] uppercase text-zinc-400">{l.unit_code}</span>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
                                   </td>
-                                  <td className="px-4 py-2 text-right font-mono text-xs font-semibold tabular-nums text-zinc-700 dark:text-zinc-300">{formatQty(l.remaining)}<span className="ml-1 text-[10px] uppercase text-zinc-400">{l.unit_code}</span></td>
                                 </tr>
-                              ))}
+                              )}
                             </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </details>
-                  );
-                })}
+                          );
+                        })}
+                      </table>
                     </div>
+
+                    {/* < md — ຕາຕະລາງ 10 ຖັນເລື່ອນຊ້າຍຂວາເທິງມືຖືບໍ່ໄດ້ຄວາມ
+                        ຈຶ່ງເປັນບັດລະໃບ ຂໍ້ມູນຊຸດດຽວກັນ. */}
+                    <ul className="flex flex-col gap-2 md:hidden">
+                      {g.rows.map((d) => {
+                        const cleaned = parseAndCleanRemark(d.remark);
+                        const customerDisplay = cleaned.customer || d.cust_name?.trim() || d.cust_code || "—";
+                        const today = new Date().toISOString().slice(0, 10);
+                        const overdueWant = !!d.want_date && d.want_date < today;
+                        return (
+                          <li key={`m-${d.wh_code}-${d.doc_no}`} className="rounded-2xl bg-white p-4 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="font-mono text-sm font-bold">{d.doc_no}</span>
+                                  {overdueWant && <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">ກາຍກຳນົດ</span>}
+                                </div>
+                                <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">{customerDisplay}</p>
+                                <p className="mt-1 text-[11px]"><Elapsed since={d.created_at} /></p>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <div className="font-mono text-xl font-bold tabular-nums text-red-600 dark:text-red-400">{formatQty(d.remaining_qty)}</div>
+                                <div className="text-[10px] text-zinc-400">{d.line_count} ລາຍການ</div>
+                              </div>
+                            </div>
+                            <button type="button" onClick={() => openDoc(d)} disabled={loadingLines} className="mt-3 w-full rounded-xl bg-gradient-to-r from-red-500 to-orange-600 px-3 py-2.5 text-sm font-bold text-white disabled:opacity-50">ສ້າງໃບຈ່າຍ →</button>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </WarehouseGroup>
                 ))}
               </div>
