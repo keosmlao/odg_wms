@@ -203,6 +203,18 @@ body {
   }
 }
 
+/* ຕາຕະລາງທີ່ກາງແຖວລາຍລະອຽດໄດ້ ໂດຍບໍ່ຕ້ອງໃຊ້ JavaScript.
+   ໜ້າປະຫວັດເປັນ server component (ດຶງຂໍ້ມູນຈາກ DB ໂດຍກົງ) ຈຶ່ງໃຊ້ useState ບໍ່ໄດ້
+   ແລະ <details> ວາງໃນ <table> ບໍ່ໄດ້. ໃຊ້ checkbox ທີ່ເຊື່ອງໄວ້ + :has() ແທນ —
+   ແຕ່ລະໃບເປັນ <tbody> ຂອງໂຕເອງ ຂອບເຂດຈຶ່ງບໍ່ຮົ່ວໄປແຖວອື່ນ. */
+tbody.wms-row > tr.wms-detail {
+  display: none;
+}
+
+tbody.wms-row:has(input.wms-toggle:checked) > tr.wms-detail {
+  display: table-row;
+}
+
 /* Rotate the balance-tree chevron when its own <details> is open (reliable
    across nesting, unlike Tailwind group-open). */
 details[open] > summary .wms-chevron {

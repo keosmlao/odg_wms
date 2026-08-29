@@ -8,6 +8,7 @@ import { Chip, KpiCard, EmptyState } from "@/components/ui/Card";
 import {
   BuildingIcon,
   CalendarIcon,
+  ChevronRightIcon,
   ListIcon,
   PackageIcon,
   SearchIcon,
@@ -309,6 +310,72 @@ export default async function IssueHistory({
 
   const todayCount = pageDocs.filter((d) => d.doc_date === today).length;
 
+  /**
+   * ລາຍລະອຽດຂອງໃບໜຶ່ງ — ສິນຄ້າ, ເອກະສານກ່ຽວຂ້ອງ ແລະ ປະຫວັດການຍິງ SN.
+   * ໃຊ້ຊ້ຳທັງແຖວທີ່ກາງອອກໃນຕາຕະລາງ (desktop) ແລະ ໃນບັດ (ມືຖື) ເພື່ອບໍ່ໃຫ້
+   * ສອງມຸມມອງເລີ່ມສະແດງຄົນລະຢ່າງເມື່ອມີການແກ້ພາຍຫຼັງ.
+   */
+  const renderDetail = (d: DocRow) => {
+    const docLines = linesByDoc.get(d.doc_no) ?? [];
+    const erpDocs = erpByDoc.get(d.doc_no) ?? [];
+    return (
+      <div className="border-t border-zinc-100 dark:border-zinc-800">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/50">
+              <th scope="col" className="px-4 py-2">ສິນຄ້າ</th>
+              <th scope="col" className="px-4 py-2">ພື້ນທີ່</th>
+              <th scope="col" className="px-4 py-2 text-right">ຈ່າຍອອກ</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            {docLines.map((l, idx) => {
+              const loc = [l.shelf_code, l.shelf_code1, l.pallet].filter(Boolean).join(" / ");
+              return (
+                <tr key={`${l.doc_no}-${l.item_code}-${idx}`}>
+                  <td className="px-4 py-2">
+                    <div className="font-mono text-[11px] font-bold text-red-600 dark:text-red-400">{l.item_code}</div>
+                    <div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={l.item_name ?? ""}>{l.item_name ?? "—"}</div>
+                  </td>
+                  <td className="px-4 py-2 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">{loc || "—"}</td>
+                  <td className="px-4 py-2 text-right font-mono text-xs font-bold tabular-nums text-red-600 dark:text-red-400">
+                    −{formatQty(l.qty)}
+                    <span className="ml-1 text-[10px] uppercase text-zinc-400">{l.unit_code}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {/* ເອກະສານທີ່ກ່ຽວຂ້ອງ */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/40 px-4 py-2.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950/20">
+          <span className="font-bold text-zinc-500 dark:text-zinc-400">ເອກະສານກ່ຽວຂ້ອງ:</span>
+          <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-red-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-red-400 dark:ring-zinc-800" title="WMS ໃບຈ່າຍ">DP · {d.doc_no}</span>
+          {d.doc_ref && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-brand-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-brand-400 dark:ring-zinc-800" title="ໃບຂໍ (ຕົ້ນທາງ)">ໃບຂໍ · {d.doc_ref}</span>
+          )}
+          {erpDocs.map((e) => (
+            <span key={e.doc_no + e.label}
+              className={`inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800 ${e.label === "ໃບໂອນເຂົ້າ" ? "text-aqua-700 dark:text-aqua-400" : "text-emerald-700 dark:text-emerald-400"}`}
+              title={e.label === "ໃບໂອນເຂົ້າ" ? "ຮັບໂອນເຂົ້າສາງປາຍທາງ (ERP)" : "ERP"}>
+              {e.label} · {e.doc_no}
+            </span>
+          ))}
+          {erpDocs.length === 0 && (
+            <span className="text-[10px] text-zinc-400">(ບໍ່ມີ ERP doc ຫຼື ຍັງບໍ່ post)</span>
+          )}
+        </div>
+
+        {/* ປະຫວັດການຍິງ SN ຕອນຢືນຢັນ — ໄວ້ກວດຄືນເມື່ອຈ່າຍຜິດບ່ອນ / ຜິດໜ່ວຍ */}
+        <div className="border-t border-zinc-100 p-3 dark:border-zinc-800">
+          <ScanLogPanel issue={d.doc_no} />
+        </div>
+      </div>
+    );
+  };
+
+
   // ຂໍ້ຄວາມບ່ອນວ່າງເປົ່າຄວນລະບຸໃຫ້ຊັດວ່າ "ສາງໃດ" ບໍ່ມີ — ຄົນສ່ວນຫຼາຍເຫັນສິດແຕ່
   // ສາງດຽວ ຈຶ່ງເຂົ້າໃຈຜິດວ່າທັງລະບົບບໍ່ມີຂໍ້ມູນ.
   const scopeNames = whOptions
@@ -431,40 +498,125 @@ export default async function IssueHistory({
           }
         />
       ) : (
-        <div className="space-y-3">
-          {pageDocs.map((d) => {
-            const docLines = linesByDoc.get(d.doc_no) ?? [];
-            return (
-              <details key={d.doc_no} open={pageDocs.length <= 5} className="group shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-5 py-3.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 font-mono text-[10px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">
-                    {(d.wh_code ?? "?").slice(-2)}
-                  </div>
+        <>
+          {/* ≥md — ຕາຕະລາງ. ໜຶ່ງແຖວຕໍ່ໜຶ່ງໃບ ຖັນຕົງກັນ ຈຶ່ງກວາດຕາທຽບ
+              ຈຳນວນຈ່າຍອອກ ຫຼື ຜູ້ຈ່າຍ ລົງມາໄດ້ — ບັດຊ້ອນກັນເຮັດແບບນັ້ນບໍ່ໄດ້.
+              ກົດລູກສອນເພື່ອກາງລາຍລະອຽດ (ສິນຄ້າ, ເອກະສານກ່ຽວຂ້ອງ, ປະຫວັດຍິງ SN). */}
+          <div className="shadow-card hidden overflow-x-auto rounded-2xl bg-white ring-1 ring-zinc-200 md:block dark:bg-zinc-900 dark:ring-zinc-800">
+            <table className="w-full min-w-[880px] text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-800/50">
+                  <th scope="col" className="w-9 px-2 py-2.5"><span className="sr-only">ກາງລາຍລະອຽດ</span></th>
+                  <th scope="col" className="px-3 py-2.5">ເລກໃບ</th>
+                  <th scope="col" className="px-3 py-2.5">ວັນທີ</th>
+                  <th scope="col" className="hidden px-3 py-2.5 lg:table-cell">ສາງ</th>
+                  <th scope="col" className="hidden px-3 py-2.5 xl:table-cell">ຜູ້ຈ່າຍ</th>
+                  <th scope="col" className="px-3 py-2.5 text-right">ຈ່າຍອອກ</th>
+                  <th scope="col" className="px-3 py-2.5 text-right">ລາຍການ</th>
+                  <th scope="col" className="px-3 py-2.5 text-right"><span className="sr-only">ດຳເນີນການ</span></th>
+                </tr>
+              </thead>
+              {pageDocs.map((d) => (
+                <tbody
+                  key={d.doc_no}
+                  className="wms-row border-b border-zinc-100 last:border-0 dark:border-zinc-800/60"
+                >
+                  <tr className="transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
+                    <td className="px-2 py-2.5 align-top">
+                      <label
+                        title="ກາງ / ຍຸບລາຍລະອຽດ"
+                        className="inline-flex cursor-pointer rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                      >
+                        <input
+                          type="checkbox"
+                          className="wms-toggle peer sr-only"
+                          defaultChecked={pageDocs.length <= 3}
+                          aria-label={`ລາຍລະອຽດຂອງ ${d.doc_no}`}
+                        />
+                        <ChevronRightIcon className="h-4 w-4 transition-transform peer-checked:rotate-90" />
+                      </label>
+                    </td>
+                    <td className="px-3 py-2.5 align-top">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{d.doc_no}</span>
+                        {d.doc_ref && <Chip tone="red">ref: {d.doc_ref}</Chip>}
+                        {d.trip_doc_no && (
+                          <Chip tone="brand">🚚 {d.trip_doc_no}{d.trip_car_name || d.trip_car ? ` · ${d.trip_car_name ?? d.trip_car}` : ""}</Chip>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 align-top font-mono text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400">
+                      {fmtDate(d.doc_date)}{d.doc_time ? ` ${d.doc_time}` : ""}
+                    </td>
+                    <td className="hidden px-3 py-2.5 align-top text-xs text-zinc-500 lg:table-cell dark:text-zinc-400">
+                      {d.wh_code ? (
+                        <span className="inline-flex items-center gap-1">
+                          <BuildingIcon className="h-3 w-3" />
+                          {d.wh_code}{d.wh_name ? ` · ${d.wh_name}` : ""}
+                        </span>
+                      ) : "—"}
+                    </td>
+                    <td className="hidden max-w-[14rem] px-3 py-2.5 align-top text-xs text-zinc-500 xl:table-cell dark:text-zinc-400">
+                      <span className="block truncate">
+                        {d.creator_name ?? d.creator_code ?? "—"}
+                        {d.creator_name && d.creator_code ? ` (${d.creator_code})` : ""}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right align-top font-mono text-base font-bold tabular-nums text-red-600 dark:text-red-400">
+                      −{formatQty(d.out_qty)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right align-top font-mono text-sm tabular-nums text-zinc-600 dark:text-zinc-300">
+                      {d.line_count}
+                    </td>
+                    <td className="px-3 py-2.5 align-top">
+                      <div className="flex items-center justify-end gap-1">
+                        <a href={`/print/wms/${encodeURIComponent(d.doc_no)}`} target="_blank" rel="noopener"
+                          title="ເບິ່ງລາຍລະອຽດ SN / ISN + ບ່ອນຈ່າຍອອກ" className="shrink-0 rounded-lg p-1.5 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-brand-50 hover:text-brand-600 dark:ring-zinc-800">👁</a>
+                        <a href={`/print/wms/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener"
+                          title="ພິມໃບຈ່າຍ / ໃບໂອນ (ມີ SN + ບ່ອນເກັບ)" className="shrink-0 rounded-lg p-1.5 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-slate-50 hover:text-slate-700 dark:ring-zinc-800">🖨</a>
+                        <a href={`/print/wms/${encodeURIComponent(d.doc_no)}/bill?auto=1`} target="_blank" rel="noopener"
+                          title="ພິມໃບບິນໂອນ (ສະເພາະສິນຄ້າ + ຈຳນວນ · ບໍ່ມີບ່ອນເກັບ)" className="shrink-0 rounded-lg px-2 py-1.5 text-[10px] font-bold text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-emerald-50 hover:text-emerald-700 dark:ring-zinc-800">🧾 ບິນ</a>
+                        {transferOutDocs.has(d.doc_no) && !canDeleteTransferOut ? (
+                          <span
+                            title="ບໍ່ມີສິດລົບໃບໂອນອອກ — ໃຫ້ຜູ້ຈັດການເປີດສິດໃນ ຕັ້ງຄ່າ › ຈັດການສິດເຂົ້າເຖິງ"
+                            className="shrink-0 cursor-not-allowed rounded-lg bg-zinc-50 px-2.5 py-1.5 text-xs font-semibold text-zinc-300 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-600 dark:ring-zinc-800"
+                          >
+                            🔒 ລົບ
+                          </span>
+                        ) : (
+                          <DeleteIssueButton docNo={d.doc_no} />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  <tr className="wms-detail bg-zinc-50/60 dark:bg-zinc-950/40">
+                    <td colSpan={8} className="px-0 pb-3 pt-0">
+                      {renderDetail(d)}
+                    </td>
+                  </tr>
+                </tbody>
+              ))}
+            </table>
+          </div>
+
+          {/* <md — ຕາຕະລາງ 8 ຖັນເທິງມືຖືຄືການເລື່ອນຊ້າຍຂວາ ຈຶ່ງເປັນບັດຄືເກົ່າ */}
+          <div className="space-y-3 md:hidden">
+            {pageDocs.map((d) => (
+              <details key={d.doc_no} open={pageDocs.length <= 3} className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
+                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-3.5">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">{d.doc_no}</span>
                       {d.doc_ref && <Chip tone="red">ref: {d.doc_ref}</Chip>}
-                      {d.trip_doc_no && (
-                        <Chip tone="brand">🚚 ຖ້ຽວ {d.trip_doc_no}{d.trip_car_name || d.trip_car ? ` · ${d.trip_car_name ?? d.trip_car}` : ""}</Chip>
-                      )}
-                      {d.wh_code && (
-                        <span className="inline-flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-                          <BuildingIcon className="h-3 w-3" />
-                          {d.wh_code}
-                          {d.wh_name ? ` · ${d.wh_name}` : ""}
-                        </span>
-                      )}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
                       <span className="inline-flex items-center gap-1">
                         <CalendarIcon className="h-3 w-3" />
-                        {fmtDate(d.doc_date)}
-                        {d.doc_time ? ` ${d.doc_time}` : ""}
+                        {fmtDate(d.doc_date)}{d.doc_time ? ` ${d.doc_time}` : ""}
                       </span>
                       <span className="inline-flex items-center gap-1">
                         <UserIcon className="h-3 w-3" />
                         {d.creator_name ?? d.creator_code ?? "—"}
-                        {d.creator_name && d.creator_code ? ` (${d.creator_code})` : ""}
                       </span>
                     </div>
                   </div>
@@ -472,81 +624,24 @@ export default async function IssueHistory({
                     <div className="font-mono text-base font-bold tabular-nums text-red-600 dark:text-red-400">−{formatQty(d.out_qty)}</div>
                     <div className="text-[10px] text-zinc-400">{d.line_count} ລາຍການ</div>
                   </div>
-                  <a href={`/print/wms/${encodeURIComponent(d.doc_no)}`} target="_blank" rel="noopener"
-                    title="ເບິ່ງລາຍລະອຽດ SN / ISN + ບ່ອນຈ່າຍອອກ" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-brand-50 hover:text-brand-600 dark:ring-zinc-800">👁</a>
-                  <a href={`/print/wms/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener"
-                    title="ພິມໃບຈ່າຍ / ໃບໂອນ (ມີ SN + ບ່ອນເກັບ)" className="shrink-0 rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-slate-50 hover:text-slate-700 dark:ring-zinc-800">🖨</a>
-                  <a href={`/print/wms/${encodeURIComponent(d.doc_no)}/bill?auto=1`} target="_blank" rel="noopener"
-                    title="ພິມໃບບິນໂອນ (ສະເພາະສິນຄ້າ + ຈຳນວນ · ບໍ່ມີບ່ອນເກັບ)" className="shrink-0 rounded-lg px-2 py-2 text-[10px] font-bold text-zinc-400 ring-1 ring-zinc-200 transition hover:bg-emerald-50 hover:text-emerald-700 dark:ring-zinc-800">🧾 ບິນ</a>
-                  {transferOutDocs.has(d.doc_no) && !canDeleteTransferOut ? (
-                    <span
-                      title="ບໍ່ມີສິດລົບໃບໂອນອອກ — ໃຫ້ຜູ້ຈັດການເປີດສິດໃນ ຕັ້ງຄ່າ › ຈັດການສິດເຂົ້າເຖິງ"
-                      className="shrink-0 cursor-not-allowed rounded-lg bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-300 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-600 dark:ring-zinc-800"
-                    >
-                      🔒 ລົບ
-                    </span>
-                  ) : (
-                    <DeleteIssueButton docNo={d.doc_no} />
-                  )}
                 </summary>
-
-                <div className="border-t border-zinc-100 dark:border-zinc-800">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/50">
-                        <th className="px-4 py-2">ສິນຄ້າ</th>
-                        <th className="px-4 py-2">ພື້ນທີ່</th>
-                        <th className="px-4 py-2 text-right">ຈ່າຍອອກ</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                      {docLines.map((l, idx) => {
-                        const loc = [l.shelf_code, l.shelf_code1, l.pallet].filter(Boolean).join(" / ");
-                        return (
-                          <tr key={`${l.doc_no}-${l.item_code}-${idx}`}>
-                            <td className="px-4 py-2">
-                              <div className="font-mono text-[11px] font-bold text-red-600 dark:text-red-400">{l.item_code}</div>
-                              <div className="truncate text-xs text-zinc-700 dark:text-zinc-300" title={l.item_name ?? ""}>{l.item_name ?? "—"}</div>
-                            </td>
-                            <td className="px-4 py-2 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">{loc || "—"}</td>
-                            <td className="px-4 py-2 text-right font-mono text-xs font-bold tabular-nums text-red-600 dark:text-red-400">
-                              −{formatQty(l.qty)}
-                              <span className="ml-1 text-[10px] uppercase text-zinc-400">{l.unit_code}</span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-
-                  {/* ເອກະສານທີ່ກ່ຽວຂ້ອງ */}
-                  <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/40 px-4 py-2.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950/20">
-                    <span className="font-bold text-zinc-500 dark:text-zinc-400">ເອກະສານກ່ຽວຂ້ອງ:</span>
-                    <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-red-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-red-400 dark:ring-zinc-800" title="WMS ໃບຈ່າຍ">DP · {d.doc_no}</span>
-                    {d.doc_ref && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold text-brand-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-brand-400 dark:ring-zinc-800" title="ໃບຂໍ (ຕົ້ນທາງ)">ໃບຂໍ · {d.doc_ref}</span>
+                {renderDetail(d)}
+                <div className="flex flex-wrap items-center gap-1 border-t border-zinc-100 px-4 py-2.5 dark:border-zinc-800">
+                  <a href={`/print/wms/${encodeURIComponent(d.doc_no)}`} target="_blank" rel="noopener" className="rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 dark:ring-zinc-800">👁</a>
+                  <a href={`/print/wms/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener" className="rounded-lg p-2 text-zinc-400 ring-1 ring-zinc-200 dark:ring-zinc-800">🖨</a>
+                  <a href={`/print/wms/${encodeURIComponent(d.doc_no)}/bill?auto=1`} target="_blank" rel="noopener" className="rounded-lg px-2 py-2 text-[10px] font-bold text-zinc-400 ring-1 ring-zinc-200 dark:ring-zinc-800">🧾 ບິນ</a>
+                  <span className="ml-auto">
+                    {transferOutDocs.has(d.doc_no) && !canDeleteTransferOut ? (
+                      <span className="cursor-not-allowed rounded-lg bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-300 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-600 dark:ring-zinc-800">🔒 ລົບ</span>
+                    ) : (
+                      <DeleteIssueButton docNo={d.doc_no} />
                     )}
-                    {(erpByDoc.get(d.doc_no) ?? []).map((e) => (
-                      <span key={e.doc_no + e.label}
-                        className={`inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-mono font-semibold ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800 ${e.label === "ໃບໂອນເຂົ້າ" ? "text-aqua-700 dark:text-aqua-400" : "text-emerald-700 dark:text-emerald-400"}`}
-                        title={e.label === "ໃບໂອນເຂົ້າ" ? "ຮັບໂອນເຂົ້າສາງປາຍທາງ (ERP)" : "ERP"}>
-                        {e.label} · {e.doc_no}
-                      </span>
-                    ))}
-                    {(erpByDoc.get(d.doc_no) ?? []).length === 0 && (
-                      <span className="text-[10px] text-zinc-400">(ບໍ່ມີ ERP doc ຫຼື ຍັງບໍ່ post)</span>
-                    )}
-                  </div>
-
-                  {/* ປະຫວັດການຍິງ SN ຕອນຢືນຢັນ — ໄວ້ກວດຄືນເມື່ອຈ່າຍຜິດບ່ອນ / ຜິດໜ່ວຍ */}
-                  <div className="border-t border-zinc-100 p-3 dark:border-zinc-800">
-                    <ScanLogPanel issue={d.doc_no} />
-                  </div>
+                  </span>
                 </div>
               </details>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        </>
       )}
 
       {pageDocs.length > 0 && (
