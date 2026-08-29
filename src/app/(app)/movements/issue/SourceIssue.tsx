@@ -12,6 +12,7 @@ import {
   PackageIcon,
   SearchIcon,
   UserIcon,
+  XIcon,
   ChevronRightIcon,
   MapPinIcon,
 } from "@/components/ui/Icons";
@@ -785,18 +786,13 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
       {/* STEP 1 — pick source document */}
       {!selDoc && (
         <div className="space-y-4">
-          {/* Header Row: ຂອບເຂດສາງ (ອ່ານຢ່າງດຽວ) + Document Type Tabs */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-50/60 px-3.5 text-sm font-bold text-zinc-700 ring-1 ring-zinc-200 dark:bg-zinc-950/60 dark:text-zinc-200 dark:ring-zinc-800">
-              <BuildingIcon className="h-4.5 w-4.5 text-zinc-400 dark:text-zinc-500" />
-              ທຸກສາງ
-              <span className="rounded-full bg-zinc-200/70 px-2 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                {warehouses.length}
-              </span>
-            </div>
-
-            {/* Document Type Tabs */}
-            <div className="inline-flex h-11 items-center rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800/60">
+          {/* ແຖບເຄື່ອງມື — ປະເພດເອກະສານ, ຄົ້ນຫາ ແລະ ຂອບເຂດສາງ ຢູ່ແຖວດຽວ.
+              ເມື່ອກ່ອນ tab ຢູ່ຂອບຂວາສຸດ ສ່ວນຊິບສາງຢູ່ຂອບຊ້າຍສຸດ ແລ້ວຊ່ອງຄົ້ນຫາ
+              ເປັນແຖວທີສາມ — ຕາຕ້ອງກວາດຂ້າມຈໍໄປມາເພື່ອປ່ຽນສິ່ງທີ່ກຳລັງເບິ່ງ.
+              ຈັດໃໝ່ຕາມລຳດັບຄວາມສຳຄັນ: ປະເພດ (ປ່ຽນລາຍການ) → ຄົ້ນຫາ → ສາງ (ອ່ານຢ່າງດຽວ).
+              sticky ໄວ້ເພື່ອໃຫ້ຕົວກອງຄ້າງຢູ່ຂະນະເລື່ອນເບິ່ງຕາຕະລາງຍາວໆ. */}
+          <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-xl bg-zinc-50/85 px-1 py-2 backdrop-blur-md dark:bg-zinc-950/85">
+            <div className="inline-flex h-10 items-center rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800/60">
               {SOURCE_TYPES.map((t) => {
                 const active = tab === t.key;
                 return (
@@ -805,16 +801,50 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                     type="button"
                     onClick={() => setTab(t.key)}
                     title={t.hint}
-                    className={`flex-1 lg:flex-none lg:w-28 h-full rounded-lg text-xs font-extrabold transition-all duration-305 flex items-center justify-center ${
+                    className={`flex h-full items-center justify-center rounded-lg px-3.5 text-xs font-extrabold transition ${
                       active
-                        ? "bg-gradient-to-r from-red-500 to-orange-600 text-white shadow-md shadow-red-500/20 scale-100"
-                        : "text-zinc-650 hover:text-zinc-955 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-white/45 dark:hover:bg-zinc-700/30 active:scale-95"
+                        ? "bg-gradient-to-r from-red-500 to-orange-600 text-white shadow-sm shadow-red-500/20"
+                        : "text-zinc-600 hover:bg-white/60 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/40 dark:hover:text-zinc-100"
                     }`}
                   >
                     {t.label}
                   </button>
                 );
               })}
+            </div>
+
+            {tab !== "trip" && (
+              <div className="relative min-w-[14rem] flex-1">
+                <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="ສະແກນ / ພິມ ເລກເອກະສານ ຫຼື ສິນຄ້າ..."
+                  className="h-10 w-full rounded-xl bg-white pl-10 pr-9 text-sm text-zinc-900 outline-none ring-1 ring-zinc-200 transition hover:ring-zinc-300 focus:ring-2 focus:ring-red-500/40 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-800"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    aria-label="ລ້າງຄຳຄົ້ນຫາ"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 dark:text-zinc-500 dark:hover:bg-zinc-800"
+                  >
+                    <XIcon className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div
+              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-zinc-600 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800"
+              title="ລາຍການມາຈາກທຸກສາງທີ່ທ່ານມີສິດ — ແຍກກຸ່ມຕາມສາງຢູ່ຂ້າງລຸ່ມ"
+            >
+              <BuildingIcon className="h-4 w-4 text-zinc-400 dark:text-zinc-500" />
+              <span className="hidden sm:inline">ທຸກສາງ</span>
+              <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                {warehouses.length}
+              </span>
             </div>
           </div>
 
@@ -823,27 +853,6 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
             <TripIssue warehouses={warehouses} />
           ) : (
             <>
-          {/* Search Bar */}
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ສະແກນ / ພິມ ເລກເອກະສານ ຫຼື ສິນຄ້າ..."
-              className="w-full rounded-xl bg-zinc-50/50 dark:bg-zinc-950/40 pl-11 pr-11 py-3.5 text-sm text-zinc-900 dark:text-zinc-100 ring-1 ring-zinc-250 dark:ring-zinc-800 outline-none transition-all duration-300 hover:ring-zinc-300 focus:ring-2 focus:ring-red-500/30 focus:border-red-500 focus:bg-white dark:focus:bg-zinc-950 focus:shadow-lg focus:shadow-red-500/5 disabled:opacity-60"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:text-zinc-500 transition-colors"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-
           {/* Documents List */}
           <div>
             {loadingDocs ? (
