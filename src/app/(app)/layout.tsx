@@ -7,6 +7,7 @@ import QuickActions from "@/components/QuickActions";
 import ToastProvider from "@/components/ui/Toast";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { getSession } from "@/lib/session";
+import { BUILD_STAMP } from "@/lib/buildStamp";
 import { CalendarIcon, ScanIcon } from "@/components/ui/Icons";
 
 export default async function AppLayout({
@@ -36,7 +37,7 @@ export default async function AppLayout({
   return (
     <ToastProvider>
       <div className="bg-mesh flex h-dvh w-full bg-zinc-50 dark:bg-zinc-950">
-        <Sidebar session={session} />
+        <Sidebar session={session} buildStamp={BUILD_STAMP} />
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-10 flex h-14 items-center justify-between gap-4 border-b border-zinc-200/40 bg-white/60 px-4 backdrop-blur-xl shadow-sm shadow-zinc-100/50 sm:px-6 dark:border-zinc-800/40 dark:bg-zinc-900/60 dark:shadow-none">
             <div className="ml-12 flex min-w-0 items-center gap-3 text-sm md:ml-0">

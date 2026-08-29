@@ -10,7 +10,13 @@ import { ChevronRightIcon, ListIcon, SearchIcon } from "@/components/ui/Icons";
 // ລາຍການເມນູຢູ່ທີ່ src/lib/nav.tsx — ແຖບຂ້າງ, ຄົ້ນຫາຄຳສັ່ງ (Ctrl+K) ແລະ
 // ໜ້າຫຼັກມືຖື ອ່ານຈາກທະບຽນດຽວກັນ.
 
-export default function Sidebar({ session }: { session: Session | null }) {
+export default function Sidebar({
+  session,
+  buildStamp,
+}: {
+  session: Session | null;
+  buildStamp?: string;
+}) {
   const pathname = usePathname();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -163,7 +169,14 @@ export default function Sidebar({ session }: { session: Session | null }) {
         {!isCollapsed && (
           <div className="flex items-center justify-between border-t border-white/5 px-4 py-3 text-[10px] text-slate-400">
             <span>© ODG WMS</span>
-            <span className="rounded-full bg-white/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-slate-300">v1.2.0</span>
+            {/* ຮຸ່ນທີ່ກຳລັງແລ່ນ — ຖ້າຕົວເລກນີ້ບໍ່ປ່ຽນຫຼັງ deploy ແປວ່າ browser
+                ຍັງໃຊ້ໂຄ້ດເກົ່າຈາກ cache ບໍ່ແມ່ນ deploy ບໍ່ຂຶ້ນ. */}
+            <span
+              title={buildStamp ? `ຮຸ່ນທີ່ແລ່ນຢູ່: ${buildStamp}` : undefined}
+              className="rounded-full bg-white/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-slate-300"
+            >
+              {buildStamp ?? "v1.2.0"}
+            </span>
           </div>
         )}
       </aside>

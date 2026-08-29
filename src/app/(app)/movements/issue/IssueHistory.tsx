@@ -121,12 +121,16 @@ export default async function IssueHistory({
     args.push(wh);
     where.push(`h.wh_code = $${args.length}`);
   }
+  // ຈື່ຕຳແໜ່ງຂອງ argument ວັນທີ ເພື່ອຖອດມັນອອກໄດ້ຕອນນັບ "ນອກຊ່ວງວັນທີ" ຂ້າງລຸ່ມ
+  const dateArgIndexes: { from: number; to: number } = { from: -1, to: -1 };
   if (fromDate) {
     args.push(fromDate);
+    dateArgIndexes.from = args.length - 1;
     where.push(`h.doc_date >= $${args.length}`);
   }
   if (toDate) {
     args.push(toDate);
+    dateArgIndexes.to = args.length - 1;
     where.push(`h.doc_date <= $${args.length}`);
   }
   if (search) {
@@ -187,6 +191,37 @@ export default async function IssueHistory({
   ]);
 
   const total = countRows[0]?.n ?? 0;
+
+  // ຜົນລັບເປັນສູນ ບອກບໍ່ໄດ້ວ່າ "ບໍ່ມີໃນຊ່ວງວັນທີນີ້" ຫຼື "ບໍ່ມີເລີຍ" — ສອງອັນນີ້
+  // ຄົນໃຊ້ຕ້ອງເຮັດຄົນລະຢ່າງ. ຄຳແນະນຳເກົ່າ ("ລອງປ່ຽນຊ່ວງວັນທີ") ຈຶ່ງພາໃຫ້ຄົນ
+  // ໄລ່ກົດຫາຢູ່ບໍ່ຮູ້ຈົບ ທັງທີ່ສາງຂອງລາວຍັງບໍ່ເຄີຍຈ່າຍຜ່ານ WMS ເລີຍ.
+  // ນັບຊ້ຳເທື່ອໜຶ່ງ ໂດຍຖອດສະເພາະຕົວກອງວັນທີອອກ ແລ້ວບອກຄວາມແຕກຕ່າງໃຫ້ຮູ້.
+  let outsideRange = 0;
+  if (total === 0 && (fromDate || toDate)) {
+    const dropped = new Set(
+      [dateArgIndexes.from, dateArgIndexes.to].filter((i) => i >= 0),
+    );
+    // ແຜນທີ່ $ເກົ່າ → $ໃໝ່. ຕ້ອງເປັນແຜນທີ່ ບໍ່ແມ່ນການນັບຕໍ່ໄປເລື້ອຍໆ ເພາະເງື່ອນໄຂ
+    // ຄົ້ນຫາອ້າງ argument ອັນດຽວກັນຫຼາຍເທື່ອ ($3 ຊ້ຳ 4 ບ່ອນ) — ຖ້ານັບຕໍ່ໄປ
+    // ຈະກາຍເປັນ $3 $4 $5 $6 ແລ້ວ query ຈະຂາດ argument.
+    const remap = new Map<number, number>();
+    let next = 0;
+    for (let i = 0; i < args.length; i++) {
+      if (dropped.has(i)) continue;
+      next += 1;
+      remap.set(i + 1, next);
+    }
+    const rebuilt = where
+      .filter((c) => !c.includes("h.doc_date >=") && !c.includes("h.doc_date <="))
+      .map((c) => c.replace(/\$(\d+)/g, (_m, d: string) => `$${remap.get(Number(d))}`));
+    const noDateArgs = args.filter((_, i) => !dropped.has(i));
+    const rows = await query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM public.odg_wms_trans h WHERE ${rebuilt.join(" AND ")}`,
+      noDateArgs,
+    );
+    outsideRange = rows[0]?.n ?? 0;
+  }
+
   const hasNext = docs.length > PAGE_SIZE;
   const pageDocs = hasNext ? docs.slice(0, PAGE_SIZE) : docs;
 
@@ -273,6 +308,19 @@ export default async function IssueHistory({
   for (const r of chainRows) for (const d of pageDocs) if (d.doc_ref === r.key) addErp(d.doc_no, r);
 
   const todayCount = pageDocs.filter((d) => d.doc_date === today).length;
+
+  // ຂໍ້ຄວາມບ່ອນວ່າງເປົ່າຄວນລະບຸໃຫ້ຊັດວ່າ "ສາງໃດ" ບໍ່ມີ — ຄົນສ່ວນຫຼາຍເຫັນສິດແຕ່
+  // ສາງດຽວ ຈຶ່ງເຂົ້າໃຈຜິດວ່າທັງລະບົບບໍ່ມີຂໍ້ມູນ.
+  const scopeNames = whOptions
+    .filter((w) => (wh ? w.code === wh : true))
+    .map((w) => `${w.code}${w.name ? ` ${w.name}` : ""}`);
+  const whLabel =
+    scopeNames.length === 0
+      ? "ສາງຂອງທ່ານ"
+      : scopeNames.length <= 2
+        ? `ສາງ ${scopeNames.join(" ແລະ ")}`
+        : `ທັງ ${scopeNames.length} ສາງທີ່ທ່ານມີສິດ`;
+
 
   const dateLabel = allTime
     ? "ທຸກວັນ"
@@ -371,8 +419,16 @@ export default async function IssueHistory({
       {pageDocs.length === 0 ? (
         <EmptyState
           icon={<PackageIcon className="h-7 w-7" />}
-          title="ບໍ່ມີປະຫວັດການຈ່າຍໃນຊ່ວງທີ່ເລືອກ"
-          description='ລອງປ່ຽນຊ່ວງວັນທີ ຫຼື ກົດ "ທຸກວັນ" ເພື່ອເບິ່ງທັງໝົດ'
+          title={
+            outsideRange > 0
+              ? "ບໍ່ມີປະຫວັດການຈ່າຍໃນຊ່ວງວັນທີນີ້"
+              : "ຍັງບໍ່ມີການຈ່າຍທີ່ເຮັດຜ່ານ WMS"
+          }
+          description={
+            outsideRange > 0
+              ? `ມີ ${outsideRange} ໃບຢູ່ນອກຊ່ວງທີ່ເລືອກ — ກົດ "ທຸກວັນ" ເພື່ອເບິ່ງທັງໝົດ`
+              : `${whLabel} ຍັງບໍ່ເຄີຍມີໃບຈ່າຍທີ່ສ້າງຜ່ານລະບົບນີ້. ໃບຈ່າຍທີ່ອອກຈາກ ERP ໂດຍກົງບໍ່ຂຶ້ນຢູ່ນີ້ — ເບິ່ງລາຍການທີ່ຍັງຄ້າງຈ່າຍໄດ້ທີ່ຂັ້ນຕອນ ① ສ້າງໃບ pick`
+          }
         />
       ) : (
         <div className="space-y-3">
