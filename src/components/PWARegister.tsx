@@ -17,7 +17,24 @@ export default function PWARegister() {
 
     const register = () => {
       navigator.serviceWorker
-        .register("/sw.js", { scope: "/" })
+        // updateViaCache: "none" — ບັງຄັບໃຫ້ browser ຖາມ server ຫາ sw.js ໃໝ່ສະເໝີ
+        // ແທນທີ່ຈະໃຊ້ສຳເນົາໃນ HTTP cache. ຖ້າບໍ່ມີອັນນີ້ ການ deploy ໃໝ່ອາດຈະ
+        // ບໍ່ຮອດເຄື່ອງຄົນໃຊ້ຈົນກວ່າ cache ຈະໝົດອາຍຸເອງ.
+        .register("/sw.js", { scope: "/", updateViaCache: "none" })
+        .then((reg) => {
+          // ກວດຫາຮຸ່ນໃໝ່ທຸກຄັ້ງທີ່ເປີດແອັບ — deploy ແລ້ວ refresh ເທື່ອດຽວກໍ່ເຫັນ
+          void reg.update();
+          reg.addEventListener("updatefound", () => {
+            const next = reg.installing;
+            if (!next) return;
+            next.addEventListener("statechange", () => {
+              // ມີ SW ໃໝ່ພ້ອມໃຊ້ ແລະ ມີອັນເກົ່າຄຸມຢູ່ → ໂຫຼດໃໝ່ໃຫ້ເລີຍ
+              if (next.state === "activated" && navigator.serviceWorker.controller) {
+                window.location.reload();
+              }
+            });
+          });
+        })
         .catch((err) => {
           // Non-fatal; the app works without SW.
           console.warn("SW registration failed:", err);

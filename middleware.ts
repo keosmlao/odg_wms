@@ -10,6 +10,11 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/api/logout") ||
     pathname.startsWith("/_next/") ||
     pathname === "/favicon.ico" ||
+    // PWA: ໄຟລ໌ເຫຼົ່ານີ້ browser ດຶງເອງໂດຍບໍ່ມີ session (ຕອນຕິດຕັ້ງ, ຕອນອັບເດດ SW).
+    // ຖ້າຖືກ redirect ໄປ /login ຈະໄດ້ HTML ແທນ JavaScript ແລ້ວ SW ຈະລົງທະບຽນບໍ່ໄດ້.
+    pathname === "/sw.js" ||
+    pathname === "/manifest.json" ||
+    pathname.startsWith("/icon") ||
     pathname.startsWith("/public/")
   ) {
     return NextResponse.next();
