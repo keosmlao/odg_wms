@@ -790,8 +790,11 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
               ເມື່ອກ່ອນ tab ຢູ່ຂອບຂວາສຸດ ສ່ວນຊິບສາງຢູ່ຂອບຊ້າຍສຸດ ແລ້ວຊ່ອງຄົ້ນຫາ
               ເປັນແຖວທີສາມ — ຕາຕ້ອງກວາດຂ້າມຈໍໄປມາເພື່ອປ່ຽນສິ່ງທີ່ກຳລັງເບິ່ງ.
               ຈັດໃໝ່ຕາມລຳດັບຄວາມສຳຄັນ: ປະເພດ (ປ່ຽນລາຍການ) → ຄົ້ນຫາ → ສາງ (ອ່ານຢ່າງດຽວ).
-              sticky ໄວ້ເພື່ອໃຫ້ຕົວກອງຄ້າງຢູ່ຂະນະເລື່ອນເບິ່ງຕາຕະລາງຍາວໆ. */}
-          <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-xl bg-zinc-50/85 px-1 py-2 backdrop-blur-md dark:bg-zinc-950/85">
+              sticky ໄວ້ເພື່ອໃຫ້ຕົວກອງຄ້າງຢູ່ຂະນະເລື່ອນເບິ່ງຕາຕະລາງຍາວໆ —
+              ພື້ນຫຼັງຕ້ອງ **ທຶບ** ແລະ ກວ້າງເຕັມແຖບ ບໍ່ດັ່ງນັ້ນແຖວຕາຕະລາງທີ່ເລື່ອນ
+              ຜ່ານຂ້າງລຸ່ມຈະລອດຂຶ້ນມາເຫັນທັບກັບຕົວກອງ. */}
+          <div className="sticky top-0 z-10 -mx-4 border-b border-zinc-200/70 bg-zinc-50 px-4 py-3 sm:-mx-6 sm:px-6 dark:border-zinc-800/70 dark:bg-zinc-950">
+            <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex h-10 items-center rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800/60">
               {SOURCE_TYPES.map((t) => {
                 const active = tab === t.key;
@@ -845,6 +848,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
               <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-black text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
                 {warehouses.length}
               </span>
+              </div>
             </div>
           </div>
 
