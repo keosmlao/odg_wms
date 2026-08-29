@@ -203,6 +203,35 @@ body {
   }
 }
 
+/* ── ຄວາມແໜ້ນ (density) ────────────────────────────────────────────────
+   ແນວຄິດຢືມມາຈາກ Odoo: ຄົນທີ່ນັ່ງເຮັດວຽກນີ້ທັງມື້ຕ້ອງການເຫັນຫຼາຍແຖວໃນຈໍດຽວ
+   ຫຼາຍກວ່າຕ້ອງການບ່ອນຫາຍໃຈ. ຫຍໍ້ພຽງ padding ແນວຕັ້ງ ແລະ ຂະໜາດຕົວອັກສອນ
+   ຂອງຕາຕະລາງ — ບໍ່ແຕະ padding ແນວນອນ (ຕົວໜັງສືຈະຕິດກັນອ່ານຍາກ) ແລະ
+   ບໍ່ແຕະບັດ/ຟອມ (ຄວາມສ່ຽງສູງ ຜົນຕອບແທນຕ່ຳ).
+
+   ໃຊ້ !important ໂດຍເຈດຕະນາ: padding ຂອງຊ່ອງມາຈາກ utility ຂອງ Tailwind
+   (px-4 py-2.5) ຊຶ່ງມີ specificity ສູງກວ່າ selector ຂອງ element. ນີ້ຄືການ
+   ຕັ້ງຄ່າລະດັບລະບົບທີ່ຕັ້ງໃຈໃຫ້ຊະນະ utility ບໍ່ແມ່ນການແກ້ຂັດ.
+
+   ຂອບເຂດຄື .wms-dense (ຄອບຢູ່ <main> ຂອງກຸ່ມ (app)) ຈຶ່ງບໍ່ກະທົບ
+   ໜ້າມືຖື, ໜ້າ login ຫຼື ໜ້າພິມ. ສະຫຼັບເປັນ "cozy" ໄດ້ໃນເມນູຜູ້ໃຊ້. */
+:root[data-density="compact"] .wms-dense table {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+:root[data-density="compact"] .wms-dense table :is(th, td) {
+  padding-top: 3px !important;
+  padding-bottom: 3px !important;
+}
+
+/* ແຖວທີ່ບັນຈຸປຸ່ມ (ລົບ / ພິມ / ຢືນຢັນ) ຕ້ອງມີບ່ອນຫາຍໃຈຢູ່ — ກົດຜິດແຖວ
+   ໃນໜ້າທີ່ລົບເອກະສານໄດ້ ແພງກວ່າການເຫັນເພີ່ມອີກແຖວໜຶ່ງ. */
+:root[data-density="compact"] .wms-dense table :is(th, td):has(button, a[href*="/print/"]) {
+  padding-top: 5px !important;
+  padding-bottom: 5px !important;
+}
+
 /* ຕາຕະລາງທີ່ກາງແຖວລາຍລະອຽດໄດ້ ໂດຍບໍ່ຕ້ອງໃຊ້ JavaScript.
    ໜ້າປະຫວັດເປັນ server component (ດຶງຂໍ້ມູນຈາກ DB ໂດຍກົງ) ຈຶ່ງໃຊ້ useState ບໍ່ໄດ້
    ແລະ <details> ວາງໃນ <table> ບໍ່ໄດ້. ໃຊ້ checkbox ທີ່ເຊື່ອງໄວ້ + :has() ແທນ —

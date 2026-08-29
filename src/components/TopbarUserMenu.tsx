@@ -7,6 +7,7 @@ import { ROLE_LABEL_LO } from "@/lib/session-shared";
 import { ChevronRightIcon, LogOutIcon } from "@/components/ui/Icons";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import SoundToggle from "@/components/ui/SoundToggle";
+import DensityToggle from "@/components/ui/DensityToggle";
 
 const roleColorMap: Record<WmsRole, string> = {
   manager:
@@ -137,6 +138,10 @@ export default function TopbarUserMenu({ session }: { session: Session }) {
               ໂໝດສີ
             </p>
             <ThemeToggle variant="segmented" className="w-full justify-between" />
+            <p className="mb-2 mt-3 px-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+              ຄວາມແໜ້ນຕາຕະລາງ
+            </p>
+            <DensityToggle />
           </div>
           <div className="p-1">
             <SoundToggle />

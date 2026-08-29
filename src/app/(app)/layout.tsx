@@ -76,7 +76,9 @@ export default async function AppLayout({
               <TopbarUserMenu session={session} />
             </div>
           </header>
-          <main className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+          {/* .wms-dense = ຂອບເຂດຂອງການຫຍໍ້ຄວາມສູງແຖວຕາຕະລາງ (globals.css).
+              ຢູ່ນີ້ ບໍ່ແມ່ນທີ່ <body> ເພື່ອບໍ່ໃຫ້ກະທົບໜ້າມືຖື / login / ພິມ. */}
+          <main className="wms-dense flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
             {children}
           </main>
         </div>

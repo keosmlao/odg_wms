@@ -85,6 +85,20 @@ export function Card({
   );
 }
 
+/**
+ * ແຖບຫົວໜ້າ (control panel) — ໃຊ້ຢູ່ 52 ໜ້າ.
+ *
+ * ເມື່ອກ່ອນເປັນບັດໃຫຍ່ສູງ ~130px: ໄອຄອນ 48px, ຫົວເລື່ອງ text-2xl, ແສງໄລ່ສີ
+ * ຢູ່ມຸມ ແລະ ແຖວ chip ຕ່າງຫາກ. ສວຍ ແຕ່ມັນຄືພື້ນທີ່ 130px ທີ່ບອກສິ່ງທີ່ຄົນໃຊ້
+ * ຮູ້ຢູ່ແລ້ວ (ລາວກົດເມນູນັ້ນມາເອງ) ຢູ່ເທິງທຸກໜ້າ ຂອງລະບົບທີ່ຄົນເປີດຄ້າງໄວ້ທັງມື້.
+ *
+ * ດຽວນີ້ເປັນແຖບແຖວດຽວສູງ ~44px ຕາມແນວຄິດ control panel ຂອງ Odoo:
+ * ໄອຄອນນ້ອຍ · ຫົວເລື່ອງ · chip ຢູ່ແຖວດຽວກັນ · ຄຳອະທິບາຍເປັນຕົວນ້ອຍ (ເຊື່ອງເມື່ອຈໍແຄບ)
+ * · ສ່ວນ `right` ດັນໄປຂວາສຸດ. ໄດ້ພື້ນທີ່ຄືນ ~90px ໃນທຸກໜ້າ = ອີກ 3 ແຖວຕາຕະລາງ.
+ *
+ * ສີຕາມ `tone` ຍັງຢູ່ທີ່ໄອຄອນ — ໜ້າແຕ່ລະໜ້າຈຶ່ງຍັງແຍກອອກຈາກກັນດ້ວຍສາຍຕາໄດ້
+ * ໂດຍບໍ່ຕ້ອງໃຊ້ພື້ນທີ່. ຕັດແຕ່ແສງໄລ່ສີເປັນເຄື່ອງປະດັບອອກ.
+ */
 export function Hero({
   title,
   description,
@@ -100,49 +114,33 @@ export function Hero({
   tone?: AccentTone;
   chips?: ReactNode;
   right?: ReactNode;
+  /** ຫຍໍ້ໄປອີກຂັ້ນ — ເຊື່ອງຄຳອະທິບາຍທັງໝົດ ສຳລັບໜ້າຍ່ອຍ. */
   compact?: boolean;
 }) {
   const a = accentClasses(tone);
   return (
-    <header className="shadow-card relative overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-      <div
-        className={`pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-gradient-to-br ${a.heroGradient} blur-3xl`}
-      />
-      <div
-        className={`relative flex flex-wrap items-start justify-between gap-6 ${compact ? "p-4" : "p-7"}`}
-      >
+    <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-zinc-200/80 pb-3 dark:border-zinc-800/80">
+      <div className="flex min-w-0 items-center gap-3">
+        <div
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset ring-current/10 [&_svg]:h-4.5 [&_svg]:w-4.5 ${a.iconBg} ${a.iconColor}`}
+        >
+          {icon}
+        </div>
         <div className="min-w-0">
-          <div className={`flex items-center ${compact ? "gap-2.5" : "gap-3.5"}`}>
-            <div
-              className={`flex shrink-0 items-center justify-center rounded-xl ring-1 ring-inset ${a.iconBg} ${a.iconColor} ring-current/10 ${compact ? "h-9 w-9" : "h-12 w-12"}`}
-            >
-              {icon}
-            </div>
-            <div className="min-w-0">
-              <h1
-                className={`font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 ${compact ? "text-lg" : "text-2xl"}`}
-              >
-                {title}
-              </h1>
-              {description && (
-                <p
-                  className={`mt-0.5 text-zinc-500 dark:text-zinc-400 ${compact ? "text-xs" : "text-sm"}`}
-                >
-                  {description}
-                </p>
-              )}
-            </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h1 className="text-lg font-bold leading-tight tracking-tight text-zinc-900 dark:text-zinc-50">
+              {title}
+            </h1>
+            {chips}
           </div>
-          {chips && (
-            <div
-              className={`flex flex-wrap items-center gap-1.5 text-xs ${compact ? "mt-2.5" : "mt-4"}`}
-            >
-              {chips}
-            </div>
+          {description && !compact && (
+            <p className="hidden truncate text-xs text-zinc-500 xl:block dark:text-zinc-400">
+              {description}
+            </p>
           )}
         </div>
-        {right && <div className="text-right">{right}</div>}
       </div>
+      {right && <div className="ml-auto flex items-center gap-2">{right}</div>}
     </header>
   );
 }
