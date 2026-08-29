@@ -873,7 +873,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                 <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">ບໍ່ພົບເອກະສານທີ່ຍັງຄ້າງໃນທຸກສາງທີ່ທ່ານມີສິດ ຫຼື ຂໍ້ມູນຄົ້ນຫາບໍ່ຖືກຕ້ອງ</p>
               </div>
             ) : (
-              <div className="space-y-7">
+              <div className="space-y-1">
                 {docGroups.map((g) => (
                   <WarehouseGroup
                     key={g.code}

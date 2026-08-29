@@ -5,6 +5,7 @@ import ScanLogPanel from "./ScanLogPanel";
 import { hasPerm } from "@/lib/permissions";
 import { type Session, accessibleWarehouses } from "@/lib/session-shared";
 import { Chip, KpiCard, EmptyState } from "@/components/ui/Card";
+import { Pager } from "@/components/ui/Pager";
 import {
   BuildingIcon,
   CalendarIcon,
@@ -483,6 +484,21 @@ export default async function IssueHistory({
         </div>
       </form>
 
+      {/* ຕົວບອກໜ້າຢູ່ **ເທິງ** ຕາມແບບ Odoo — ຄຳຖາມທຳອິດຂອງຄົນເປີດໜ້ານີ້ຄື
+          "ມີຈັກໃບ" ບໍ່ແມ່ນ "ໃບທຳອິດແມ່ນຫຍັງ" ຈຶ່ງບໍ່ຄວນຕ້ອງເລື່ອນລົງໄປທ້າຍໜ້າ. */}
+      {pageDocs.length > 0 && (
+        <div className="flex justify-end">
+          <Pager
+            page={page}
+            pageSize={PAGE_SIZE}
+            shown={pageDocs.length}
+            total={total}
+            prevHref={page > 1 ? `${BASE_PATH}${buildHref({ page: String(page - 1) })}` : null}
+            nextHref={hasNext ? `${BASE_PATH}${buildHref({ page: String(page + 1) })}` : null}
+          />
+        </div>
+      )}
+
       {pageDocs.length === 0 ? (
         <EmptyState
           icon={<PackageIcon className="h-7 w-7" />}
@@ -644,29 +660,19 @@ export default async function IssueHistory({
         </>
       )}
 
+      {/* ຊ້ຳຢູ່ລຸ່ມ ສຳລັບຄົນທີ່ເລື່ອນຮອດທ້າຍລາຍການແລ້ວຢາກໄປໜ້າຕໍ່ —
+          ແຕ່ເປັນແຖວບາງ ບໍ່ແມ່ນບັດເຕັມຄວາມກວ້າງຄືເກົ່າ. */}
       {pageDocs.length > 0 && (
-        <nav className="shadow-card flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-5 py-3 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-          <div className="text-xs text-zinc-500 dark:text-zinc-400">
-            ໜ້າ <span className="font-semibold text-zinc-700 dark:text-zinc-200">{page}</span> · ສະແດງ{" "}
-            {pageDocs.length.toLocaleString("en-US")} ຈາກ {total.toLocaleString("en-US")}
-          </div>
-          <div className="flex gap-2">
-            {page > 1 ? (
-              <Link href={`${BASE_PATH}${buildHref({ page: String(page - 1) })}`} className="rounded-md bg-white px-3.5 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800">
-                ← ກ່ອນໜ້າ
-              </Link>
-            ) : (
-              <span className="cursor-not-allowed rounded-lg px-4 py-1.5 text-xs text-zinc-300 dark:text-zinc-700">← ກ່ອນໜ້າ</span>
-            )}
-            {hasNext ? (
-              <Link href={`${BASE_PATH}${buildHref({ page: String(page + 1) })}`} className="rounded-md bg-white px-3.5 py-1.5 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200 transition hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800">
-                ໜ້າຕໍ່ →
-              </Link>
-            ) : (
-              <span className="cursor-not-allowed rounded-lg px-4 py-1.5 text-xs text-zinc-300 dark:text-zinc-700">ໜ້າຕໍ່ →</span>
-            )}
-          </div>
-        </nav>
+        <div className="flex justify-end border-t border-zinc-200/80 pt-3 dark:border-zinc-800/80">
+          <Pager
+            page={page}
+            pageSize={PAGE_SIZE}
+            shown={pageDocs.length}
+            total={total}
+            prevHref={page > 1 ? `${BASE_PATH}${buildHref({ page: String(page - 1) })}` : null}
+            nextHref={hasNext ? `${BASE_PATH}${buildHref({ page: String(page + 1) })}` : null}
+          />
+        </div>
       )}
     </div>
   );

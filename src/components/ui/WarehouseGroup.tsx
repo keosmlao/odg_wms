@@ -1,12 +1,20 @@
 import type { ReactNode } from "react";
-import { BuildingIcon } from "@/components/ui/Icons";
+import { BuildingIcon, ChevronRightIcon } from "@/components/ui/Icons";
 import type { AccentTone } from "@/components/ui/Card";
 
 /**
- * ຫົວກຸ່ມ "ຕາມສາງ".
+ * ຫົວກຸ່ມ "ຕາມສາງ" — ໃຊ້ຢູ່ 24 ໜ້າ.
  *
  * ທຸກໜ້າ WMS ບໍ່ມີ dropdown ເລືອກສາງອີກແລ້ວ — ໂຫຼດທຸກສາງທີ່ຜູ້ໃຊ້ມີສິດມາເລີຍ
  * ແລ້ວແຍກເປັນກຸ່ມດ້ວຍຫົວນີ້ ເພື່ອໃຫ້ຍັງອ່ານອອກວ່າແຖວໃດຢູ່ສາງໃດ.
+ *
+ * ເມື່ອກ່ອນຫົວກຸ່ມເປັນແຖບສູງ ~44px ບວກຊ່ອງໄຟ 12px. ຜູ້ໃຊ້ບາງຄົນມີສິດ 15 ສາງ
+ * ຈຶ່ງໝາຍຄວາມວ່າ ~840px ຂອງໜ້າຈໍເປັນຫົວກຸ່ມ ກ່ອນຈະນັບຂໍ້ມູນຈັກແຖວ.
+ * ດຽວນີ້ເປັນແຖບບາງ ~28px ຕາມແນວຄິດ group row ຂອງ Odoo ແລະ **ພັບໄດ້** —
+ * ຄົນທີ່ເຮັດວຽກສາງດຽວພັບອີກ 14 ສາງເກັບໄວ້ໄດ້.
+ *
+ * ພັບດ້ວຍ <details> ບໍ່ໃຊ້ JavaScript ເລີຍ ຈຶ່ງໃຊ້ໄດ້ທັງ server component
+ * (ຫຼາຍໜ້າທີ່ເອີ້ນຕົວນີ້ເປັນ server component).
  */
 
 const toneRing: Record<AccentTone, string> = {
@@ -20,7 +28,8 @@ const toneRing: Record<AccentTone, string> = {
   brand: "text-brand-700 bg-brand-50 dark:bg-brand-950/40 dark:text-brand-300",
 };
 
-export function WarehouseGroupHeader({
+/** ເນື້ອໃນຂອງແຖບຫົວກຸ່ມ — ໃຊ້ຮ່ວມກັນລະຫວ່າງແບບພັບໄດ້ ແລະ ແບບຢືນດ່ຽວ. */
+function GroupBar({
   code,
   name,
   count,
@@ -36,19 +45,53 @@ export function WarehouseGroupHeader({
   right?: ReactNode;
 }) {
   return (
-    <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-2.5 rounded-xl bg-white/85 px-3 py-2 backdrop-blur-md dark:bg-zinc-900/85">
-      <span className={`inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 font-mono text-[11px] font-black ${toneRing[tone]}`}>
-        <BuildingIcon className="h-3.5 w-3.5" />
+    <>
+      <span
+        className={`inline-flex h-5 shrink-0 items-center gap-1 rounded px-1.5 font-mono text-[10px] font-black ${toneRing[tone]}`}
+      >
+        <BuildingIcon className="h-3 w-3" />
         {code}
       </span>
-      {name && <span className="truncate text-sm font-extrabold text-zinc-800 dark:text-zinc-100">{name}</span>}
-      {typeof count === "number" && (
-        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-          {count} {countLabel}
+      {name && (
+        <span className="truncate text-[13px] font-bold text-zinc-800 dark:text-zinc-100">
+          {name}
         </span>
       )}
-      <span className="h-px flex-1 bg-gradient-to-r from-zinc-200 to-transparent dark:from-zinc-800" />
+      {typeof count === "number" && (
+        <span className="shrink-0 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500">
+          ({count} {countLabel})
+        </span>
+      )}
+      <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
       {right}
+    </>
+  );
+}
+
+/**
+ * ຫົວກຸ່ມແບບຢືນດ່ຽວ — ສຳລັບໜ້າທີ່ຈັດວາງເນື້ອໃນເອງ ບໍ່ໄດ້ຫໍ່ຜ່ານ <WarehouseGroup>.
+ *
+ * z ຕ່ຳກວ່າແຖບເຄື່ອງມືຂອງໜ້າ (z-10) ໂດຍເຈດຕະນາ — ຖ້າໜ້າໃດມີແຖບຕົວກອງ sticky
+ * ຢູ່ແລ້ວ ຫົວກຸ່ມຕ້ອງເລື່ອນລອດຢູ່ຂ້າງລຸ່ມມັນ ບໍ່ແມ່ນຂຶ້ນມາທັບ.
+ */
+export function WarehouseGroupHeader({
+  code,
+  name,
+  count,
+  countLabel,
+  tone,
+  right,
+}: {
+  code: string;
+  name?: string | null;
+  count?: number;
+  countLabel?: string;
+  tone?: AccentTone;
+  right?: ReactNode;
+}) {
+  return (
+    <div className="sticky top-0 z-[5] flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+      <GroupBar code={code} name={name} count={count} countLabel={countLabel} tone={tone} right={right} />
     </div>
   );
 }
@@ -60,6 +103,7 @@ export function WarehouseGroup({
   countLabel,
   tone,
   right,
+  defaultOpen = true,
   children,
 }: {
   code: string;
@@ -68,13 +112,18 @@ export function WarehouseGroup({
   countLabel?: string;
   tone?: AccentTone;
   right?: ReactNode;
+  /** ພັບເກັບໄວ້ຕັ້ງແຕ່ຕົ້ນ — ໃຊ້ເມື່ອໜ້ານັ້ນມີກຸ່ມຫຼາຍເກີນ. */
+  defaultOpen?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-3">
-      <WarehouseGroupHeader code={code} name={name} count={count} countLabel={countLabel} tone={tone} right={right} />
-      {children}
-    </section>
+    <details open={defaultOpen} className="group/wh">
+      <summary className="sticky top-0 z-[5] flex cursor-pointer list-none flex-wrap items-center gap-2 border-b border-zinc-200 bg-white px-2 py-1.5 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800/50">
+        <ChevronRightIcon className="wms-chevron h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform" />
+        <GroupBar code={code} name={name} count={count} countLabel={countLabel} tone={tone} right={right} />
+      </summary>
+      <div className="pt-2 pb-1">{children}</div>
+    </details>
   );
 }
 

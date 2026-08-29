@@ -825,7 +825,7 @@ export default function TripIssue({ warehouses }: { warehouses: WarehouseOption[
           <p className="mt-1 text-xs text-zinc-400">ຖ້ຽວທີ່ຂົນສົ່ງຫາກໍຈັດ ຈະຂຶ້ນມາອັດຕະໂນມັດ</p>
         </div>
       ) : (
-        <div className="space-y-7">
+        <div className="space-y-1">
           {tripGroups.map((g) => (
             <WarehouseGroup
               key={g.code}

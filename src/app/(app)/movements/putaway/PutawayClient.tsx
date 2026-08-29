@@ -95,7 +95,7 @@ export default function PutawayClient({ warehouses }: { warehouses: WarehouseOpt
       {loading ? (
         <div className="py-16 text-center text-sm text-zinc-400">ກຳລັງໂຫຼດ...</div>
       ) : (
-        <div className="space-y-7">
+        <div className="space-y-1">
           {byWh.map((g) => (
             <WarehouseGroup
               key={g.code}
