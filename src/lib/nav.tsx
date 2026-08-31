@@ -360,6 +360,11 @@ export const groups: NavGroupDef[] = [
         href: "/settings/email-reports",
         icon: <MailIcon className="h-3.5 w-3.5" />,
       },
+      {
+        label: "ຄວາມສົມບູນຂອງຂໍ້ມູນ",
+        href: "/settings/integrity",
+        icon: <ShieldIcon className="h-3.5 w-3.5" />,
+      },
     ],
     allowedRoles: ["manager"],
   },
