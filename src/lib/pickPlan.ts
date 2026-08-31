@@ -105,7 +105,15 @@ export function buildPlan(lines: PickSrcLine[]): PickTask[] {
       });
     }
   }
-  return tasks.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  // ແຖວ "ບໍ່ພໍ stock" ຕ້ອງຢູ່ທ້າຍສຸດ — ມັນເກັບບໍ່ໄດ້ ຈຶ່ງບໍ່ຄວນຂັດຈັງຫວະການຍ່າງ.
+  //
+  // ເມື່ອກ່ອນອາໄສ sortKey = "~~~" ໃຫ້ຮຽງໄປທ້າຍ ຊຶ່ງໃຊ້ບໍ່ໄດ້: localeCompare
+  // ຈັດເຄື່ອງໝາຍໄວ້ **ກ່ອນ** ຕົວອັກສອນ ("~~~".localeCompare("A01") = -1)
+  // ຜົນຄື ແຖວທີ່ເກັບບໍ່ໄດ້ຂຶ້ນນຳໜ້າໃບ pick ມາຕະຫຼອດ. ຈັດຢ່າງຈະແຈ້ງແທນ.
+  return tasks.sort((a, b) => {
+    if (a.short !== b.short) return a.short ? 1 : -1;
+    return a.sortKey.localeCompare(b.sortKey);
+  });
 }
 
 export function fmtQty(v: string | number) {

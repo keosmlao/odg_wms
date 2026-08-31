@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import { useToast } from "@/components/ui/Toast";
+// ຂັ້ນຕອນ ແລະ ເງື່ອນໄຂການຍົກເລີກ ຢູ່ lib/transferTrack.ts — ບໍລິສຸດ ຈຶ່ງທົດສອບໄດ້
+// ແລະ API ຍົກເລີກບັງຄັບເງື່ອນໄຂອັນດຽວກັນ.
+import { STAGES, canCancel, track } from "@/lib/transferTrack";
 
 type Row = {
   doc_no: string; doc_date: string | null; want_date: string | null; status: number | null;
@@ -33,42 +36,6 @@ function dur(a: number, b: number): string {
   const p = (v: number) => String(v).padStart(2, "0");
   return d > 0 ? `${d} ມື້ ${p(h)}:${p(m)}:${p(s)}` : `${p(h)}:${p(m)}:${p(s)}`;
 }
-
-type NodeState = "done" | "partial" | "current" | "pending" | "rejected";
-
-/** Lifecycle stage of a transfer request, for the progress tracker. */
-function track(d: Row) {
-  const req = n(d.req), toT = n(d.to_transit), inT = n(d.in_transit), rcv = n(d.received);
-  const st = d.status ?? 0;
-  const rejected = st === 2;
-  const done = req > 0 && rcv + 1e-6 >= req;
-  const full = (v: number) => req > 0 && v + 1e-6 >= req;
-  // per-node state: ① ຂໍ ② ຈ່າຍ→ກາງ ③ ຄ້າງທາງ ④ ຮັບເຂົ້າ
-  //
-  // ຂັ້ນ "ອະນຸມັດ" ຖືກຕັດອອກ: ໃບຂໍໂອນຈ່າຍໄດ້ເລີຍໂດຍບໍ່ຕ້ອງລໍໃຜກົດອະນຸມັດ.
-  // status ຍັງໃຊ້ຢູ່ຈຸດດຽວ — 2 = ຍົກເລີກແລ້ວ ຊຶ່ງຍັງກັນການຈ່າຍຢູ່ (ຄືກັບທີ່
-  // /api/movements/issue/pending ກັນໄວ້ຢູ່ແລ້ວ). ສ່ວນ 0 ກັບ 1 ດຽວນີ້ຄືກັນໝົດ.
-  const states: NodeState[] = [
-    "done",
-    rejected ? "rejected" : full(toT) ? "done" : toT > 1e-6 ? "partial" : "current",
-    done ? "done" : inT > 1e-6 ? "current" : "pending",
-    done ? "done" : rcv > 1e-6 ? "partial" : "pending",
-  ];
-  // primary stage (badge + action shortcut) — index ໃນ STAGES
-  let current = 1;
-  if (done) current = 4;
-  else if (rejected) current = -1;
-  else if (inT > 1e-6) current = 2;
-  else current = 1;
-  return { req, toT, inT, rcv, st, rejected, done, states, current };
-}
-
-const STAGES = [
-  { key: "req", label: "ຂໍ", icon: "📝" },
-  { key: "issue", label: "ຈ່າຍ→ກາງ", icon: "📤" },
-  { key: "transit", label: "ຄ້າງທາງ", icon: "🚚" },
-  { key: "recv", label: "ຮັບເຂົ້າ", icon: "📥" },
-];
 
 export default function DashboardClient() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -446,7 +413,7 @@ function TrackRow({ d, role, now, today, hits, onCancel }: { d: Row; role: "out"
   const outWaiting = role === "out" && !t.done && !t.rejected && t.inT > 1e-6 && t.req - t.toT <= 1e-6;
   // ຍົກເລີກໄດ້ສະເພາະໃບທີ່ຍັງບໍ່ໄດ້ຈ່າຍອອກຈັກໜ່ວຍ — ພໍຂອງຍ້າຍໄປສາງລະຫວ່າງທາງ
   // ແລ້ວ ຕ້ອງໃຊ້ "ຮັບຄືນ" ຊຶ່ງຍ້າຍຂອງກັບຈິງ ບໍ່ແມ່ນພຽງໝາຍສະຖານະ.
-  const canCancel = !t.done && !t.rejected && t.toT <= 1e-6;
+  const showCancel = canCancel(t);
 
   // ໂມງລໍ — ຕົວດຽວທີ່ສຳຄັນທີ່ສຸດໃນຕາຕະລາງ: ບອກວ່າໃບໃດຄ້າງດົນທີ່ສຸດ
   const cr = ms(d.created_at), iss = ms(d.issued_at), rec = ms(d.received_at);
@@ -510,7 +477,7 @@ function TrackRow({ d, role, now, today, hits, onCancel }: { d: Row; role: "out"
             ) : outWaiting ? (
               <Link href={`/movements/transfer-return?doc=${encodeURIComponent(d.doc_no)}`} className="whitespace-nowrap rounded-lg bg-aqua-50 px-2.5 py-1 text-[11px] font-bold text-aqua-600 ring-1 ring-aqua-200 hover:bg-aqua-100">↩ ຮັບຄືນ</Link>
             ) : null}
-            {canCancel && (
+            {showCancel && (
               <button type="button" onClick={() => onCancel(d)} title="ຍົກເລີກໃບຂໍໂອນນີ້ (ຍັງບໍ່ໄດ້ຈ່າຍ — ກູ້ຄືນໄດ້)"
                 className="whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50">
                 ຍົກເລີກ
@@ -535,7 +502,7 @@ function TrackCard({ d, role, now, today, hits, onCancel }: { d: Row; role: "out
   const overdue = !!d.want_date && d.want_date < today && !t.done;
   const act = roleAction(role, d, t);
   const waiting = role === "in" && !t.done && !t.rejected && t.inT <= 1e-6; // dest waiting for source to issue
-  const canCancel = !t.done && !t.rejected && t.toT <= 1e-6;
+  const showCancel = canCancel(t);
   return (
     <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -614,7 +581,7 @@ function TrackCard({ d, role, now, today, hits, onCancel }: { d: Row; role: "out
         const outWaiting = role === "out" && !t.done && !t.rejected && t.inT > 1e-6 && t.req - t.toT <= 1e-6;
         if (act) return (
           <div className="mt-3 flex justify-end gap-2">
-            {canCancel && <button type="button" onClick={() => onCancel(d)} className="rounded-lg px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">ຍົກເລີກ</button>}
+            {showCancel && <button type="button" onClick={() => onCancel(d)} className="rounded-lg px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">ຍົກເລີກ</button>}
             <Link href={act.href} className={`rounded-lg px-3 py-1.5 text-xs font-bold text-white ${act.cls}`}>{act.label}</Link>
           </div>
         );
@@ -626,7 +593,7 @@ function TrackCard({ d, role, now, today, hits, onCancel }: { d: Row; role: "out
         );
         // ບໍ່ມີວຽກໃຫ້ເຮັດ (ເຊັ່ນ ແຖວຂອງສາງປາຍທາງທີ່ຍັງລໍຕົ້ນທາງຈ່າຍ) ແຕ່ຍັງ
         // ຍົກເລີກໄດ້ — ບໍ່ດັ່ງນັ້ນເທິງມືຖືປຸ່ມນີ້ຈະບໍ່ມີທາງເຫັນເລີຍ
-        if (canCancel) return (
+        if (showCancel) return (
           <div className="mt-3 flex justify-end">
             <button type="button" onClick={() => onCancel(d)} className="rounded-lg px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">ຍົກເລີກ</button>
           </div>

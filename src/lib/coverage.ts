@@ -30,6 +30,7 @@
  */
 import { query } from "@/lib/db";
 import { DEAD_DOC_RE, RETURN_DOC_FLAG } from "@/lib/pendingOut";
+import { classifyAbc, classifyFsn, type AbcClass, type FsnClass } from "@/lib/classify";
 
 /** ບິນຂາຍ — ຄວາມຕ້ອງການທີ່ແທ້ຈິງຂອງລູກຄ້າ. */
 const SALE_FLAG = 44;
@@ -83,7 +84,7 @@ export type DemandPattern =
 export type DemandTrend = "rising" | "flat" | "falling" | "stopped" | "none";
 
 /** ການຈັດກຸ່ມ ABC ຕາມມູນຄ່າຂາຍ (ພາຍໃນຂອບເຂດທີ່ວິເຄາະ). */
-export type AbcClass = "A" | "B" | "C" | "none";
+export type { AbcClass, FsnClass } from "@/lib/classify";
 
 /**
  * FSN — ຈັດຕາມ **ຄວາມຖີ່ການເຄື່ອນໄຫວ** ບໍ່ແມ່ນມູນຄ່າ (ນັ້ນຄື ABC).
@@ -98,7 +99,6 @@ export type AbcClass = "A" | "B" | "C" | "none";
  *
  *   A-F ສຳຄັນ+ໄວ → ຢ່າໃຫ້ຂາດ, ວາງໃກ້ບ່ອນຈ່າຍ    C-N ບໍ່ສຳຄັນ+ບໍ່ຍ້າຍ → ພິຈາລະນາລ້າງ
  */
-export type FsnClass = "F" | "S" | "N";
 
 export const FSN_LABEL_LO: Record<FsnClass, string> = {
   F: "ໄວ",
@@ -741,34 +741,11 @@ function computeItems(rows: Row[], span: number, thresholds: Thresholds): Covera
     };
   });
 
-  // ── ABC ຕາມມູນຄ່າຂາຍ ພາຍໃນຂອບເຂດທີ່ວິເຄາະ ─────────────────────────
-  //
-  // ຄິດພາຍໃນຂອບເຂດ (ສາງ ຫຼື ກຸ່ມ) ບໍ່ແມ່ນທັງບໍລິສັດ — ເພາະການຈັດ slot ແລະ
-  // ຄວາມຖີ່ການນັບ ເປັນເລື່ອງຂອງສາງນັ້ນເອງ.
-  const selling = items.filter((i) => i.sale_amount > 0).sort((a, b) => b.sale_amount - a.sale_amount);
-  const totalAmount = selling.reduce((s, i) => s + i.sale_amount, 0);
-  if (totalAmount > 0) {
-    let cum = 0;
-    for (const i of selling) {
-      cum += i.sale_amount;
-      const share = cum / totalAmount;
-      i.abc = share <= 0.8 ? "A" : share <= 0.95 ? "B" : "C";
-    }
-  }
-
-  // ── FSN ຕາມຄວາມຖີ່ (ຈຳນວນບິນ) ─────────────────────────────────────
-  //
-  // N = ບໍ່ມີການເຄື່ອນໄຫວເລີຍ (ຕັ້ງໄວ້ແລ້ວຂ້າງເທິງ). ໃນບັນດາຕົວທີ່ຂາຍຢູ່
-  // ຈັດ F ໃຫ້ກຸ່ມທີ່ລວມກັນເປັນ 70% ທຳອິດຂອງຈຳນວນບິນທັງໝົດ ທີ່ເຫຼືອເປັນ S.
-  const moving = items.filter((i) => i.bills > 0).sort((a, b) => b.bills - a.bills);
-  const totalBills = moving.reduce((s, i) => s + i.bills, 0);
-  if (totalBills > 0) {
-    let cum = 0;
-    for (const i of moving) {
-      cum += i.bills;
-      i.fsn = cum / totalBills <= 0.7 ? "F" : "S";
-    }
-  }
+  // ── ABC (ມູນຄ່າຂາຍ) ແລະ FSN (ຄວາມຖີ່) ──────────────────────────────
+  // ສູດຢູ່ທີ່ lib/classify.ts — ບໍລິສຸດ ບໍ່ແຕະ DB ຈຶ່ງທົດສອບໄດ້ ແລະ ໜ້າອື່ນ
+  // (ນັບວົນ, ກົດການວາງເຄື່ອງ) ໃຊ້ຊັ້ນຊຸດດຽວກັນນີ້ໄດ້.
+  classifyAbc(items);
+  classifyFsn(items);
 
   return items;
 }
