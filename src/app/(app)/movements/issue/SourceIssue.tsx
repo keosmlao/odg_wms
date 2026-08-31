@@ -643,6 +643,87 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   const canStep3 = activeLines.length > 0 && !shownLines.some(incompleteAlloc); // all started allocs complete
   const canCreate = canStep3 && readyLines.length > 0;
 
+  /* ── ຕົວຄວບຄຸມຂອງແຖວ allocation ────────────────────────────────────
+     ດຶງອອກມາເປັນ helper ເພື່ອໃຫ້ຕາຕະລາງ (desktop) ແລະ ບັດ (ມືຖື) ໃຊ້
+     ອັນດຽວກັນ. ຖ້າ copy ໄວ້ສອງບ່ອນ ມື້ໜຶ່ງມັນຈະຕ່າງກັນ ແລະ ຄວາມຕ່າງນັ້ນ
+     ຈະກາຍເປັນການຈ່າຍຜິດບ່ອນ/ຜິດຈຳນວນ. */
+  const locStockOf = (l: WorkingLine) =>
+    l.selIdx >= 0 ? Math.floor(Number.parseFloat(l.locations[l.selIdx]?.qty ?? "0") || 0) : 0;
+  const isOver = (l: WorkingLine) => qNum(l) > locStockOf(l) + 1e-6;
+
+  const locSelect = (l: WorkingLine) => (
+    <div className="relative w-full">
+      <select
+        value={l.selIdx}
+        onChange={(e) => setLocation(l.key, Number.parseInt(e.target.value, 10))}
+        className={`w-full cursor-pointer appearance-none rounded-lg bg-zinc-50/70 py-1.5 pl-2.5 pr-7 text-xs font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:bg-zinc-950 ${
+          isOver(l) ? "ring-amber-400 text-amber-700" : "ring-zinc-200 text-zinc-800 dark:ring-zinc-800 dark:text-zinc-200"
+        }`}
+      >
+        <option value={-1}>— ເລືອກ location —</option>
+        {l.locations.map((loc, idx) => (
+          <option key={`${loc.rack}/${loc.location}/${loc.pallet}`} value={idx}>
+            {idx === 0 ? "⭐ " : ""}
+            {nodeName(loc, binNames, "(ສາງ)")} · ມີ {formatQty(loc.qty)}
+            {loc.sn_qty != null ? ` · SN ${loc.sn_qty}${loc.sn_qty === 0 ? " ⚠" : ""}` : ""}
+            {loc.first_in ? ` · ເຂົ້າ ${loc.first_in}` : ""}
+            {idx === 0 ? " · FIFO" : ""}
+          </option>
+        ))}
+      </select>
+      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400">▾</span>
+    </div>
+  );
+
+  const qtyInput = (l: WorkingLine) => (
+    <input
+      type="number"
+      inputMode="decimal"
+      value={l.qty}
+      placeholder="0"
+      onChange={(e) => (l.serialized ? setSerialQty(l.key, e.target.value) : setQty(l.key, e.target.value))}
+      className={`w-20 rounded-lg bg-zinc-50/50 px-2 py-1.5 text-center font-mono text-xs font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:bg-zinc-950 ${
+        isOver(l) ? "ring-amber-400 text-amber-700" : "ring-zinc-200 dark:ring-zinc-800"
+      }`}
+    />
+  );
+
+  const serialCell = (l: WorkingLine) => {
+    const target = targetQty(l);
+    if (!l.serialized) {
+      return <span className="text-[10px] text-zinc-400">ມີ {formatQty(locStockOf(l))}</span>;
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => openSerialPicker(l.key)}
+        disabled={l.selIdx < 0}
+        title={snPickRequired ? "ຕ້ອງເລືອກ ISN ໃຫ້ຄົບ" : "ບໍ່ບັງຄັບ — ສາງນີ້ຈັດ pick ຕາມທີ່ເກັບເທົ່ານັ້ນ (ຍິງ SN ຕອນຢືນຢັນ)"}
+        className={`inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-bold ring-1 disabled:opacity-40 ${
+          l.selectedSerials.length >= target && target > 0
+            ? "bg-aqua-600 text-white ring-aqua-600"
+            : "bg-aqua-50 text-aqua-700 ring-aqua-200 dark:bg-aqua-950/30 dark:text-aqua-300 dark:ring-aqua-900/40"
+        }`}
+      >
+        <LayersIcon className="h-3.5 w-3.5" />
+        {l.selectedSerials.length} / {target} ISN
+        {!snPickRequired && <span className="opacity-70"> (ບໍ່ບັງຄັບ)</span>}
+      </button>
+    );
+  };
+
+  /** ປ້າຍ "ບໍ່ FIFO" — ຂຶ້ນເມື່ອເລືອກ location ທີ່ບໍ່ແມ່ນອັນເກົ່າສຸດ. */
+  const fifoWarn = (l: WorkingLine) =>
+    l.selIdx > 0 ? (
+      <span
+        title="ບໍ່ແມ່ນ location ເກົ່າສຸດ (FIFO)"
+        className="whitespace-nowrap rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300"
+      >
+        ⚠ ບໍ່ FIFO
+      </span>
+    ) : null;
+
+
   function resetToList() {
     setSelDoc(null);
     setLines([]);
@@ -1163,8 +1244,108 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
               <p className="mt-4 text-sm font-bold text-zinc-500 dark:text-zinc-400">ບໍ່ມີລາຍການຄ້າງຈ່າຍໃນສາງນີ້</p>
             </div>
           ) : (
-            /* per-item allocation cards: location · ຈຳນວນ · ISN */
-            <div className="space-y-3">
+            <>
+            {/* ≥md — ຕາຕະລາງ: ໜຶ່ງແຖວຫົວຕໍ່ໜຶ່ງສິນຄ້າ ແລ້ວໜຶ່ງແຖວຕໍ່ໜຶ່ງບ່ອນເກັບ.
+                ບັດເກົ່າສູງ ~155px ຕໍ່ສິນຄ້າ ຈຶ່ງເຫັນໄດ້ 4 ລາຍການຕໍ່ໜ້າຈໍ; ໃບ pick
+                20 ລາຍການແປວ່າຕ້ອງເລື່ອນ 5 ໜ້າຈໍເພື່ອກວດວ່າຄົບ. ແລະ ຍ້ອນ
+                ຈຳນວນ, ບ່ອນເກັບ ແລະ ຈຳນວນທີ່ຈ່າຍ ຢູ່ຄົນລະແຖວຄົນລະຕຳແໜ່ງ
+                ຈຶ່ງກວາດຕາລົງມາຫາລາຍການທີ່ຍັງບໍ່ຄົບບໍ່ໄດ້. */}
+            <div className="hidden overflow-x-auto rounded-2xl border border-zinc-200/80 md:block dark:border-zinc-800">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-800/50">
+                    <th scope="col" className="px-3 py-2">ສິນຄ້າ / ບ່ອນເກັບ</th>
+                    <th scope="col" className="w-24 px-3 py-2 text-center">ຈຳນວນ</th>
+                    <th scope="col" className="w-44 px-3 py-2">ISN / ຄົງເຫຼືອ</th>
+                    <th scope="col" className="w-28 px-3 py-2 text-right">ຈັດແລ້ວ</th>
+                    <th scope="col" className="w-16 px-3 py-2 text-right"><span className="sr-only">ລົບ</span></th>
+                  </tr>
+                </thead>
+                {itemGroups.map((g) => {
+                  const need = Math.round(g.line.remaining);
+                  const alloc = allocatedFor(g.item_code);
+                  const complete = Math.abs(alloc - need) < 1e-6;
+                  const noStock = g.line.locations.length === 0;
+                  const netted = g.line.issuedQty + g.line.pendingQty;
+                  return (
+                    <tbody key={g.item_code} className="border-b border-zinc-200/70 last:border-0 dark:border-zinc-800/70">
+                      {/* ແຖວຫົວຂອງສິນຄ້າ — ຄືຫົວກຸ່ມ, ບໍ່ແມ່ນບັດແຍກ */}
+                      <tr className="bg-zinc-50/70 dark:bg-zinc-800/30">
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs font-bold text-red-600 dark:text-red-400">{g.item_code}</span>
+                            {g.line.serialized && <span className="rounded bg-aqua-100 px-1.5 py-0.5 text-[9px] font-extrabold text-aqua-700 dark:bg-aqua-950/60 dark:text-aqua-300">SN</span>}
+                            <span className="truncate text-xs font-bold text-zinc-700 dark:text-zinc-300" title={g.line.item_name ?? ""}>{g.line.item_name ?? "—"}</span>
+                          </div>
+                          {netted > 0 && (
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] font-bold">
+                              <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">ຂໍ {formatQty(g.line.srcQty)}</span>
+                              {g.line.issuedQty > 0 && (
+                                <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/40">− ຈ່າຍແລ້ວ {formatQty(g.line.issuedQty)}</span>
+                              )}
+                              {g.line.pendingQty > 0 && (
+                                <span title="ຢູ່ໃນໃບ pick ທີ່ຍັງບໍ່ໄດ້ຢືນຢັນ" className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/40">− ໃນໃບ pick {formatQty(g.line.pendingQty)}</span>
+                              )}
+                              <span className="text-zinc-400">=</span>
+                              <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-700 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/40">ຄ້າງຈ່າຍ {formatQty(need)}</span>
+                            </div>
+                          )}
+                          {g.line.minStock && <MinStockWarning ms={g.line.minStock} issuing={alloc} unit={g.line.unit_code} />}
+                        </td>
+                        <td className="px-3 py-2" />
+                        <td className="px-3 py-2">
+                          {!noStock && (
+                            <button type="button" onClick={() => addAlloc(g.item_code)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-brand-600 ring-1 ring-brand-200 transition hover:bg-brand-50 dark:text-brand-300 dark:ring-brand-900/40 dark:hover:bg-brand-950/30">
+                              + ບ່ອນເກັບ
+                            </button>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div className={`font-mono text-sm font-bold ${complete ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                            {formatQty(alloc)} / {formatQty(need)}
+                          </div>
+                          <div className="text-[10px] text-zinc-400">{g.line.unit_code} · {complete ? "ຄົບ ✓" : "ຍັງບໍ່ຄົບ"}</div>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <button type="button" onClick={() => setRemoved((p) => new Set([...g.allocs.map((a) => a.key), ...p]))} title="ລົບສິນຄ້ານີ້ (ບໍ່ຈ່າຍ)" className="rounded p-1 text-zinc-300 transition hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30">✕</button>
+                        </td>
+                      </tr>
+
+                      {noStock ? (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-2 text-xs font-bold text-amber-600 dark:text-amber-400">
+                            <AlertIcon className="mr-1 inline h-4 w-4" /> ບໍ່ມີ stock ໃນ WMS
+                          </td>
+                        </tr>
+                      ) : (
+                        g.allocs.map((l) => (
+                          <tr key={l.key} className="border-t border-zinc-100 dark:border-zinc-800/60">
+                            <td className="py-1.5 pl-8 pr-3">{locSelect(l)}</td>
+                            <td className="px-3 py-1.5 text-center">{qtyInput(l)}</td>
+                            <td className="px-3 py-1.5">
+                              <div className="flex items-center gap-1.5">
+                                {serialCell(l)}
+                                {fifoWarn(l)}
+                              </div>
+                            </td>
+                            <td className="px-3 py-1.5" />
+                            <td className="px-3 py-1.5 text-right">
+                              {g.allocs.length > 1 && (
+                                <button type="button" onClick={() => removeAlloc(l.key)} title="ລົບ allocation" className="rounded p-1 text-zinc-300 transition hover:text-rose-500">✕</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  );
+                })}
+              </table>
+            </div>
+
+            {/* <md — ບັດຄືເກົ່າ: ຕາຕະລາງ 5 ຖັນທີ່ມີ select ແລະ ຊ່ອງປ້ອນ
+                ໃຊ້ບໍ່ໄດ້ດ້ວຍນິ້ວໂປ້ເທິງຈໍ 6 ນິ້ວ */}
+            <div className="space-y-3 md:hidden">
               {itemGroups.map((g) => {
                 const need = Math.round(g.line.remaining);
                 const alloc = allocatedFor(g.item_code);
@@ -1213,37 +1394,18 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                       <div className="px-4 py-3 text-xs font-bold text-amber-600 dark:text-amber-400"><AlertIcon className="mr-1 inline h-4 w-4" /> ບໍ່ມີ stock ໃນ WMS</div>
                     ) : (
                       <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                        {g.allocs.map((l) => {
-                          const locStock = l.selIdx >= 0 ? Math.floor(Number.parseFloat(l.locations[l.selIdx]?.qty ?? "0") || 0) : 0;
-                          const target = targetQty(l);
-                          const over = qNum(l) > locStock + 1e-6;
-                          return (
-                            <div key={l.key} className="flex flex-wrap items-center gap-2.5 px-4 py-3">
-                              <span className="text-[10px] font-bold text-zinc-400">⊙ ບ່ອນ</span>
-                              <div className="relative min-w-[210px] flex-1">
-                                <select value={l.selIdx} onChange={(e) => setLocation(l.key, Number.parseInt(e.target.value, 10))} className={`w-full rounded-lg bg-zinc-50/70 pl-3 pr-7 py-2 text-xs font-bold ring-1 dark:bg-zinc-950 appearance-none focus:outline-none focus:ring-2 focus:ring-red-500/30 cursor-pointer ${over ? "ring-amber-400 text-amber-700" : "ring-zinc-200 text-zinc-800 dark:ring-zinc-800 dark:text-zinc-200"}`}>
-                                  <option value={-1}>— ເລືອກ location —</option>
-                                  {l.locations.map((loc, idx) => (<option key={`${loc.rack}/${loc.location}/${loc.pallet}`} value={idx}>{idx === 0 ? "⭐ " : ""}{nodeName(loc, binNames, "(ສາງ)")} · ມີ {formatQty(loc.qty)}{loc.sn_qty != null ? ` · SN ${loc.sn_qty}${loc.sn_qty === 0 ? " ⚠" : ""}` : ""}{loc.first_in ? ` · ເຂົ້າ ${loc.first_in}` : ""}{idx === 0 ? " · FIFO" : ""}</option>))}
-                                </select>
-                                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-[10px]">▾</span>
-                              </div>
-                              <input type="number" inputMode="decimal" value={l.qty} placeholder="0"
-                                onChange={(e) => (l.serialized ? setSerialQty(l.key, e.target.value) : setQty(l.key, e.target.value))}
-                                className={`w-20 rounded-lg bg-zinc-50/50 px-2 py-2 text-center font-mono text-xs font-bold ring-1 focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:bg-zinc-950 ${over ? "ring-amber-400 text-amber-700" : "ring-zinc-200 dark:ring-zinc-800"}`} />
-                              {l.serialized ? (
-                                <button type="button" onClick={() => openSerialPicker(l.key)} disabled={l.selIdx < 0}
-                                  title={snPickRequired ? "ຕ້ອງເລືອກ ISN ໃຫ້ຄົບ" : "ບໍ່ບັງຄັບ — ສາງນີ້ຈັດ pick ຕາມທີ່ເກັບເທົ່ານັ້ນ (ຍິງ SN ຕອນຢືນຢັນ)"}
-                                  className={`inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold ring-1 disabled:opacity-40 ${l.selectedSerials.length >= target && target > 0 ? "bg-aqua-600 text-white ring-aqua-600" : "bg-aqua-50 text-aqua-700 ring-aqua-200 dark:bg-aqua-950/30 dark:text-aqua-300 dark:ring-aqua-900/40"}`}>
-                                  <LayersIcon className="h-3.5 w-3.5" />{l.selectedSerials.length} / {target} ISN{!snPickRequired && <span className="opacity-70"> (ບໍ່ບັງຄັບ)</span>}
-                                </button>
-                              ) : (
-                                <span className="text-[10px] text-zinc-400">ມີ {formatQty(locStock)}</span>
-                              )}
-                              {l.selIdx > 0 && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300" title="ບໍ່ແມ່ນ location ເກົ່າສຸດ (FIFO)">⚠ ບໍ່ FIFO</span>}
-                              {g.allocs.length > 1 && <button type="button" onClick={() => removeAlloc(l.key)} className="rounded p-1 text-zinc-300 hover:text-rose-500" title="ລົບ allocation">✕</button>}
-                            </div>
-                          );
-                        })}
+                        {g.allocs.map((l) => (
+                          <div key={l.key} className="flex flex-wrap items-center gap-2.5 px-4 py-3">
+                            <span className="text-[10px] font-bold text-zinc-400">⊙ ບ່ອນ</span>
+                            <div className="min-w-[210px] flex-1">{locSelect(l)}</div>
+                            {qtyInput(l)}
+                            {serialCell(l)}
+                            {fifoWarn(l)}
+                            {g.allocs.length > 1 && (
+                              <button type="button" onClick={() => removeAlloc(l.key)} className="rounded p-1 text-zinc-300 hover:text-rose-500" title="ລົບ allocation">✕</button>
+                            )}
+                          </div>
+                        ))}
                         <div className="px-4 py-2">
                           <button type="button" onClick={() => addAlloc(g.item_code)} className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1.5 text-[11px] font-bold text-brand-700 ring-1 ring-brand-200 hover:bg-brand-100 dark:bg-brand-950/30 dark:text-brand-300 dark:ring-brand-900/40">+ ເພີ່ມ location (ຈ່າຍຫຼາຍບ່ອນ)</button>
                         </div>
@@ -1253,6 +1415,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                 );
               })}
             </div>
+            </>
           )}
 
           {/* Removed lines — pull back into the issue */}
