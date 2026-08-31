@@ -41,7 +41,8 @@ export async function GET() {
     return NextResponse.json({ ...store, cached: true });
   }
 
-  const [orphan, emptyHead, badQty, dupes, negBins, unknownItem, stalePick, noLoc] = await Promise.all([
+  const [orphan, emptyHead, badQty, dupes, negBins, unknownItem, stalePick, staleCount, noLoc] =
+    await Promise.all([
     query<{ n: string }>(
       `SELECT count(*)::text AS n FROM public.odg_wms_trans_detail d
         WHERE NOT EXISTS (SELECT 1 FROM public.odg_wms_trans h WHERE h.doc_no = d.doc_no)`,
@@ -81,6 +82,11 @@ export async function GET() {
     query<{ n: string }>(
       `SELECT count(*)::text AS n FROM public.wms_product_out
         WHERE COALESCE(status, 0) = 0 AND doc_date < CURRENT_DATE - 7`,
+    ),
+    // ໃບກວດນັບທີ່ນັບແລ້ວແຕ່ບໍ່ໄດ້ກົດ "ຮັບເຂົ້າ WMS" — ຂອງມາຮອດແລ້ວແຕ່ບັນຊີບໍ່ຮູ້
+    query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM public.wms_product_receive
+        WHERE doc_type = 2 AND status = 9 AND doc_date < CURRENT_DATE - 7`,
     ),
     // ຂອງທີ່ມີຢູ່ແຕ່ບໍ່ຮູ້ວ່າຢູ່ບ່ອນໃດ — ສັ່ງຄົນໄປຢິບບໍ່ໄດ້
     query<{ n: string }>(
@@ -147,6 +153,15 @@ export async function GET() {
       meaning:
         "ໃບຈັດເຄື່ອງທີ່ສ້າງໄວ້ແລ້ວລືມ. ຂອງທີ່ມັນຈອງໄວ້ຖືກຫັກອອກຈາກ “ຄ້າງຈ່າຍ” ຕະຫຼອດ — ວຽກຈິງຈຶ່ງຫາຍໄປຈາກລາຍການໂດຍທີ່ບໍ່ມີໃຜເຮັດ. ໃຫ້ໄປຢືນຢັນຈ່າຍ ຫຼື ລຶບໃບນັ້ນຖິ້ມ.",
       count: n(stalePick),
+      expect: 0,
+      severity: "warn",
+    },
+    {
+      key: "stale_count_sheet",
+      label: "ໃບກວດນັບຄ້າງຮັບເຂົ້າເກີນ 7 ມື້",
+      meaning:
+        "ນັບຂອງທີ່ມາຮອດແລ້ວ ແຕ່ບໍ່ໄດ້ກົດ “ຮັບເຂົ້າ WMS” — stock ຈຶ່ງຍັງບໍ່ເຂົ້າບັນຊີ ທັງທີ່ຂອງວາງຢູ່ໃນສາງແລ້ວ. ນອກຈາກນັ້ນ ISN ທີ່ໃບນັ້ນຈອງໄວ້ຖືກກັນອອກຈາກເລກທີ່ຈະອອກໃໝ່ຕະຫຼອດ. ໃຫ້ໄປກົດຮັບເຂົ້າ ຫຼື ລຶບໃບນັ້ນຖິ້ມ.",
+      count: n(staleCount),
       expect: 0,
       severity: "warn",
     },
