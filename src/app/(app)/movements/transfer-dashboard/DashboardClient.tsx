@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
+import { useToast } from "@/components/ui/Toast";
 
 type Row = {
   doc_no: string; doc_date: string | null; want_date: string | null; status: number | null;
@@ -45,7 +46,7 @@ function track(d: Row) {
   // per-node state: ① ຂໍ ② ຈ່າຍ→ກາງ ③ ຄ້າງທາງ ④ ຮັບເຂົ້າ
   //
   // ຂັ້ນ "ອະນຸມັດ" ຖືກຕັດອອກ: ໃບຂໍໂອນຈ່າຍໄດ້ເລີຍໂດຍບໍ່ຕ້ອງລໍໃຜກົດອະນຸມັດ.
-  // status ຍັງໃຊ້ຢູ່ຈຸດດຽວ — 2 = ຖືກປະຕິເສດ ຊຶ່ງຍັງກັນການຈ່າຍຢູ່ (ຄືກັບທີ່
+  // status ຍັງໃຊ້ຢູ່ຈຸດດຽວ — 2 = ຍົກເລີກແລ້ວ ຊຶ່ງຍັງກັນການຈ່າຍຢູ່ (ຄືກັບທີ່
   // /api/movements/issue/pending ກັນໄວ້ຢູ່ແລ້ວ). ສ່ວນ 0 ກັບ 1 ດຽວນີ້ຄືກັນໝົດ.
   const states: NodeState[] = [
     "done",
@@ -181,6 +182,49 @@ export default function DashboardClient() {
     return () => io.disconnect();
   }, [visible]);
 
+  const toast = useToast();
+
+  /**
+   * ຍົກເລີກ / ກູ້ຄືນ ໃບຂໍໂອນ.
+   *
+   * ຖອດແຖວອອກຈາກລາຍການທັນທີ ແລ້ວໃຫ້ປຸ່ມ "ຍົກເລີກ" ໃນແຈ້ງເຕືອນ 6 ວິນາທີ —
+   * ບໍ່ໃຊ້ກ່ອງຖາມ "ແນ່ໃຈບໍ່?" ເພາະການກະທຳນີ້ຄືນຄ່າໄດ້ (status 2 → 0).
+   * ໃບທີ່ຍົກເລີກແລ້ວຫາຍຈາກ dashboard ໂດຍທຳມະຊາດ (query ຂອງມັນເອົາແຕ່ໃບທີ່
+   * ຍັງດຳເນີນຢູ່) ຈຶ່ງບໍ່ຕ້ອງໂຫຼດຄືນ — ຖອດອອກຈາກ state ພຽງພໍ.
+   */
+  async function setCancelled(docNo: string, cancel: boolean): Promise<boolean> {
+    try {
+      const r = await fetch("/api/movements/transfer-cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc: docNo, cancel }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!r.ok || !j.ok) throw new Error(j.error ?? "ບໍ່ສຳເລັດ");
+      return true;
+    } catch (e) {
+      toast.show({ message: e instanceof Error ? e.message : "ບໍ່ສຳເລັດ", tone: "error", duration: 8000 });
+      return false;
+    }
+  }
+
+  async function cancelDoc(d: Row) {
+    const ok = await setCancelled(d.doc_no, true);
+    if (!ok) return;
+    setRows((prev) => prev.filter((x) => x.doc_no !== d.doc_no));
+    toast.show({
+      message: `ຍົກເລີກ ${d.doc_no} ແລ້ວ`,
+      detail: `${d.wh_from_name ?? d.wh_from} → ${d.wh_to_name ?? d.wh_to}`,
+      tone: "warn",
+      undo: {
+        onUndo: async () => {
+          const back = await setCancelled(d.doc_no, false);
+          if (back) setRows((prev) => (prev.some((x) => x.doc_no === d.doc_no) ? prev : [...prev, { ...d, status: 0 }]));
+        },
+      },
+    });
+  }
+
   const nItemDocs = useMemo(
     () => new Set(combined.filter((x) => itemHits.has(x.d.doc_no)).map((x) => x.d.doc_no)).size,
     [combined, itemHits],
@@ -273,7 +317,7 @@ export default function DashboardClient() {
                         </tr>
                       </thead>
                       {g.rows.slice(0, take).map(({ d, role }) => (
-                        <TrackRow key={`${g.code}-${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />
+                        <TrackRow key={`${g.code}-${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} onCancel={cancelDoc} />
                       ))}
                     </table>
                   </div>
@@ -281,7 +325,7 @@ export default function DashboardClient() {
                   {/* <md — ບັດຄືເກົ່າ: 11 ຖັນເທິງຈໍມືຖືຄືການເລື່ອນຊ້າຍຂວາ */}
                   <div className="space-y-3 md:hidden">
                     {g.rows.slice(0, take).map(({ d, role }) => (
-                      <TrackCard key={`m-${g.code}-${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />
+                      <TrackCard key={`m-${g.code}-${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} onCancel={cancelDoc} />
                     ))}
                   </div>
 
@@ -394,12 +438,15 @@ function StageDots({ t }: { t: ReturnType<typeof track> }) {
 }
 
 /** ໜຶ່ງໃບໂອນ = ໜຶ່ງ <tbody> (ແຖວຫຼັກ + ແຖວຜົນຄົ້ນຫາສິນຄ້າ ຖ້າມີ). */
-function TrackRow({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; now: number; today: string; hits?: ItemHit[] }) {
+function TrackRow({ d, role, now, today, hits, onCancel }: { d: Row; role: "out" | "in"; now: number; today: string; hits?: ItemHit[]; onCancel: (d: Row) => void }) {
   const t = track(d);
   const overdue = !!d.want_date && d.want_date < today && !t.done;
   const act = roleAction(role, d, t);
   const waiting = role === "in" && !t.done && !t.rejected && t.inT <= 1e-6;
   const outWaiting = role === "out" && !t.done && !t.rejected && t.inT > 1e-6 && t.req - t.toT <= 1e-6;
+  // ຍົກເລີກໄດ້ສະເພາະໃບທີ່ຍັງບໍ່ໄດ້ຈ່າຍອອກຈັກໜ່ວຍ — ພໍຂອງຍ້າຍໄປສາງລະຫວ່າງທາງ
+  // ແລ້ວ ຕ້ອງໃຊ້ "ຮັບຄືນ" ຊຶ່ງຍ້າຍຂອງກັບຈິງ ບໍ່ແມ່ນພຽງໝາຍສະຖານະ.
+  const canCancel = !t.done && !t.rejected && t.toT <= 1e-6;
 
   // ໂມງລໍ — ຕົວດຽວທີ່ສຳຄັນທີ່ສຸດໃນຕາຕະລາງ: ບອກວ່າໃບໃດຄ້າງດົນທີ່ສຸດ
   const cr = ms(d.created_at), iss = ms(d.issued_at), rec = ms(d.received_at);
@@ -425,7 +472,7 @@ function TrackRow({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; n
         <td className="px-2 py-1.5">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-mono text-xs font-bold text-aqua-700">{d.doc_no}</span>
-            {t.rejected ? <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">ຖືກປະຕິເສດ</span>
+            {t.rejected ? <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">ຍົກເລີກແລ້ວ</span>
               : t.done ? <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">ສຳເລັດ ✓</span>
               : waiting ? <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">ລໍຕົ້ນທາງຈ່າຍ</span>
               : <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">{STAGES[t.current]?.label ?? "ດຳເນີນການ"}</span>}
@@ -463,6 +510,12 @@ function TrackRow({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; n
             ) : outWaiting ? (
               <Link href={`/movements/transfer-return?doc=${encodeURIComponent(d.doc_no)}`} className="whitespace-nowrap rounded-lg bg-aqua-50 px-2.5 py-1 text-[11px] font-bold text-aqua-600 ring-1 ring-aqua-200 hover:bg-aqua-100">↩ ຮັບຄືນ</Link>
             ) : null}
+            {canCancel && (
+              <button type="button" onClick={() => onCancel(d)} title="ຍົກເລີກໃບຂໍໂອນນີ້ (ຍັງບໍ່ໄດ້ຈ່າຍ — ກູ້ຄືນໄດ້)"
+                className="whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50">
+                ຍົກເລີກ
+              </button>
+            )}
             <a href={`/print/transfer-request/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener"
               title="ພິມໃບຂໍໂອນ" className="shrink-0 rounded-lg p-1 text-slate-400 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-700">🖨</a>
           </div>
@@ -477,18 +530,19 @@ function TrackRow({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; n
   );
 }
 
-function TrackCard({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; now: number; today: string; hits?: ItemHit[] }) {
+function TrackCard({ d, role, now, today, hits, onCancel }: { d: Row; role: "out" | "in"; now: number; today: string; hits?: ItemHit[]; onCancel: (d: Row) => void }) {
   const t = track(d);
   const overdue = !!d.want_date && d.want_date < today && !t.done;
   const act = roleAction(role, d, t);
   const waiting = role === "in" && !t.done && !t.rejected && t.inT <= 1e-6; // dest waiting for source to issue
+  const canCancel = !t.done && !t.rejected && t.toT <= 1e-6;
   return (
     <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${role === "out" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{role === "out" ? "📤 ຈ່າຍ" : "📥 ຮັບ"}</span>
         <span className="font-mono text-sm font-bold text-aqua-700">{d.doc_no}</span>
         <span className="text-xs text-slate-500">{d.wh_from_name ?? d.wh_from} → {d.wh_to_name ?? d.wh_to}</span>
-        {t.rejected ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">ຖືກປະຕິເສດ</span>
+        {t.rejected ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">ຍົກເລີກແລ້ວ</span>
           : t.done ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">ສຳເລັດ ✓</span>
           : waiting ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">ລໍ ຕົ້ນທາງຈ່າຍ</span>
           : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">{STAGES[t.current]?.label ?? "ດຳເນີນການ"}</span>}
@@ -558,11 +612,23 @@ function TrackCard({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; 
       {(() => {
         // ຕົ້ນທາງ: ຈ່າຍຄົບແລ້ວ ຂອງຢູ່ໃນທາງ → ລໍປາຍທາງຮັບ (text) + ທາງເລືອກ ຮັບຄືນ
         const outWaiting = role === "out" && !t.done && !t.rejected && t.inT > 1e-6 && t.req - t.toT <= 1e-6;
-        if (act) return <div className="mt-3 flex justify-end"><Link href={act.href} className={`rounded-lg px-3 py-1.5 text-xs font-bold text-white ${act.cls}`}>{act.label}</Link></div>;
+        if (act) return (
+          <div className="mt-3 flex justify-end gap-2">
+            {canCancel && <button type="button" onClick={() => onCancel(d)} className="rounded-lg px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">ຍົກເລີກ</button>}
+            <Link href={act.href} className={`rounded-lg px-3 py-1.5 text-xs font-bold text-white ${act.cls}`}>{act.label}</Link>
+          </div>
+        );
         if (outWaiting) return (
           <div className="mt-3 flex items-center justify-end gap-3">
             <span className="text-xs font-semibold text-amber-600">⏳ ລໍ ປາຍທາງ ຮັບເຂົ້າ…</span>
             <Link href={`/movements/transfer-return?doc=${encodeURIComponent(d.doc_no)}`} className="rounded-lg bg-aqua-50 px-3 py-1.5 text-xs font-bold text-aqua-600 ring-1 ring-aqua-200 hover:bg-aqua-100">↩ ຮັບຄືນ</Link>
+          </div>
+        );
+        // ບໍ່ມີວຽກໃຫ້ເຮັດ (ເຊັ່ນ ແຖວຂອງສາງປາຍທາງທີ່ຍັງລໍຕົ້ນທາງຈ່າຍ) ແຕ່ຍັງ
+        // ຍົກເລີກໄດ້ — ບໍ່ດັ່ງນັ້ນເທິງມືຖືປຸ່ມນີ້ຈະບໍ່ມີທາງເຫັນເລີຍ
+        if (canCancel) return (
+          <div className="mt-3 flex justify-end">
+            <button type="button" onClick={() => onCancel(d)} className="rounded-lg px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">ຍົກເລີກ</button>
           </div>
         );
         return null;
