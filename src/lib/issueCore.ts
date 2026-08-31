@@ -11,6 +11,7 @@ import {
 } from "@/lib/erpPost";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 import { getSnDualBrands } from "@/lib/snDualBrand";
+import { lockBins } from "@/lib/binLock";
 
 const ISSUE_STOCK_FLAG = 72; // odg_wms_trans(_detail): ໃບໂອນສິນຄ້າ (calc_flag -1)
 const ISSUE_SN_FLAG = 56; // sn_trans(_detail): ໃບເບີກເປັນສິນຄ້າ (calc_flag -1)
@@ -80,6 +81,20 @@ export async function executeIssue(client: PoolClient, p: ExecuteIssueParams): P
   //    leg of an internal bin relocation (trans_flag 77), not a void, so excluding
   //    it would credit a bin the goods were already moved out of. Same rule as the
   //    balance page.
+  // ຈັບກຸນແຈຂອງທຸກບ່ອນເກັບທີ່ຈະແຕະ **ກ່ອນ** ອ່ານຍອດ — ບໍ່ດັ່ງນັ້ນສອງຄົນທີ່ຈ່າຍ
+  // ຈາກບ່ອນດຽວກັນພ້ອມກັນ ຈະອ່ານຍອດເກົ່າອັນດຽວກັນ ຜ່ານການກວດທັງສອງ ແລ້ວ
+  // ຂຽນ −1 ທັງສອງ (ເບິ່ງ lib/binLock.ts).
+  await lockBins(
+    client,
+    lines.map((l) => ({
+      wh,
+      rack: l.rack,
+      location: l.location,
+      pallet: l.pallet,
+      item_code: l.item_code,
+    })),
+  );
+
   for (const line of lines) {
     const balRes = await client.query<{ before: string }>(
       `SELECT COALESCE(SUM(t.qty * t.calc_flag), 0)::numeric::text AS before

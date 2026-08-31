@@ -9,6 +9,7 @@ import {
 } from "@/lib/erpPost";
 import { type MoveNote, saveMoveNotes } from "@/lib/moveReasons";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
+import { lockBins } from "@/lib/binLock";
 
 const WMS_FLAG = 72; // odg_wms_trans(_detail): ໃບໂອນສິນຄ້າ
 const SN_FLAG = 56; // sn_trans(_detail)
@@ -53,6 +54,20 @@ export async function moveFromTransit(
     .filter((l) => l.qty > 0)
     .map((l) => (moveSerials ? l : { ...l, serials: [] }));
   if (active.length === 0) throw new Error("ບໍ່ມີລາຍການໃຫ້ດຳເນີນ");
+
+  // ຈັບກຸນແຈກ່ອນອ່ານຍອດ — ສອງຄົນຮັບໂອນໃບດຽວກັນພ້ອມກັນ (ຫຼື ຮັບ + ຮັບຄືນ
+  // ພ້ອມກັນ) ຈະດຶງຂອງອອກຈາກສາງລະຫວ່າງທາງເກີນທີ່ມີ. ຢູ່ນີ້ "ບ່ອນ" ຄື
+  // (9903, ໃບອ້າງອີງ, ສິນຄ້າ) ຕາມທີ່ການກວດຍອດຂ້າງລຸ່ມໃຊ້.
+  await lockBins(
+    client,
+    active.map((l) => ({
+      wh: IN_TRANSIT_WH,
+      rack: "",
+      location: refDoc,
+      pallet: "",
+      item_code: l.item_code,
+    })),
+  );
 
   // 1) Validate: qty ≤ in-transit balance for this ref; serials parked in 9903.
   for (const line of active) {

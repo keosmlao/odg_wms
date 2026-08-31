@@ -20,6 +20,19 @@ type Health = {
   dead_qty: number;
   sn_mismatch: number;
   min_below: number;
+  /**
+   * ບ່ອນເກັບ (ສາງ × rack × location × pallet × ສິນຄ້າ) ທີ່ຍອດຄົງເຫຼືອຕິດລົບ.
+   *
+   * ຍອດຕິດລົບແປວ່າ "ຈ່າຍອອກຫຼາຍກວ່າທີ່ເຄີຍຮັບເຂົ້າ" ຊຶ່ງເປັນໄປບໍ່ໄດ້ໃນຄວາມຈິງ —
+   * ມັນສະແດງວ່າມີການເຄື່ອນໄຫວທີ່ບໍ່ໄດ້ບັນທຶກ ຫຼື ບັນທຶກຜິດບ່ອນ. ຕົວເລກນີ້ຄວນ
+   * ເປັນ 0 ແລະ ຖ້າມັນເພີ່ມຂຶ້ນ ແປວ່າມີບາງຢ່າງກັດກ້ອນຢູ່ທຸກມື້.
+   *
+   * ເຝົ້າໄວ້ຢູ່ນີ້ເພາະຕາຕະລາງ odg_wms_trans_detail **ບໍ່ໄດ້ຖືກຂຽນໂດຍແອັບນີ້
+   * ຝ່າຍດຽວ** — ການກວດຢູ່ໃນໂຄ້ດຂອງແອັບກັນໄດ້ແຕ່ຜູ້ຂຽນທີ່ຜ່ານແອັບ ສ່ວນການ
+   * ນັບຈາກຂໍ້ມູນຈິງແບບນີ້ ເຫັນຄວາມເສຍຫາຍຈາກທຸກຝ່າຍ.
+   */
+  negative_bins: number;
+  negative_qty: number;
   computed_at: number;
 };
 
@@ -34,7 +47,7 @@ export async function GET() {
 
   const accessible = accessibleWarehouses(session); // null = all, [] = none, [..] = list
   if (Array.isArray(accessible) && accessible.length === 0) {
-    return NextResponse.json({ dead_items: 0, dead_qty: 0, sn_mismatch: 0, min_below: 0, cached: false });
+    return NextResponse.json({ dead_items: 0, dead_qty: 0, sn_mismatch: 0, min_below: 0, negative_bins: 0, negative_qty: 0, cached: false });
   }
 
   const key = accessible === null ? "ALL" : [...accessible].sort().join(",");
@@ -48,7 +61,7 @@ export async function GET() {
   const whClauseS = accessible === null ? "" : "AND s.wh_code = ANY($1)";
   const args = accessible === null ? [] : [accessible];
 
-  const [deadRows, mismatchRows, minStock] = await Promise.all([
+  const [deadRows, mismatchRows, minStock, negRows] = await Promise.all([
     query<{ dead_items: string; dead_qty: string }>(
       `WITH stock AS (
          SELECT t.wh_code, t.item_code,
@@ -104,6 +117,24 @@ export async function GET() {
       args,
     ),
     minStockSummary(accessible),
+    // ບ່ອນເກັບທີ່ຍອດຕິດລົບ — ນັບຈາກຂໍ້ມູນຈິງ ຈຶ່ງເຫັນຄວາມເສຍຫາຍທີ່ມາຈາກ
+    // ຜູ້ຂຽນທຸກຝ່າຍ ບໍ່ແມ່ນສະເພາະທີ່ຜ່ານແອັບນີ້.
+    query<{ bins: string; qty: string }>(
+      `WITH bal AS (
+         SELECT SUM(t.qty * t.calc_flag) AS q
+         FROM public.odg_wms_trans_detail t
+         WHERE t.item_code IS NOT NULL AND t.item_code <> '' ${whClause}
+         GROUP BY t.wh_code,
+                  COALESCE(NULLIF(TRIM(t.shelf_code), ''), ''),
+                  COALESCE(NULLIF(TRIM(t.shelf_code1), ''), ''),
+                  COALESCE(NULLIF(TRIM(t.pallet), ''), ''),
+                  t.item_code
+       )
+       SELECT count(*)::text AS bins,
+              COALESCE(SUM(q), 0)::numeric::text AS qty
+       FROM bal WHERE q < -0.0001`,
+      args,
+    ),
   ]);
 
   const result: Health = {
@@ -111,6 +142,8 @@ export async function GET() {
     dead_qty: Math.round((Number.parseFloat(deadRows[0]?.dead_qty ?? "0") || 0) * 100) / 100,
     sn_mismatch: Number.parseInt(mismatchRows[0]?.mismatch ?? "0", 10) || 0,
     min_below: minStock.below,
+    negative_bins: Number.parseInt(negRows[0]?.bins ?? "0", 10) || 0,
+    negative_qty: Math.round(Number.parseFloat(negRows[0]?.qty ?? "0") || 0),
     computed_at: now,
   };
   cacheStore.set(key, result);
