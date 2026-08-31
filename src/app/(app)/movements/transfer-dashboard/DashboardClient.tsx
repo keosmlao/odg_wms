@@ -42,27 +42,28 @@ function track(d: Row) {
   const rejected = st === 2;
   const done = req > 0 && rcv + 1e-6 >= req;
   const full = (v: number) => req > 0 && v + 1e-6 >= req;
-  // per-node state: ① ຂໍ ② ອະນຸມັດ ③ ຈ່າຍ→ກາງ ④ ຄ້າງທາງ ⑤ ຮັບເຂົ້າ
+  // per-node state: ① ຂໍ ② ຈ່າຍ→ກາງ ③ ຄ້າງທາງ ④ ຮັບເຂົ້າ
+  //
+  // ຂັ້ນ "ອະນຸມັດ" ຖືກຕັດອອກ: ໃບຂໍໂອນຈ່າຍໄດ້ເລີຍໂດຍບໍ່ຕ້ອງລໍໃຜກົດອະນຸມັດ.
+  // status ຍັງໃຊ້ຢູ່ຈຸດດຽວ — 2 = ຖືກປະຕິເສດ ຊຶ່ງຍັງກັນການຈ່າຍຢູ່ (ຄືກັບທີ່
+  // /api/movements/issue/pending ກັນໄວ້ຢູ່ແລ້ວ). ສ່ວນ 0 ກັບ 1 ດຽວນີ້ຄືກັນໝົດ.
   const states: NodeState[] = [
     "done",
-    rejected ? "rejected" : st >= 1 ? "done" : "current",
-    full(toT) ? "done" : toT > 1e-6 ? "partial" : (st >= 1 && !rejected ? "current" : "pending"),
+    rejected ? "rejected" : full(toT) ? "done" : toT > 1e-6 ? "partial" : "current",
     done ? "done" : inT > 1e-6 ? "current" : "pending",
     done ? "done" : rcv > 1e-6 ? "partial" : "pending",
   ];
-  // primary stage (badge + action shortcut)
+  // primary stage (badge + action shortcut) — index ໃນ STAGES
   let current = 1;
-  if (done) current = 5;
+  if (done) current = 4;
   else if (rejected) current = -1;
-  else if (inT > 1e-6) current = 3;
-  else if (st === 1) current = 2;
+  else if (inT > 1e-6) current = 2;
   else current = 1;
   return { req, toT, inT, rcv, st, rejected, done, states, current };
 }
 
 const STAGES = [
   { key: "req", label: "ຂໍ", icon: "📝" },
-  { key: "appr", label: "ອະນຸມັດ", icon: "✅" },
   { key: "issue", label: "ຈ່າຍ→ກາງ", icon: "📤" },
   { key: "transit", label: "ຄ້າງທາງ", icon: "🚚" },
   { key: "recv", label: "ຮັບເຂົ້າ", icon: "📥" },
@@ -192,7 +193,6 @@ export default function DashboardClient() {
         <Link href="/movements/transfer-request" className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-aqua-700 to-brand-800 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg active:scale-98">📝 ອອກໃບຂໍໂອນ</Link>
         <span className="text-slate-300">›</span>
         {[
-          { label: "ອະນຸມັດ", href: "/movements/transfer-approve", icon: "✅" },
           { label: "ຈ່າຍອອກ", href: "/movements/issue", icon: "📤" },
           { label: "ຮັບໂອນເຂົ້າ", href: "/movements/transfer-receive", icon: "📥" },
           { label: "ຮັບຄືນ", href: "/movements/transfer-return", icon: "↩️" },
@@ -325,8 +325,8 @@ function roleAction(role: "out" | "in", d: Row, t: ReturnType<typeof track>) {
   if (role === "in") {
     return t.inT > 1e-6 ? { href: `/movements/transfer-receive?doc=${doc}`, label: "→ ໄປຮັບເຂົ້າ", cls: "bg-emerald-500" } : null;
   }
-  if (t.current === 1) return { href: `/movements/transfer-approve?doc=${doc}`, label: "→ ໄປອະນຸມັດ", cls: "bg-amber-500" };
-  if (t.req - t.toT > 1e-6 && t.st >= 1) return { href: `/movements/issue?type=transfer&doc=${doc}${d.wh_from ? `&wh=${encodeURIComponent(d.wh_from)}` : ""}`, label: "→ ໄປຈ່າຍ", cls: "bg-red-500" };
+  // ບໍ່ມີຂັ້ນອະນຸມັດແລ້ວ — ໃບທີ່ຍັງຈ່າຍບໍ່ຄົບ ໄປຈ່າຍໄດ້ເລີຍ ໂດຍບໍ່ຕ້ອງລໍ st >= 1
+  if (t.req - t.toT > 1e-6) return { href: `/movements/issue?type=transfer&doc=${doc}${d.wh_from ? `&wh=${encodeURIComponent(d.wh_from)}` : ""}`, label: "→ ໄປຈ່າຍ", cls: "bg-red-500" };
   // ຈ່າຍຄົບແລ້ວ ກຳລັງຄ້າງທາງ → ລໍ ປາຍທາງຮັບ (ບໍ່ແມ່ນວຽກຕົ້ນທາງ); ມີທາງເລືອກ ຮັບຄືນ
   return null;
 }
@@ -378,7 +378,7 @@ function StageDots({ t }: { t: ReturnType<typeof track> }) {
           t.states[i] === "done" ? "bg-emerald-400"
           : t.states[i] === "partial" || t.states[i] === "current" ? "bg-amber-300"
           : "bg-slate-200";
-        const qty = i === 0 ? `${t.req}` : i === 2 ? `${t.toT}/${t.req}` : i === 3 ? `${t.inT}` : i === 4 ? `${t.rcv}/${t.req}` : "";
+        const qty = i === 0 ? `${t.req}` : i === 1 ? `${t.toT}/${t.req}` : i === 2 ? `${t.inT}` : `${t.rcv}/${t.req}`;
         return (
           <span key={st.key} className="flex items-center">
             <span
@@ -512,7 +512,7 @@ function TrackCard({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; 
             : stt === "partial" ? "bg-amber-300 text-white ring-amber-200"
             : "bg-slate-100 text-slate-300 ring-slate-200";
           const textCls = isDone ? "text-emerald-700" : active ? "text-amber-600" : "text-slate-400";
-          const qtyLabel = i === 0 ? `${t.req}` : i === 2 ? `${t.toT}/${t.req}` : i === 3 ? `${t.inT}` : i === 4 ? `${t.rcv}/${t.req}` : null;
+          const qtyLabel = i === 0 ? `${t.req}` : i === 1 ? `${t.toT}/${t.req}` : i === 2 ? `${t.inT}` : `${t.rcv}/${t.req}`;
           return (
             <div key={s.key} className="flex flex-1 flex-col items-center">
               <div className="flex w-full items-center">
@@ -521,7 +521,7 @@ function TrackCard({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; 
                 <div className={`h-1 flex-1 rounded ${i === STAGES.length - 1 ? "bg-transparent" : connCls(i)}`} />
               </div>
               <div className={`mt-1.5 text-center text-[10px] font-bold ${textCls}`}>{s.icon} {s.label}</div>
-              {qtyLabel != null && i !== 1 && <div className={`text-[10px] font-mono ${active ? "font-bold text-amber-600" : "text-slate-500"}`}>{qtyLabel}</div>}
+              {qtyLabel != null && <div className={`text-[10px] font-mono ${active ? "font-bold text-amber-600" : "text-slate-500"}`}>{qtyLabel}</div>}
             </div>
           );
         })}
