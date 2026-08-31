@@ -48,3 +48,6 @@ next-env.d.ts
 # until the plan is approved.
 /migrations/027_sn_type_and_isn_log.sql
 /docs/isn-analysis.html
+
+# ສຳຮອງຂໍ້ມູນ production ຈາກການແກ້ດ້ວຍມື — ຢ່າ commit
+backup_*.json
