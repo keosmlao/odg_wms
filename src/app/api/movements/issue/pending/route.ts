@@ -38,6 +38,10 @@ export async function GET(request: Request) {
   const q = url.searchParams.get("q")?.trim() ?? "";
   const days = Math.min(Math.max(Number.parseInt(url.searchParams.get("days") ?? "90", 10) || 90, 1), 730);
   const limit = Math.min(Math.max(Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 1), 200);
+  // ໂຫຼດເປັນຊຸດ (infinite scroll): ໜ້າຈໍດຶງ 20 ໃບກ່ອນ ແລ້ວຄ່ອຍດຶງເພີ່ມເມື່ອເລື່ອນລົງ.
+  // ດຶງເກີນມາ 1 ແຖວແລ້ວຕັດຖິ້ມ — ຮູ້ວ່າ "ຍັງມີຕໍ່" ໂດຍບໍ່ຕ້ອງນັບທັງໝົດ
+  // (ການນັບທັງໝົດຄື aggregate ອັນດຽວກັນທີ່ໜັກຢູ່ແລ້ວ).
+  const offset = Math.max(Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
 
   const flag = FLAG_BY_TYPE[type];
   if (flag === undefined) return NextResponse.json({ error: "ປະເພດເອກະສານບໍ່ຖືກຕ້ອງ" }, { status: 400 });
@@ -52,8 +56,10 @@ export async function GET(request: Request) {
     args.push(`%${escapeLike(q)}%`);
     searchSql = `AND (d.doc_no ILIKE $${args.length} ESCAPE '\\' OR d.item_code ILIKE $${args.length} ESCAPE '\\' OR d.item_name ILIKE $${args.length} ESCAPE '\\')`;
   }
-  args.push(limit);
+  args.push(limit + 1);
   const limitIdx = args.length;
+  args.push(offset);
+  const offsetIdx = args.length;
 
   const docs = await query<{
     doc_no: string;
@@ -136,13 +142,16 @@ export async function GET(request: Request) {
        AND (h.trans_flag <> 124 OR COALESCE(h.status, 0) <> 2)
        AND (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0)) > 0.0001
      ORDER BY s.wh_code, h.doc_date DESC, s.doc_no DESC
-     LIMIT $${limitIdx}`,
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
     args,
   );
 
+  const hasMore = docs.length > limit;
+  const pageDocs = hasMore ? docs.slice(0, limit) : docs;
+
   // Per-item lines for the listed docs (netted), so each card can show its
   // contents inline — like the goods-receipt bill cards.
-  const docNos = [...new Set(docs.map((d) => d.doc_no))];
+  const docNos = [...new Set(pageDocs.map((d) => d.doc_no))];
   const lineRows = docNos.length
     ? await query<{
         doc_no: string;
@@ -199,6 +208,10 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     warehouses,
-    docs: docs.map((d) => ({ ...d, lines: linesByDoc.get(`${d.doc_no} ${d.wh_code}`) ?? [] })),
+    docs: pageDocs.map((d) => ({ ...d, lines: linesByDoc.get(`${d.doc_no} ${d.wh_code}`) ?? [] })),
+    /** ຍັງມີໃບຕໍ່ໄປ — ໜ້າຈໍໃຊ້ຄ່ານີ້ຕັດສິນວ່າຈະດຶງຊຸດຕໍ່ໄປເມື່ອເລື່ອນລົງ ຫຼື ບໍ່. */
+    has_more: hasMore,
+    offset,
+    limit,
   });
 }

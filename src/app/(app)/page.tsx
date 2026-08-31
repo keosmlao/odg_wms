@@ -4,6 +4,7 @@ import { query } from "@/lib/db";
 import { ROLE_LABEL_LO, accessibleWarehouses } from "@/lib/session-shared";
 import BootstrapManagerButton from "./BootstrapManagerButton";
 import HealthBadges from "./HealthBadges";
+import PendingIssueCard from "./PendingIssueCard";
 import WarehouseCapacity from "@/components/WarehouseCapacity";
 import { KpiCard, Notice, Chip } from "@/components/ui/Card";
 import {
@@ -387,6 +388,10 @@ export default async function Home() {
           )}
 
           {/* Quick Actions */}
+          {/* ຄ້າງຈ່າຍ — ວຽກທີ່ລໍຢູ່ ຄວນເຫັນກ່ອນລາຍການທາງລັດ.
+              ດຶງຫຼັງ paint ຈຶ່ງບໍ່ຖ່ວງໜ້າຫຼັກ (ຄືກັບ HealthBadges). */}
+          {role && <PendingIssueCard />}
+
           {role && (
             <section>
               <div className="mb-3 flex items-center justify-between">

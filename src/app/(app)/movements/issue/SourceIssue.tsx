@@ -269,6 +269,12 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   const [search, setSearch] = useState("");
   const [docs, setDocs] = useState<PendingDoc[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  // ໂຫຼດເປັນຊຸດແທນການດຶງມາໝົດເທື່ອດຽວ — ບາງສາງມີໃບຄ້າງເປັນພັນ ແລະ
+  // ການດຶງພ້ອມກັນໝົດເຮັດໃຫ້ສະຫຼັບ tab ຊ້າ ໂດຍທີ່ຄົນເບິ່ງແຕ່ 10 ໃບທຳອິດ.
+  const PAGE = 20;
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const moreRef = useRef<HTMLDivElement | null>(null);
 
   const [selDoc, setSelDoc] = useState<PendingDoc | null>(null);
   const [lines, setLines] = useState<WorkingLine[]>([]);
@@ -341,13 +347,14 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
     const t = setTimeout(async () => {
       setLoadingDocs(true);
       try {
-        const params = new URLSearchParams({ type });
+        const params = new URLSearchParams({ type, limit: String(PAGE), offset: "0" });
         if (search.trim()) params.set("q", search.trim());
         const res = await fetch(`/api/movements/issue/pending?${params}`);
-        const data = (await res.json()) as { docs?: PendingDoc[]; error?: string };
+        const data = (await res.json()) as { docs?: PendingDoc[]; has_more?: boolean; error?: string };
         if (cancelled) return;
         if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
         setDocs(data.docs ?? []);
+        setHasMore(Boolean(data.has_more));
       } catch (err) {
         if (!cancelled) showToast("err", err instanceof Error ? err.message : "ບໍ່ສຳເລັດ");
       } finally {
@@ -359,6 +366,56 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
       clearTimeout(t);
     };
   }, [tab, type, search, reloadKey, showToast]);
+
+  /**
+   * ດຶງຊຸດຕໍ່ໄປຕໍ່ທ້າຍລາຍການ.
+   *
+   * ໃຊ້ offset ຂອງຄວາມຍາວທີ່ມີຢູ່ ບໍ່ແມ່ນເລກໜ້າ — ລຳດັບຂອງ query ຄົງທີ່
+   * (ສາງ, ວັນທີ, ເລກໃບ) ຈຶ່ງນັບຕໍ່ໄດ້ຖືກ.
+   */
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({
+        type,
+        limit: String(PAGE),
+        offset: String(docs.length),
+      });
+      if (search.trim()) params.set("q", search.trim());
+      const res = await fetch(`/api/movements/issue/pending?${params}`);
+      const data = (await res.json()) as { docs?: PendingDoc[]; has_more?: boolean; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
+      const more = data.docs ?? [];
+      // ກັນຊ້ຳ: ຖ້າມີໃບຖືກຈ່າຍໄປລະຫວ່າງສອງຄັ້ງ offset ຈະເລື່ອນ ແລະ ບາງໃບ
+      // ອາດກັບມາອີກ — ຕັດອອກດ້ວຍ key ສາງ+ເລກໃບ.
+      setDocs((prev) => {
+        const seen = new Set(prev.map((d) => `${d.wh_code}:${d.doc_no}`));
+        return [...prev, ...more.filter((d) => !seen.has(`${d.wh_code}:${d.doc_no}`))];
+      });
+      setHasMore(Boolean(data.has_more));
+    } catch (err) {
+      showToast("err", err instanceof Error ? err.message : "ໂຫຼດເພີ່ມບໍ່ສຳເລັດ");
+      setHasMore(false);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [docs.length, hasMore, loadingMore, search, type, showToast]);
+
+  // ເລື່ອນຮອດທ້າຍລາຍການ → ດຶງຊຸດຕໍ່ໄປ. rootMargin ເຜື່ອໄວ້ 400px ເພື່ອໃຫ້
+  // ຊຸດຕໍ່ໄປມາຮອດກ່ອນຄົນເລື່ອນຮອດຈິງ — ບໍ່ຮູ້ສຶກວ່າຢຸດລໍ.
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) void loadMore();
+      },
+      { rootMargin: "400px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, loadMore]);
 
   /** Build allocation rows for one source line. If the needed qty exceeds the
    *  recommended (FIFO) location's stock, AUTO-SPLIT across the next locations
@@ -1119,6 +1176,27 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                     </ul>
                   </WarehouseGroup>
                 ))}
+
+                {/* ຕົວຈັບການເລື່ອນ — ບໍ່ມີເນື້ອໃນ ມີໄວ້ໃຫ້ IntersectionObserver ເຫັນ.
+                    ປຸ່ມຢູ່ນຳ ເພື່ອໃຫ້ຄົນທີ່ບໍ່ໄດ້ໃຊ້ເມົ້າເລື່ອນ (ຫຼື browser ທີ່
+                    ບໍ່ຮອງຮັບ observer) ຍັງດຶງເພີ່ມໄດ້. */}
+                {hasMore && (
+                  <div ref={moreRef} className="flex justify-center py-4">
+                    <button
+                      type="button"
+                      onClick={() => void loadMore()}
+                      disabled={loadingMore}
+                      className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+                    >
+                      {loadingMore ? "ກຳລັງໂຫຼດ..." : `ໂຫຼດເພີ່ມອີກ ${PAGE} ໃບ`}
+                    </button>
+                  </div>
+                )}
+                {!hasMore && docs.length > PAGE && (
+                  <p className="py-3 text-center text-[11px] text-zinc-400">
+                    ຄົບທຸກໃບແລ້ວ ({docs.length})
+                  </p>
+                )}
               </div>
             )}
           </div>
