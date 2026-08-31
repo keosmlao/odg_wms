@@ -251,16 +251,45 @@ export default function DashboardClient() {
                   countLabel="ລາຍການ"
                   tone="aqua"
                 >
-                  <div className="space-y-3">
-                    {g.rows.slice(0, take).map(({ d, role }) => (
-                      <TrackCard key={`${g.code}-${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />
-                    ))}
-                    {take < g.rows.length && (
-                      <p className="py-1 text-center text-[11px] text-slate-400">
-                        ຍັງມີອີກ {g.rows.length - take} ລາຍການ — ເລື່ອນລົງເພື່ອສະແດງ
-                      </p>
-                    )}
+                  {/* ≥md — ຕາຕະລາງ. ບັດ stepper ເກົ່າສູງ ~207px ຕໍ່ໃບ ຈຶ່ງເຫັນ 3 ໃບ
+                      ຕໍ່ໜ້າຈໍ ແລະ ຕົວເລກ (ຂໍ / ຍັງບໍ່ຈ່າຍ / ຄ້າງທາງ / ຮັບ) ຢູ່ຄົນລະ
+                      ຕຳແໜ່ງທຸກໃບ ຈຶ່ງທຽບກັນບໍ່ໄດ້. ຂັ້ນຕອນຫຍໍ້ເປັນຈຸດ 5 ອັນ
+                      ຢູ່ຖັນດຽວ — ຍັງເຫັນວ່າໃບໃດຢູ່ຂັ້ນໃດ. */}
+                  <div className="hidden overflow-x-auto rounded-xl ring-1 ring-slate-200 md:block">
+                    <table className="w-full min-w-[900px] text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                          <th scope="col" className="px-2 py-2">ບົດບາດ</th>
+                          <th scope="col" className="px-2 py-2">ໃບໂອນ</th>
+                          <th scope="col" className="hidden px-2 py-2 lg:table-cell">ເສັ້ນທາງ</th>
+                          <th scope="col" className="px-2 py-2">ຂັ້ນຕອນ</th>
+                          <th scope="col" className="px-2 py-2 text-right">ຂໍ</th>
+                          <th scope="col" className="px-2 py-2 text-right">ຍັງບໍ່ຈ່າຍ</th>
+                          <th scope="col" className="hidden px-2 py-2 text-right xl:table-cell">ຄ້າງທາງ</th>
+                          <th scope="col" className="px-2 py-2 text-right">ຮັບແລ້ວ</th>
+                          <th scope="col" className="px-2 py-2">ລໍມາແລ້ວ</th>
+                          <th scope="col" className="hidden px-2 py-2 xl:table-cell">ວັນທີ</th>
+                          <th scope="col" className="px-2 py-2 text-right"><span className="sr-only">ດຳເນີນການ</span></th>
+                        </tr>
+                      </thead>
+                      {g.rows.slice(0, take).map(({ d, role }) => (
+                        <TrackRow key={`${g.code}-${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />
+                      ))}
+                    </table>
                   </div>
+
+                  {/* <md — ບັດຄືເກົ່າ: 11 ຖັນເທິງຈໍມືຖືຄືການເລື່ອນຊ້າຍຂວາ */}
+                  <div className="space-y-3 md:hidden">
+                    {g.rows.slice(0, take).map(({ d, role }) => (
+                      <TrackCard key={`m-${g.code}-${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />
+                    ))}
+                  </div>
+
+                  {take < g.rows.length && (
+                    <p className="py-1 text-center text-[11px] text-slate-400">
+                      ຍັງມີອີກ {g.rows.length - take} ລາຍການ — ເລື່ອນລົງເພື່ອສະແດງ
+                    </p>
+                  )}
                 </WarehouseGroup>
               );
             });
@@ -325,6 +354,126 @@ function ItemHits({ hits }: { hits: ItemHit[] }) {
         })}
       </div>
     </div>
+  );
+}
+
+/**
+ * ຂັ້ນຕອນແບບຫຍໍ້ — ຈຸດ 5 ອັນຕໍ່ກັນ ແທນວົງມົນ 8 ອັນພ້ອມປ້າຍເຕັມ.
+ *
+ * ໃນຕາຕະລາງ ຂັ້ນຕອນຕ້ອງກິນຄວາມກວ້າງແຖບດຽວ ບໍ່ແມ່ນເຕັມແຖວ. ປ້າຍ ແລະ
+ * ຈຳນວນຍ້າຍໄປຢູ່ title ຂອງແຕ່ລະຈຸດ ແລະ ຢູ່ຖັນຕົວເລກທາງຂວາ ຊຶ່ງທຽບ
+ * ລະຫວ່າງໃບຕໍ່ໃບໄດ້ດີກວ່າປ້າຍໃຕ້ວົງມົນ.
+ */
+function StageDots({ t }: { t: ReturnType<typeof track> }) {
+  return (
+    <div className="flex items-center">
+      {STAGES.map((st, i) => {
+        const stt = t.states[i];
+        const dot =
+          stt === "done" ? "bg-emerald-500"
+          : stt === "current" ? "bg-amber-400 ring-2 ring-amber-200"
+          : stt === "partial" ? "bg-amber-300"
+          : "bg-slate-200";
+        const conn =
+          t.states[i] === "done" ? "bg-emerald-400"
+          : t.states[i] === "partial" || t.states[i] === "current" ? "bg-amber-300"
+          : "bg-slate-200";
+        const qty = i === 0 ? `${t.req}` : i === 2 ? `${t.toT}/${t.req}` : i === 3 ? `${t.inT}` : i === 4 ? `${t.rcv}/${t.req}` : "";
+        return (
+          <span key={st.key} className="flex items-center">
+            <span
+              title={`${st.label}${qty ? ` — ${qty}` : ""}`}
+              className={`block h-2.5 w-2.5 shrink-0 rounded-full ${dot}`}
+            />
+            {i < STAGES.length - 1 && <span className={`block h-0.5 w-4 ${conn}`} />}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** ໜຶ່ງໃບໂອນ = ໜຶ່ງ <tbody> (ແຖວຫຼັກ + ແຖວຜົນຄົ້ນຫາສິນຄ້າ ຖ້າມີ). */
+function TrackRow({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; now: number; today: string; hits?: ItemHit[] }) {
+  const t = track(d);
+  const overdue = !!d.want_date && d.want_date < today && !t.done;
+  const act = roleAction(role, d, t);
+  const waiting = role === "in" && !t.done && !t.rejected && t.inT <= 1e-6;
+  const outWaiting = role === "out" && !t.done && !t.rejected && t.inT > 1e-6 && t.req - t.toT <= 1e-6;
+
+  // ໂມງລໍ — ຕົວດຽວທີ່ສຳຄັນທີ່ສຸດໃນຕາຕະລາງ: ບອກວ່າໃບໃດຄ້າງດົນທີ່ສຸດ
+  const cr = ms(d.created_at), iss = ms(d.issued_at), rec = ms(d.received_at);
+  let wait: { label: string; val: string; live: boolean; cls: string } | null = null;
+  if (!Number.isFinite(iss) && !t.rejected && !t.done) {
+    wait = { label: t.current === 1 ? "ລໍອະນຸມັດ" : "ລໍຈ່າຍ", val: dur(cr, now), live: true, cls: "text-amber-600" };
+  } else if (Number.isFinite(iss) && !t.done && t.inT > 1e-6) {
+    wait = { label: "ໃນທາງ", val: dur(iss, now), live: true, cls: "text-amber-600" };
+  } else if (t.done && Number.isFinite(rec)) {
+    wait = { label: "ລວມ", val: dur(cr, rec), live: false, cls: "text-emerald-600" };
+  }
+
+  const unissued = t.req - t.toT;
+
+  return (
+    <tbody className="border-b border-slate-100 last:border-0">
+      <tr className="transition hover:bg-slate-50/70">
+        <td className="px-2 py-1.5">
+          <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold ${role === "out" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
+            {role === "out" ? "📤 ຈ່າຍ" : "📥 ຮັບ"}
+          </span>
+        </td>
+        <td className="px-2 py-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-mono text-xs font-bold text-aqua-700">{d.doc_no}</span>
+            {t.rejected ? <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">ຖືກປະຕິເສດ</span>
+              : t.done ? <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">ສຳເລັດ ✓</span>
+              : waiting ? <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">ລໍຕົ້ນທາງຈ່າຍ</span>
+              : <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">{STAGES[t.current]?.label ?? "ດຳເນີນການ"}</span>}
+            {overdue && <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">ເກີນກຳນົດ</span>}
+          </div>
+        </td>
+        <td className="hidden max-w-[18rem] px-2 py-1.5 lg:table-cell">
+          <span className="block truncate text-xs text-slate-500" title={`${d.wh_from_name ?? d.wh_from} → ${d.wh_to_name ?? d.wh_to}`}>
+            {d.wh_from_name ?? d.wh_from} → {d.wh_to_name ?? d.wh_to}
+          </span>
+        </td>
+        <td className="px-2 py-1.5"><StageDots t={t} /></td>
+        <td className="px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-600">{t.req}</td>
+        <td className="px-2 py-1.5 text-right font-mono text-xs font-bold tabular-nums">
+          {unissued > 1e-6 ? <span className="text-red-600">{unissued}</span> : <span className="text-slate-300">—</span>}
+        </td>
+        <td className="hidden px-2 py-1.5 text-right font-mono text-xs tabular-nums xl:table-cell">
+          {t.inT > 1e-6 ? <span className="font-bold text-amber-600">{t.inT}</span> : <span className="text-slate-300">—</span>}
+        </td>
+        <td className="px-2 py-1.5 text-right font-mono text-xs tabular-nums">
+          <span className={t.rcv >= t.req ? "font-bold text-emerald-600" : "text-slate-600"}>{t.rcv}/{t.req}</span>
+        </td>
+        <td className="whitespace-nowrap px-2 py-1.5 text-[11px]">
+          {wait ? (
+            <span className={wait.cls}>
+              {wait.label} <span className="font-mono tabular-nums">{wait.val}</span>{wait.live ? " ⏳" : ""}
+            </span>
+          ) : <span className="text-slate-300">—</span>}
+        </td>
+        <td className="hidden whitespace-nowrap px-2 py-1.5 text-[11px] text-slate-400 xl:table-cell">{fmtD(d.doc_date)}</td>
+        <td className="px-2 py-1.5">
+          <div className="flex items-center justify-end gap-1">
+            {act ? (
+              <Link href={act.href} className={`whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-bold text-white ${act.cls}`}>{act.label}</Link>
+            ) : outWaiting ? (
+              <Link href={`/movements/transfer-return?doc=${encodeURIComponent(d.doc_no)}`} className="whitespace-nowrap rounded-lg bg-aqua-50 px-2.5 py-1 text-[11px] font-bold text-aqua-600 ring-1 ring-aqua-200 hover:bg-aqua-100">↩ ຮັບຄືນ</Link>
+            ) : null}
+            <a href={`/print/transfer-request/${encodeURIComponent(d.doc_no)}?auto=1`} target="_blank" rel="noopener"
+              title="ພິມໃບຂໍໂອນ" className="shrink-0 rounded-lg p-1 text-slate-400 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-700">🖨</a>
+          </div>
+        </td>
+      </tr>
+      {hits && hits.length > 0 && (
+        <tr className="bg-aqua-50/40">
+          <td colSpan={11} className="px-2 pb-2 pt-0"><ItemHits hits={hits} /></td>
+        </tr>
+      )}
+    </tbody>
   );
 }
 
