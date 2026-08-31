@@ -7,6 +7,7 @@ import {
   isSnFlag,
   setWarehouseKind,
   setWarehouseSnFlag,
+  setWarehouseStartDate,
   warehouseKindError,
   warehouseSnFlags,
 } from "@/lib/warehouseConfig";
@@ -27,6 +28,13 @@ function nullableStr(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const t = v.trim();
   return t === "" ? null : t;
+}
+
+/** ວັນທີ YYYY-MM-DD ຈາກ <input type="date"> — ວ່າງ ຫຼື ຮູບແບບຜິດ = null (ບໍ່ຈຳກັດ). */
+function dateOrNull(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
 }
 
 function numericOrNull(v: unknown): number | null {
@@ -106,12 +114,29 @@ export async function PUT(
   // ຍົກຂຶ້ນເປັນສາງຫຼັກແລ້ວຍັງມີລູກຄ້າງ ບໍ່ເປັນຫຍັງ (ຊັ້ນດຽວຄືເກົ່າ) — ແຕ່ຖ້າຖືກ
   // ຫຼຸດເປັນຍ່ອຍ warehouseKindError ຂ້າງເທິງໄດ້ປະຕິເສດໄປແລ້ວ.
 
+  // ວັນທີເລີ່ມໃຊ້ WMS — ຢູ່ config ຂອງ WMS ຄືກັນ ບໍ່ແມ່ນ master ຂອງ ERP.
+  const startDate = dateOrNull(body.wms_start_date);
+  try {
+    await setWarehouseStartDate(code, startDate, guard.session.employee_code ?? null);
+  } catch (err) {
+    return NextResponse.json(
+      { error: (err as Error).message || "ບັນທຶກວັນທີເລີ່ມໃຊ້ບໍ່ສຳເລັດ" },
+      { status: 500 },
+    );
+  }
+
   // SN menu flags are managed separately (the matrix / single PATCH), so the
   // edit form only touches warehouse fields — return the current flags.
   const sn = await warehouseSnFlags(code);
   return NextResponse.json({
     ok: true,
-    warehouse: { ...rows[0], sn, kind, parent_codes: parentCodes },
+    warehouse: {
+      ...rows[0],
+      sn,
+      kind,
+      parent_codes: parentCodes,
+      wms_start_date: startDate,
+    },
   });
 }
 

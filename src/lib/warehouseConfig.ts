@@ -361,3 +361,56 @@ export async function warehouseKindError(
   }
   return null;
 }
+
+/* ── ວັນທີເລີ່ມໃຊ້ WMS ຕໍ່ສາງ (migration 043) ─────────────────────────── */
+
+/**
+ * ວັນທີທີ່ສາງນີ້ເລີ່ມຈ່າຍຜ່ານ WMS (YYYY-MM-DD) ຫຼື null ເມື່ອບໍ່ຈຳກັດ.
+ *
+ * ການເປີດໃຊ້ WMS ເປັນການທະຍອຍເປີດເປັນສາງໆ. ສາງທີ່ຫາກໍ່ເປີດຈະມີບິນຄ້າງເກົ່າ
+ * ຢູ່ ERP ທີ່ຈັດການໄປແລ້ວນອກລະບົບ — ຖ້າເອົາມາສະແດງນຳ ລາຍການຄ້າງຈ່າຍຈະເຕັມ
+ * ໄປດ້ວຍບິນທີ່ບໍ່ຕ້ອງເຮັດຫຍັງ ຈົນຫາບິນຈິງບໍ່ພົບ.
+ */
+export async function warehouseStartDate(whCode: string): Promise<string | null> {
+  try {
+    const rows = await query<{ d: string | null }>(
+      `SELECT to_char(wms_start_date, 'YYYY-MM-DD') AS d
+         FROM public.odg_wms_warehouse_config WHERE wh_code = $1`,
+      [whCode],
+    );
+    return rows[0]?.d ?? null;
+  } catch {
+    // ຍັງບໍ່ໄດ້ run migration 043 — ຖືວ່າບໍ່ຈຳກັດ (ພຶດຕິກຳເກົ່າ)
+    return null;
+  }
+}
+
+/** ວັນທີເລີ່ມໃຊ້ຂອງທຸກສາງທີ່ຕັ້ງໄວ້ — ສາງທີ່ບໍ່ໄດ້ຕັ້ງຈະບໍ່ຢູ່ໃນ map. */
+export async function warehouseStartDateMap(): Promise<Map<string, string>> {
+  try {
+    const rows = await query<{ wh_code: string; d: string }>(
+      `SELECT wh_code, to_char(wms_start_date, 'YYYY-MM-DD') AS d
+         FROM public.odg_wms_warehouse_config WHERE wms_start_date IS NOT NULL`,
+    );
+    return new Map(rows.map((r) => [r.wh_code, r.d]));
+  } catch {
+    return new Map();
+  }
+}
+
+/** ຕັ້ງ/ລ້າງວັນທີເລີ່ມໃຊ້. ສົ່ງ null ເພື່ອລ້າງ (ກັບໄປບໍ່ຈຳກັດ). */
+export async function setWarehouseStartDate(
+  whCode: string,
+  date: string | null,
+  updatedBy: string | null,
+): Promise<void> {
+  await query(
+    `INSERT INTO public.odg_wms_warehouse_config (wh_code, wms_start_date, updated_at, updated_by)
+     VALUES ($1, $2::date, now(), $3)
+     ON CONFLICT (wh_code) DO UPDATE SET
+       wms_start_date = EXCLUDED.wms_start_date,
+       updated_at     = now(),
+       updated_by     = EXCLUDED.updated_by`,
+    [whCode, date, updatedBy],
+  );
+}

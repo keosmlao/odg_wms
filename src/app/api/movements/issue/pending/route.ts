@@ -76,10 +76,16 @@ export async function GET(request: Request) {
               count(*)::int AS line_count,
               SUM(GREATEST(d.qty - COALESCE(d.cancel_qty, 0), 0)) AS src_qty
        FROM public.ic_trans_detail d
+       -- ວັນທີເລີ່ມໃຊ້ WMS ຕໍ່ສາງ (migration 043). ການເປີດໃຊ້ເປັນການທະຍອຍ
+       -- ເປີດເປັນສາງໆ — ບິນທີ່ລົງວັນທີກ່ອນສາງນັ້ນເລີ່ມ ຖືວ່າຈັດການໄປແລ້ວ
+       -- ນອກລະບົບ ຈຶ່ງບໍ່ຄວນຄ້າງເຕັມລາຍການຈົນຫາບິນຈິງບໍ່ພົບ.
+       -- LEFT JOIN + IS NULL: ສາງທີ່ບໍ່ໄດ້ຕັ້ງວັນທີໄວ້ ຍັງເຮັດວຽກຄືເກົ່າທຸກປະການ.
+       LEFT JOIN public.odg_wms_warehouse_config wc ON wc.wh_code = d.wh_code
        WHERE d.trans_flag = $1
          AND d.wh_code = ANY($2)
          AND (d.status = 0 OR d.status IS NULL)
          AND d.doc_date >= CURRENT_DATE - ($3::int)
+         AND (wc.wms_start_date IS NULL OR d.doc_date >= wc.wms_start_date)
          AND d.item_code NOT LIKE '97%'  -- ໝວດ 97 ບໍ່ຈ່າຍອອກສາງ
          ${searchSql}
        GROUP BY d.doc_no, d.wh_code

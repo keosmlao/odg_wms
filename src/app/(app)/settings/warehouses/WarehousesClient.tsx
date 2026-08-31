@@ -35,6 +35,8 @@ type FormState = {
   kind: WarehouseKind;
   /** ລະຫັດສາງແມ່ທັງໝົດ — ຍ່ອຍໜຶ່ງຂຶ້ນກັບໄດ້ຫຼາຍສາງຫຼັກ. */
   parent_codes: string[];
+  /** ວັນທີສາງນີ້ເລີ່ມຈ່າຍຜ່ານ WMS (YYYY-MM-DD) — ວ່າງ = ບໍ່ຈຳກັດ. */
+  wms_start_date: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -51,6 +53,7 @@ const EMPTY_FORM: FormState = {
   longitude: "",
   kind: "main",
   parent_codes: [],
+  wms_start_date: "",
 };
 
 function toForm(w: Warehouse): FormState {
@@ -68,6 +71,7 @@ function toForm(w: Warehouse): FormState {
     longitude: w.longitude == null ? "" : String(w.longitude),
     kind: w.kind ?? "main",
     parent_codes: w.parent_codes ?? [],
+    wms_start_date: w.wms_start_date ?? "",
   };
 }
 
@@ -727,6 +731,7 @@ function EditDrawer({
           longitude: form.longitude.trim() || null,
           kind: form.kind,
           parent_codes: form.kind === "sub" ? form.parent_codes : [],
+          wms_start_date: form.wms_start_date.trim() || null,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -889,6 +894,20 @@ function EditDrawer({
                 onChange={(v) => update("longitude", v)}
                 placeholder="0.0"
               />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>ວັນທີເລີ່ມໃຊ້ WMS</Label>
+              <input
+                type="date"
+                value={form.wms_start_date}
+                onChange={(e) => update("wms_start_date", e.target.value)}
+                className="w-full rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 outline-none transition focus:ring-2 focus:ring-brand-500 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+              />
+              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
+                ບິນຄ້າງຈ່າຍທີ່ລົງວັນທີ<strong>ກ່ອນ</strong>ວັນນີ້ຈະບໍ່ຂຶ້ນລາຍການ —
+                ຖືວ່າຈັດການໄປແລ້ວນອກລະບົບກ່ອນສາງນີ້ເປີດໃຊ້ WMS.
+                ປະວ່າງໄວ້ = ບໍ່ຈຳກັດ (ເຫັນຄືນຫຼັງ 90 ມື້ຄືເກົ່າ).
+              </p>
             </div>
           </div>
 

@@ -31,6 +31,11 @@ export type Warehouse = {
   kind: WarehouseKind;
   /** ສາງແມ່ທັງໝົດ — ສາງຍ່ອຍໜຶ່ງຂຶ້ນກັບໄດ້ຫຼາຍສາງຫຼັກ (migration 042). */
   parent_codes: string[];
+  /**
+   * ວັນທີສາງນີ້ເລີ່ມຈ່າຍຜ່ານ WMS (YYYY-MM-DD) — ບິນຄ້າງຈ່າຍທີ່ລົງວັນທີ
+   * ກ່ອນໜ້ານີ້ຈະບໍ່ຂຶ້ນລາຍການ. null = ບໍ່ຈຳກັດ (migration 043).
+   */
+  wms_start_date: string | null;
 };
 
 const SELECT_FIELDS = `
@@ -122,6 +127,7 @@ export async function GET() {
             COALESCE(c.sn_adjust, true)   AS sn_adjust,
             COALESCE(c.sn_return, true)   AS sn_return,
             COALESCE(c.wh_kind, 'main')   AS wh_kind,
+            to_char(c.wms_start_date, 'YYYY-MM-DD') AS wms_start_date,
             COALESCE(p.parent_codes, '{}') AS parent_codes
      FROM public.ic_warehouse w
      LEFT JOIN public.odg_wms_warehouse_config c ON c.wh_code = w.code
