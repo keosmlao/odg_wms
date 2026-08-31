@@ -48,12 +48,11 @@ export const ROLES: Role[] = [
     screens: [
       { label: "ໜ້າຫຼັກ", href: "/" },
       { label: "ຄວາມຖືກຕ້ອງ stock", href: "/movements/accuracy" },
-      { label: "ອະນຸມັດ ໃບຂໍໂອນ", href: "/movements/transfer-approve" },
       { label: "ການຕັ້ງຄ່າ", href: "/settings/warehouses" },
       { label: "ຈັດການສິດເຂົ້າເຖິງ", href: "/settings/access" },
     ],
     authority: [
-      "ອະນຸມັດ ໃບຂໍໂອນ ແລະ ຜົນກວດນັບ.",
+      "ອະນຸມັດ ຜົນກວດນັບ.",
       "ອະນຸມັດການປັບປຸງ stock ທີ່ຕ່າງເກີນເກນທີ່ກຳນົດ.",
       "ໃຫ້/ຖອນ ສິດເຂົ້າເຖິງ ແລະ ມອບໝາຍສາງໃຫ້ພະນັກງານ.",
       "ເປີດ-ປິດ ການຄຸມ stock ຂັ້ນຕ່ຳ/ຂັ້ນສູງ ແລະ ຕັ້ງຄ່າ ISN ຕໍ່ສາງ/ຕໍ່ເມນູ.",

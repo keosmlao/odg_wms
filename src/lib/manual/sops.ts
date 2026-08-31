@@ -384,16 +384,6 @@ export const SOPS: Sop[] = [
       },
       {
         no: 2,
-        title: "ອະນຸມັດ",
-        actor: "manager",
-        steps: [
-          "ກວດຄວາມຈຳເປັນ ແລະ ຜົນກະທົບຕໍ່ສາງຕົ້ນທາງ.",
-          "ອະນຸມັດ ຫຼື ປະຕິເສດພ້ອມເຫດຜົນ; ການແກ້ໄຂໃບ ຈະກັບໄປລໍຖ້າອະນຸມັດໃໝ່.",
-        ],
-        wis: ["WI-TRF-02"],
-      },
-      {
-        no: 3,
         title: "ຈ່າຍອອກເຂົ້າສາງລະຫວ່າງທາງ",
         actor: "keeper",
         steps: [
@@ -403,7 +393,7 @@ export const SOPS: Sop[] = [
         wis: ["WI-TRF-03"],
       },
       {
-        no: 4,
+        no: 3,
         title: "ຮັບເຂົ້າສາງປາຍທາງ",
         actor: "keeper",
         steps: [
@@ -414,7 +404,7 @@ export const SOPS: Sop[] = [
         wis: ["WI-TRF-04"],
       },
       {
-        no: 5,
+        no: 4,
         title: "ຈັດການສ່ວນຄ້າງ",
         actor: "keeper",
         steps: [
