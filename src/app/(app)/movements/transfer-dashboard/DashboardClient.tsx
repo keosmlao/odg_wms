@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 
@@ -70,6 +70,12 @@ const STAGES = [
 
 export default function DashboardClient() {
   const [rows, setRows] = useState<Row[]>([]);
+  // ສະແດງເປັນຊຸດ. API ດຶງມາເຖິງ 500 ໃບ ແລະ ແຕ່ລະໃບ render ເປັນ stepper 5 ຂັ້ນ —
+  // 386 ໃບ = ~80,000px ຂອງໜ້າຈໍ ແລະ DOM ໜັກຈົນໜ້າຢຸດ. ນັບຫົວຕາຕະລາງຈາກ
+  // ຊຸດເຕັມຄືເກົ່າ (ຕົວເລກ "ຕິດຕາມ 386 ລາຍການ" ຕ້ອງຖືກ) ແຕ່ render ເທື່ອລະ 20.
+  const PAGE = 20;
+  const [visible, setVisible] = useState(PAGE);
+  const moreRef = useRef<HTMLDivElement | null>(null);
   const [mine, setMine] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -154,6 +160,26 @@ export default function DashboardClient() {
     () => groupByWarehouse(combined, (x) => x.wh, whOptions.map(([code]) => ({ code }))),
     [combined, whOptions],
   );
+  // ຄົ້ນຫາໃໝ່ = ລາຍການໃໝ່ → ເລີ່ມນັບຈາກ 20 ອີກເທື່ອ
+  useEffect(() => {
+    setVisible(PAGE);
+  }, [q, rows]);
+
+  // ເລື່ອນຮອດທ້າຍ → ສະແດງເພີ່ມ. ຂໍ້ມູນຢູ່ໃນມືແລ້ວ ຈຶ່ງບໍ່ມີ request —
+  // ສິ່ງທີ່ແພງຄືການ render ບໍ່ແມ່ນການດຶງ.
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setVisible((v) => v + PAGE);
+      },
+      { rootMargin: "400px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visible]);
+
   const nItemDocs = useMemo(
     () => new Set(combined.filter((x) => itemHits.has(x.d.doc_no)).map((x) => x.d.doc_no)).size,
     [combined, itemHits],
@@ -209,20 +235,54 @@ export default function DashboardClient() {
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">📥 ຮັບ (ປາຍທາງ) {nIn}</span>
             {nItemDocs > 0 && <span className="rounded-full bg-aqua-50 px-2 py-0.5 text-aqua-700">🔎 ພົບສິນຄ້າໃນ {nItemDocs} ໃບໂອນ</span>}
           </div>
-          {whGroups.map((g) => (
-            <WarehouseGroup
-              key={g.code}
-              code={g.code}
-              name={(whOptions.find(([c]) => c === g.code)?.[1] ?? "").split(" · ")[1] ?? null}
-              count={g.rows.length}
-              countLabel="ລາຍການ"
-              tone="aqua"
-            >
-              <div className="space-y-3">
-                {g.rows.map(({ d, role }) => <TrackCard key={`${g.code}-${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />)}
-              </div>
-            </WarehouseGroup>
-          ))}
+          {(() => {
+            // ງົບ render ໄຫຼຜ່ານກຸ່ມຕໍ່ໆກັນ: ກຸ່ມທຳອິດໃຊ້ໄປເທົ່າໃດ ກຸ່ມຕໍ່ໄປໄດ້ສ່ວນທີ່ເຫຼືອ.
+            // ຫົວກຸ່ມຍັງບອກຈຳນວນເຕັມສະເໝີ ຄົນຈຶ່ງຮູ້ວ່າຍັງມີອີກເທົ່າໃດຢູ່ຂ້າງລຸ່ມ.
+            let budget = visible;
+            return whGroups.map((g) => {
+              const take = Math.max(0, Math.min(budget, g.rows.length));
+              budget -= take;
+              return (
+                <WarehouseGroup
+                  key={g.code}
+                  code={g.code}
+                  name={(whOptions.find(([c]) => c === g.code)?.[1] ?? "").split(" · ")[1] ?? null}
+                  count={g.rows.length}
+                  countLabel="ລາຍການ"
+                  tone="aqua"
+                >
+                  <div className="space-y-3">
+                    {g.rows.slice(0, take).map(({ d, role }) => (
+                      <TrackCard key={`${g.code}-${role}-${d.doc_no}`} d={d} role={role} now={now} today={today} hits={itemHits.get(d.doc_no)} />
+                    ))}
+                    {take < g.rows.length && (
+                      <p className="py-1 text-center text-[11px] text-slate-400">
+                        ຍັງມີອີກ {g.rows.length - take} ລາຍການ — ເລື່ອນລົງເພື່ອສະແດງ
+                      </p>
+                    )}
+                  </div>
+                </WarehouseGroup>
+              );
+            });
+          })()}
+
+          {/* ຕົວຈັບການເລື່ອນ + ປຸ່ມສຳຮອງ ສຳລັບ browser ທີ່ບໍ່ຮອງຮັບ observer */}
+          {visible < combined.length ? (
+            <div ref={moreRef} className="flex justify-center py-2">
+              <button
+                type="button"
+                onClick={() => setVisible((v) => v + PAGE)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+              >
+                ສະແດງເພີ່ມອີກ {Math.min(PAGE, combined.length - visible)} ລາຍການ
+                <span className="ml-1 font-normal text-slate-400">({visible} / {combined.length})</span>
+              </button>
+            </div>
+          ) : (
+            combined.length > PAGE && (
+              <p className="py-2 text-center text-[11px] text-slate-400">ຄົບທຸກລາຍການແລ້ວ ({combined.length})</p>
+            )
+          )}
         </div>
       )}
     </div>
