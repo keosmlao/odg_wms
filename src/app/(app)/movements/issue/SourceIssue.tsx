@@ -20,6 +20,7 @@ import { WarehouseGroup, groupByWarehouse } from "@/components/ui/WarehouseGroup
 import TripIssue from "./TripIssue";
 import { useBinNames } from "@/components/useBinNames";
 import { nodeName } from "@/lib/locationLabel";
+import { READINESS_LABEL, type PickReadiness } from "@/lib/pickPlan";
 
 const PhoneIcon = ({ className = "h-4 w-4" }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -60,6 +61,10 @@ type PendingDoc = {
   aging_days: number | null;
   want_date: string | null;
   created_at: string | null;
+  /** ຄວາມພ້ອມຢິບ — ຄິດຝັ່ງ server ໂດຍທຽບຄ້າງເບີກຕໍ່ລາຍການ ກັບ ຄົງເຫຼືອຈິງ. */
+  readiness?: PickReadiness;
+  /** ຈຳນວນທີ່ຢິບໄດ້ຈິງດຽວນີ້ (ຕ່ຳກວ່າ ຫຼື ເທົ່າກັບ remaining_qty). */
+  available_qty?: string;
   lines: PendingLine[];
 };
 
@@ -256,6 +261,38 @@ function parseAndCleanRemark(remark: string | null) {
     address: cleanAddress,
     phone: cleanPhone
   };
+}
+
+/**
+ * ປ້າຍຄວາມພ້ອມຢິບ.
+ *
+ * ຄຸນຄ່າຢູ່ທີ່ **ເຫັນກ່ອນເປີດໃບ**: ເມື່ອກ່ອນຄົນຕ້ອງເປີດໃບ ສ້າງ pick ແລ້ວຈຶ່ງ
+ * ພົບວ່າ "ບໍ່ພໍ stock" — ເສຍທັງເວລາເປີດ ທັງເວລາປິດ.
+ *
+ * ບໍ່ສະແດງຫຍັງເມື່ອ ready ຫຼື unknown: ໃບສ່ວນຫຼາຍພ້ອມຢູ່ແລ້ວ ແລະ ປ້າຍທີ່ຂຶ້ນ
+ * ທຸກແຖວກາຍເປັນສິ່ງລົບກວນ ບໍ່ແມ່ນສັນຍານ. ສະແດງສະເພາະອັນທີ່ຜິດປົກກະຕິ.
+ */
+function ReadyChip({ d }: { d: PendingDoc }) {
+  const r = d.readiness;
+  if (!r || r === "unknown" || r === "ready") return null;
+  const cls =
+    r === "waiting"
+      ? "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50"
+      : "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900/50";
+  const avail = Number.parseFloat(d.available_qty ?? "0") || 0;
+  return (
+    <span
+      title={
+        r === "waiting"
+          ? "ບໍ່ມີຂອງໃນສາງເລີຍ — ຕ້ອງລໍຮັບເຂົ້າກ່ອນ"
+          : `ຢິບໄດ້ດຽວນີ້ ${formatQty(avail)} ຈາກ ${formatQty(d.remaining_qty)}`
+      }
+      className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${cls}`}
+    >
+      {READINESS_LABEL[r]}
+      {r === "partial" ? ` ${formatQty(avail)}` : ""}
+    </span>
+  );
 }
 
 export default function SourceIssue({ warehouses }: { warehouses: WarehouseOption[] }) {
@@ -1038,6 +1075,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                             <th scope="col" className="px-3 py-2.5">ເລກໃບ</th>
                             <th scope="col" className="px-3 py-2.5">ອອກເອກະສານ</th>
                             <th scope="col" className="px-3 py-2.5">ຄ້າງມາແລ້ວ</th>
+                            <th scope="col" className="px-3 py-2.5">ຄວາມພ້ອມ</th>
                             <th scope="col" className="hidden px-3 py-2.5 xl:table-cell">ຕ້ອງການ</th>
                             <th scope="col" className="px-3 py-2.5">ລູກຄ້າ</th>
                             <th scope="col" className="hidden px-3 py-2.5 lg:table-cell">ສາງ</th>
@@ -1090,6 +1128,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                                   {d.doc_date ? `${fmtDate(d.doc_date)}${d.doc_time ? ` ${d.doc_time.slice(0, 5)}` : ""}` : "—"}
                                 </td>
                                 <td className="px-3 py-2.5 align-top text-[11px]"><Elapsed since={d.created_at} /></td>
+                                <td className="px-3 py-2.5 align-top"><ReadyChip d={d} /></td>
                                 <td className={`hidden px-3 py-2.5 align-top font-mono text-[11px] tabular-nums xl:table-cell ${overdueWant ? "font-bold text-red-600 dark:text-red-400" : "text-zinc-500 dark:text-zinc-400"}`}>
                                   {d.want_date ? fmtDate(d.want_date) : "—"}
                                 </td>
@@ -1114,7 +1153,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                               </tr>
                               {expanded && d.lines.length > 0 && (
                                 <tr className="bg-zinc-50/60 dark:bg-zinc-950/40">
-                                  <td colSpan={10} className="px-3 pb-3 pt-0">
+                                  <td colSpan={11} className="px-3 pb-3 pt-0">
                                     <table className="w-full text-sm">
                                       <thead>
                                         <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
@@ -1163,6 +1202,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                                 </div>
                                 <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">{customerDisplay}</p>
                                 <p className="mt-1 text-[11px]"><Elapsed since={d.created_at} /></p>
+                                <p className="mt-1"><ReadyChip d={d} /></p>
                               </div>
                               <div className="shrink-0 text-right">
                                 <div className="font-mono text-xl font-bold tabular-nums text-red-600 dark:text-red-400">{formatQty(d.remaining_qty)}</div>

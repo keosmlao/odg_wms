@@ -23,8 +23,25 @@ export type PickDocLine = {
   remaining: string;
 };
 
+/**
+ * ຄວາມພ້ອມຢິບຂອງໃບໜຶ່ງ — ແນວຄິດ "Ready" ຂອງ Odoo, ຄິດຢູ່ຝັ່ງ server
+ * (/api/movements/issue/pending) ໂດຍທຽບຄ້າງເບີກຕໍ່ລາຍການ ກັບ ຄົງເຫຼືອຈິງ.
+ */
+export type PickReadiness = "ready" | "partial" | "waiting" | "unknown";
+
+export const READINESS_LABEL: Record<PickReadiness, string> = {
+  ready: "ພ້ອມຢິບ",
+  partial: "ຢິບໄດ້ບາງສ່ວນ",
+  waiting: "ລໍຂອງ",
+  unknown: "—",
+};
+
 export type PickPendingDoc = {
   doc_no: string;
+  /** ຄວາມພ້ອມຢິບ — ບໍ່ມີໃນ API ຮຸ່ນເກົ່າ ຈຶ່ງເປັນ optional. */
+  readiness?: PickReadiness;
+  /** ຈຳນວນທີ່ຢິບໄດ້ຈິງດຽວນີ້ (ຕ່ຳກວ່າ ຫຼື ເທົ່າກັບ ຄ້າງເບີກ). */
+  available_qty?: string;
   wh_code: string;
   doc_date: string | null;
   cust_code: string | null;
