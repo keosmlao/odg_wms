@@ -41,7 +41,7 @@ export async function GET() {
     return NextResponse.json({ ...store, cached: true });
   }
 
-  const [orphan, emptyHead, badQty, dupes, negBins, unknownItem] = await Promise.all([
+  const [orphan, emptyHead, badQty, dupes, negBins, unknownItem, stalePick, noLoc] = await Promise.all([
     query<{ n: string }>(
       `SELECT count(*)::text AS n FROM public.odg_wms_trans_detail d
         WHERE NOT EXISTS (SELECT 1 FROM public.odg_wms_trans h WHERE h.doc_no = d.doc_no)`,
@@ -76,6 +76,20 @@ export async function GET() {
       `SELECT count(*)::text AS n FROM public.odg_wms_trans_detail d
         WHERE d.item_code IS NOT NULL AND TRIM(d.item_code) <> ''
           AND NOT EXISTS (SELECT 1 FROM public.ic_inventory i WHERE i.code = d.item_code)`,
+    ),
+    // ໃບ pick ທີ່ສ້າງໄວ້ແລ້ວລືມ — ຂອງທີ່ມັນຈອງໄວ້ຖືກຫັກອອກຈາກ "ຄ້າງຈ່າຍ" ຕະຫຼອດ
+    query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM public.wms_product_out
+        WHERE COALESCE(status, 0) = 0 AND doc_date < CURRENT_DATE - 7`,
+    ),
+    // ຂອງທີ່ມີຢູ່ແຕ່ບໍ່ຮູ້ວ່າຢູ່ບ່ອນໃດ — ສັ່ງຄົນໄປຢິບບໍ່ໄດ້
+    query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM (
+         SELECT wh_code, item_code, SUM(qty * calc_flag) AS q
+           FROM public.odg_wms_trans_detail
+          WHERE COALESCE(NULLIF(TRIM(shelf_code1), ''), '') = ''
+          GROUP BY 1, 2
+       ) x WHERE q > 0.0001`,
     ),
   ]);
 
@@ -124,6 +138,24 @@ export async function GET() {
       meaning:
         "ແຖວດຽວກັນເປັ໊ະຖືກບັນທຶກຫຼາຍກວ່າໜຶ່ງເທື່ອ. ຖ້າມັນເປັນຄູ່ຍ້າຍບ່ອນ (ເຂົ້າ+ອອກ) ຍອດຈະຍັງຖືກ ແຕ່ປະຫວັດຈະສັບສົນ; ຖ້າເປັນຂາດຽວ ຍອດຈະຜິດ.",
       count: n(dupes),
+      expect: 0,
+      severity: "warn",
+    },
+    {
+      key: "stale_pick",
+      label: "ໃບ pick ຄ້າງຢືນຢັນເກີນ 7 ມື້",
+      meaning:
+        "ໃບຈັດເຄື່ອງທີ່ສ້າງໄວ້ແລ້ວລືມ. ຂອງທີ່ມັນຈອງໄວ້ຖືກຫັກອອກຈາກ “ຄ້າງຈ່າຍ” ຕະຫຼອດ — ວຽກຈິງຈຶ່ງຫາຍໄປຈາກລາຍການໂດຍທີ່ບໍ່ມີໃຜເຮັດ. ໃຫ້ໄປຢືນຢັນຈ່າຍ ຫຼື ລຶບໃບນັ້ນຖິ້ມ.",
+      count: n(stalePick),
+      expect: 0,
+      severity: "warn",
+    },
+    {
+      key: "stock_without_location",
+      label: "ຂອງທີ່ມີ stock ແຕ່ບໍ່ຮູ້ບ່ອນເກັບ",
+      meaning:
+        "ຍອດບອກວ່າມີຂອງ ແຕ່ບໍ່ມີລະຫັດບ່ອນເກັບ — ສັ່ງຄົນໄປຢິບບໍ່ໄດ້ ແລະ ໃບ pick ຈະສະແດງວ່າ “ບໍ່ພໍ stock” ທັງທີ່ຂອງມີຢູ່. ແກ້ດ້ວຍການນັບແລ້ວປັບປຸງເຂົ້າບ່ອນເກັບຈິງ.",
+      count: n(noLoc),
       expect: 0,
       severity: "warn",
     },
