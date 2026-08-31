@@ -230,6 +230,11 @@ export const groups: NavGroupDef[] = [
         icon: <AlertIcon className="h-3.5 w-3.5" />,
       },
       {
+        label: "ຈຳນວນຄາດການ",
+        href: "/movements/forecast",
+        icon: <TrendIcon className="h-3.5 w-3.5" />,
+      },
+      {
         label: "ຄວາມພຽງພໍ (Coverage)",
         href: "/movements/coverage",
         icon: <TrendIcon className="h-3.5 w-3.5" />,
