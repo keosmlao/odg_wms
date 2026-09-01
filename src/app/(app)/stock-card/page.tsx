@@ -17,7 +17,7 @@ import StockCardDocs from "./StockCardDocs";
  *   new  → filter items and post + / − entries down to rack → location
  *   docs → the batch documents those entries were posted under
  *   sync → re-baseline a warehouse's opening balance from the WMS ledger,
- *          per rack → location (migration 028)
+ *          per rack → location (migration 040)
  */
 type SearchParams = Record<string, string | string[] | undefined>;
 const TABS = ["card", "new", "docs", "sync"] as const;

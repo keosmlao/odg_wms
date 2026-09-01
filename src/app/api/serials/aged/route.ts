@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   const item = (url.searchParams.get("item") ?? "").trim();
   const wh = (url.searchParams.get("wh") ?? "").trim();
   if (!item || !wh) {
-    return NextResponse.json({ error: "ຕ້ອງมี item ແລະ wh" }, { status: 400 });
+    return NextResponse.json({ error: "ຕ້ອງມີ item ແລະ wh" }, { status: 400 });
   }
 
   const accessible = accessibleWarehouses(session);

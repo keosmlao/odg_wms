@@ -117,7 +117,7 @@ export function PutawayChips({ same, empty, current, onPick, nameOf = (c) => c }
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] font-bold text-emerald-700">📦 ມີສິນຄ້ານີ້ຢູ່ແລ້ວ:</span>
           {same.map((s, i) => (
-            <button key={`${s.location}-${i}`} type="button" onClick={() => onPick(s.location)} title={`${nameOf(s.location)} · มี ${Number.parseFloat(s.qty)}`}
+            <button key={`${s.location}-${i}`} type="button" onClick={() => onPick(s.location)} title={`${nameOf(s.location)} · ມີ ${Number.parseFloat(s.qty)}`}
               className={`rounded-md px-2 py-1 text-[11px] font-mono ring-1 transition cursor-pointer ${current === s.location ? "bg-emerald-600 text-white ring-emerald-600" : "bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100"}`}>
               {nameOf(s.location)} <span className="opacity-70">·{Number.parseFloat(s.qty)}</span>
             </button>

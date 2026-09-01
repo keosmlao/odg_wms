@@ -21,7 +21,7 @@ export default async function TransferReturnPage() {
       <BackButton href="/movements/transfer-dashboard" />
       <Hero
         title="ຮັບຄືນຈາກການຈ່າຍ"
-        description="ສາງຕົ້ນທາງ ດຶງສິນຄ້າທີ່ຍັງຄ້າງໃນສາງລະຫວ່າງທາງ (ปลายทางยังไม่รับ) ກັບคืนเข้าສาງຕົນ"
+        description="ສາງຕົ້ນທາງ ດຶງສິນຄ້າທີ່ຍັງຄ້າງໃນສາງລະຫວ່າງທາງ (ປາຍທາງຍັງບໍ່ຮັບ) ກັບຄືນເຂົ້າສາງຕົນ"
         icon={<ArrowLeftRightIcon className="h-6 w-6" />}
         tone="amber"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}

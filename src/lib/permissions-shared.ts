@@ -7,7 +7,7 @@
  * `session-shared.ts` vs `session.ts`.
  */
 
-export type WmsPerm = "delete_transfer_out" | "delete_transfer_in" | "stock_card_sync";
+export type WmsPerm = "delete_transfer_out" | "delete_transfer_in" | "stock_card_sync" | "delete_adjust";
 
 /** The manageable permissions, in the order the settings screen shows them. */
 export const WMS_PERMS: { key: WmsPerm; label: string; hint: string }[] = [
@@ -20,6 +20,11 @@ export const WMS_PERMS: { key: WmsPerm; label: string; hint: string }[] = [
     key: "delete_transfer_in",
     label: "ລົບໃບໂອນເຂົ້າ / ຮັບຄືນ",
     hint: "ລົບໃບຮັບໂອນເຂົ້າສາງປາຍທາງ ຫຼື ໃບຮັບຄືນ (ສິນຄ້າກັບໄປສາງລະຫວ່າງທາງ)",
+  },
+  {
+    key: "delete_adjust",
+    label: "ລົບໃບປັບປຸງ stock",
+    hint: "ລົບເອກະສານປັບປຸງ stock (ຄືນຍອດ ແລະ ຄືນ/ຍົກເລີກ serial ທີ່ປັບ)",
   },
   {
     key: "stock_card_sync",

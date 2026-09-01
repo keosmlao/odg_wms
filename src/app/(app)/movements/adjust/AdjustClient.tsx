@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/Icons";
 import { WarehouseGroupHeader, groupByWarehouse } from "@/components/ui/WarehouseGroup";
 import AdjustSerialModal, { type SerialPlan } from "./AdjustSerialModal";
+import AdjustMoveSnModal from "./AdjustMoveSnModal";
 
 export type WarehouseOption = { code: string; name: string | null; sn_adjust: boolean };
 
@@ -35,14 +36,37 @@ type ItemHit = {
   locations?: StockNode[]; // where the item sits now (product-first search only)
 };
 
+/**
+ * ຮູບແບບການປັບປຸງຂອງແຖວໜຶ່ງ (ຄືກັນກັບ `mode` ຢູ່ api/movements/adjust):
+ *   qty         · ປັບສະເພາະຈຳນວນ WMS ຕາມຈຳນວນໃໝ່ທີ່ປ້ອນ — ບໍ່ແຕະ SN
+ *   sn_count    · ນັບຕາມ SN ຢູ່ບ່ອນນີ້ (ເອົາອອກ / ພົບເພີ່ມ / generate)
+ *   sn_move     · ຍ້າຍ SN ຈຸດທີ 1 → ຈຸດທີ 2 ໂດຍບໍ່ແຕະຈຳນວນ (ຈຸດທີ 2 ຕ້ອງມີຈຳນວນຢູ່ກ່ອນ)
+ *   qty_sn_move · ຍ້າຍ SN ພ້ອມຈຳນວນ (ຈຸດທີ 1 −n, ຈຸດທີ 2 +n)
+ */
+export type LineMode = "qty" | "sn_count" | "sn_move" | "qty_sn_move";
+
+const MODE_LABELS: Record<LineMode, { label: string; hint: string }> = {
+  qty: { label: "ຈຳນວນ WMS", hint: "ປ້ອນຈຳນວນໃໝ່ — ບໍ່ແຕະ SN" },
+  sn_count: { label: "ນັບຕາມ SN", hint: "ເອົາອອກ / ພົບເພີ່ມ / generate ISN" },
+  sn_move: { label: "ຍ້າຍ SN", hint: "ຍ້າຍ SN ບໍ່ແຕະຈຳນວນ WMS" },
+  qty_sn_move: { label: "ຍ້າຍ SN + ຈຳນວນ", hint: "ຍ້າຍ SN ພ້ອມຈຳນວນ" },
+};
+
+function isMoveMode(mode: LineMode): boolean {
+  return mode === "sn_move" || mode === "qty_sn_move";
+}
+
 /** The fields every counted line shares — enough to compute a delta. */
 type CountLine = {
+  mode: LineMode;
   before_qty: number;
   counted: string;
   serialized: boolean;
   serialsRemove: string[];
   serialsAdd: string[];
   serialsGenerate: number;
+  /** ໂໝດຍ້າຍ: SN ທີ່ຈະຍ້າຍອອກຈາກ ຈຸດທີ 1. */
+  serialsMove: string[];
 };
 
 const REASONS: { code: string; label: string }[] = [
@@ -86,22 +110,53 @@ function serialActivity(item: CountLine): number {
 }
 
 /**
- * A line is counted by serial only when the item is ISN-tracked AND the
- * warehouse has SN on for the adjust menu. With SN off every line — serial
- * items included — is counted by typing a quantity, matching what the server
- * accepts (it drops serial payloads when the flag is off).
+ * A line is counted by serial only when the item is ISN-tracked, the warehouse
+ * has SN on for the adjust menu, AND the line is in ນັບຕາມ SN mode. With SN off
+ * every line — serial items included — is counted by typing a quantity, matching
+ * what the server accepts (it drops serial payloads when the flag is off); and in
+ * ຈຳນວນ WMS mode a serial item is deliberately counted by qty as well.
  */
 function bySerial(item: CountLine, snOn: boolean): boolean {
-  return item.serialized && snOn;
+  return item.serialized && snOn && item.mode === "sn_count";
 }
 
+/** Serial modes are only offered when the item is ISN-tracked and SN is on. */
+function modesFor(item: CountLine, snOn: boolean): LineMode[] {
+  return item.serialized && snOn ? ["qty", "sn_count", "sn_move", "qty_sn_move"] : ["qty"];
+}
+
+/** ຈຳນວນ SN ທີ່ຈະຍ້າຍ (0 ຖ້າບໍ່ແມ່ນໂໝດຍ້າຍ). */
+function moveCount(item: CountLine): number {
+  return isMoveMode(item.mode) ? item.serialsMove.length : 0;
+}
+
+/**
+ * ຜົນກະທົບຕໍ່ **ຍອດທັງສາງ**. ການຍ້າຍ ຈຸດທີ 1 → ຈຸດທີ 2 ຢູ່ໃນສາງດຽວກັນ = 0 ທັງສອງໂໝດ
+ * (ຈຳນວນອອກຈາກຈຸດໜຶ່ງໄປອີກຈຸດ, ຍອດທັງສາງບໍ່ຂຶ້ນລົງ).
+ */
 function deltaOf(item: CountLine, snOn: boolean): number | null {
+  if (isMoveMode(item.mode)) return 0;
   if (bySerial(item, snOn)) {
     return item.serialsAdd.length + item.serialsGenerate - item.serialsRemove.length;
   }
   const c = parsedCount(item.counted);
   if (c === null) return null;
   return Math.round((c - item.before_qty) * 1e6) / 1e6;
+}
+
+/** ຜົນກະທົບຕໍ່ **ຈຸດທີ 1** ຂອງແຖວນີ້ — ໂໝດຍ້າຍພ້ອມຈຳນວນຈະຫຼຸດຈຳນວນ SN ທີ່ຍ້າຍອອກ. */
+function nodeDeltaOf(item: CountLine, snOn: boolean): number | null {
+  if (item.mode === "sn_move") return 0;
+  if (item.mode === "qty_sn_move") return -item.serialsMove.length;
+  return deltaOf(item, snOn);
+}
+
+/** ແຖວນີ້ມີຫຍັງໃຫ້ບັນທຶກບໍ? */
+function lineHasWork(item: CountLine, snOn: boolean): boolean {
+  if (isMoveMode(item.mode)) return item.serialsMove.length > 0;
+  if (bySerial(item, snOn)) return serialActivity(item) > 0;
+  const d = deltaOf(item, snOn);
+  return d !== null && d !== 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +303,10 @@ type PWorking = CountLine & {
   rack: string;
   location: string;
   pallet: string;
+  // ຈຸດທີ 2 — ໃຊ້ສະເພາະໂໝດຍ້າຍ SN.
+  toRack: string;
+  toLocation: string;
+  toPallet: string;
   balLoading: boolean; // fetching before_qty for the current node
   locations: StockNode[]; // where the item sits now, biggest holding first
 };
@@ -286,6 +345,7 @@ function whProjection(rows: PWorking[], itemCode: string, snOn: boolean) {
   let entered = 0;
   const covered = new Set<string>();
   for (const r of mine) {
+    if (isMoveMode(r.mode)) continue; // ຍ້າຍບ່ອນເກັບ ບໍ່ແມ່ນການນັບ
     const d = deltaOf(r, snOn);
     if (d === null) continue;
     delta += d;
@@ -347,7 +407,14 @@ function computeFillGaps(rows: PWorking[], snOn: boolean): FillGap[] {
     const projected = Math.round((base + delta) * 1e6) / 1e6;
     if (Math.abs(projected - countedSum) < 1e-6) continue; // ຕົງກັນຢູ່ແລ້ວ
 
+    // ນອກຈາກບ່ອນທີ່ນັບແລ້ວ, ບ່ອນທີ່ມີການຍ້າຍ SN ກໍ່ຫ້າມຖືກປັບເປັນ 0 ຄືກັນ —
+    // ບໍ່ດັ່ງນັ້ນການປັບໃຫ້ຄົບຈະລ້າງຈຳນວນຢູ່ຈຸດທີ 1/ຈຸດທີ 2 ຂອງໃບຍ້າຍ.
     const coveredKeys = new Set(counted.map((r) => pNodeKey(r)));
+    for (const r of mine) {
+      if (!isMoveMode(r.mode) || r.serialsMove.length === 0) continue;
+      coveredKeys.add(pNodeKey(r));
+      coveredKeys.add(pNodeKey({ item_code: code, rack: r.toRack, location: r.toLocation, pallet: r.toPallet }));
+    }
     const nodes = mine[0].locations ?? [];
     const bins = nodes
       .filter((n) => !coveredKeys.has(pNodeKey({ item_code: code, ...n })))
@@ -415,6 +482,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
 
   const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [serialLine, setSerialLine] = useState<string | null>(null);
+  const [moveLine, setMoveLine] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const lineSeq = useRef(0);
@@ -551,6 +619,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
       return;
     }
 
+    const serialized = (hit.is_isn ?? 0) === 1;
     const rows: PWorking[] = targets.map((node) => ({
       id: newLineId(),
       item_code: hit.item_code,
@@ -558,14 +627,20 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
       unit_code: hit.unit_code,
       wh_balance: whBal,
       ...node,
+      toRack: "",
+      toLocation: "",
+      toPallet: "",
       before_qty: knownNodeQty(nodes, node) ?? 0,
       balLoading: knownNodeQty(nodes, node) === null,
       locations: nodes,
+      // ຄ່າຕັ້ງຕົ້ນຄືເກົ່າ: ສິນຄ້າ serial ນັບຕາມ SN, ອື່ນໆ ປ້ອນຈຳນວນ.
+      mode: serialized && snOn ? "sn_count" : "qty",
       counted: "",
-      serialized: (hit.is_isn ?? 0) === 1,
+      serialized,
       serialsRemove: [],
       serialsAdd: [],
       serialsGenerate: 0,
+      serialsMove: [],
     }));
 
     setItems((prev) => [...rows, ...prev]);
@@ -615,6 +690,10 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
         serialsRemove: [],
         serialsAdd: [],
         serialsGenerate: 0,
+        serialsMove: [],
+        toRack: "",
+        toLocation: "",
+        toPallet: "",
       };
       const next = [...prev];
       next.splice(idx + 1, 0, row);
@@ -640,10 +719,40 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
           next.serialsAdd = [];
           next.serialsGenerate = 0;
         }
+        // ຍ້າຍ ຈຸດທີ 1 ແລ້ວ SN ທີ່ເລືອກໄວ້ບໍ່ຢູ່ບ່ອນນັ້ນອີກ — ລ້າງອອກ.
+        if (isMoveMode(i.mode)) next.serialsMove = [];
         return next;
       }),
     );
     void loadBalance(lineId, nextNode, line.item_code, known !== null);
+  }
+
+  /** ຈຸດທີ 2 ຂອງແຖວ (ໂໝດຍ້າຍ) — ປ່ຽນປາຍທາງແລ້ວ SN ທີ່ເລືອກຍັງໃຊ້ໄດ້ຄືເກົ່າ. */
+  function setLineToNode(lineId: string, patch: Partial<Pick<PWorking, "toRack" | "toLocation" | "toPallet">>) {
+    updateLine(lineId, patch);
+  }
+
+  /**
+   * ປ່ຽນຮູບແບບການປັບປຸງຂອງແຖວ. ລ້າງແຜນຂອງໂໝດເກົ່າອອກໝົດ ເພື່ອບໍ່ໃຫ້ຄ່າທີ່ຄ້າງໄວ້
+   * ຖືກສົ່ງໄປພ້ອມກັບໂໝດໃໝ່.
+   */
+  function setLineMode(lineId: string, mode: LineMode) {
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === lineId
+          ? {
+              ...i,
+              mode,
+              counted: "",
+              serialsRemove: [],
+              serialsAdd: [],
+              serialsGenerate: 0,
+              serialsMove: [],
+              ...(isMoveMode(mode) ? {} : { toRack: "", toLocation: "", toPallet: "" }),
+            }
+          : i,
+      ),
+    );
   }
 
   function setCounted(lineId: string, value: string) {
@@ -664,14 +773,25 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     setItems((prev) => prev.filter((i) => i.id !== lineId));
   }
 
-  const changedItems = useMemo(
+  const changedItems = useMemo(() => items.filter((i) => lineHasWork(i, snOn)), [items, snOn]);
+
+  /** ແຖວຍ້າຍທີ່ຍັງບໍ່ໄດ້ເລືອກ ຈຸດທີ 2 — ບັນທຶກບໍ່ໄດ້. */
+  const moveNoTarget = useMemo(
     () =>
-      items.filter((i) => {
-        if (bySerial(i, snOn)) return serialActivity(i) > 0;
-        const d = deltaOf(i, snOn);
-        return d !== null && d !== 0;
-      }),
-    [items, snOn],
+      changedItems.find(
+        (i) => isMoveMode(i.mode) && !i.toRack && !i.toLocation && !i.toPallet,
+      ) ?? null,
+    [changedItems],
+  );
+  /** ແຖວຍ້າຍທີ່ ຈຸດທີ 2 ຄືກັນກັບ ຈຸດທີ 1. */
+  const moveSameNode = useMemo(
+    () =>
+      changedItems.find(
+        (i) =>
+          isMoveMode(i.mode) &&
+          sameNode(i, { rack: i.toRack, location: i.toLocation, pallet: i.toPallet }),
+      ) ?? null,
+    [changedItems],
   );
 
   /** Every (item, node) a row already occupies — used to grey out taken chips. */
@@ -684,20 +804,32 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   const duplicateNode = useMemo(() => {
     const seen = new Set<string>();
     for (const i of changedItems) {
-      const k = pNodeKey(i);
+      // ແຖວຍ້າຍນັບ ຈຸດທີ 2 ເຂົ້າໃນ key ຄືກັນກັບ server — ຈຶ່ງບໍ່ຊ້ຳກັບແຖວທີ່ນັບຢູ່ ຈຸດທີ 1.
+      const k = isMoveMode(i.mode)
+        ? `mv|${pNodeKey(i)}|${i.toRack}|${i.toLocation}|${i.toPallet}`
+        : pNodeKey(i);
       if (seen.has(k)) return i;
       seen.add(k);
     }
     return null;
   }, [changedItems]);
 
+  /** ບັນຫາທີ່ຕ້ອງແກ້ກ່ອນຈະໄປຢືນຢັນ/ບັນທຶກ — ຄືນຂໍ້ຄວາມ, ຫຼື null ຖ້າພ້ອມ. */
+  function blockingIssue(): string | null {
+    if (duplicateNode) return `ສິນຄ້າ ${duplicateNode.item_code} ຊ້ຳຢູ່ບ່ອນຈັດເກັບດຽວກັນ`;
+    if (moveNoTarget) return `${moveNoTarget.item_code}: ກະລຸນາເລືອກ ຈຸດທີ 2 (ປາຍທາງ) ຂອງການຍ້າຍ SN`;
+    if (moveSameNode) return `${moveSameNode.item_code}: ຈຸດທີ 2 ຄືກັນກັບ ຈຸດທີ 1 — ບໍ່ມີຫຍັງໃຫ້ຍ້າຍ`;
+    return null;
+  }
+
   function goToConfirm() {
     if (changedItems.length === 0) {
       showToast("err", "ບໍ່ມີການປ່ຽນແປງ — ໃສ່ຈຳນວນທີ່ນັບໄດ້ກ່ອນ");
       return;
     }
-    if (duplicateNode) {
-      showToast("err", `ສິນຄ້າ ${duplicateNode.item_code} ຊ້ຳຢູ່ບ່ອນຈັດເກັບດຽວກັນ`);
+    const issue = blockingIssue();
+    if (issue) {
+      showToast("err", issue);
       return;
     }
     setStep(2);
@@ -712,8 +844,9 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
       showToast("err", "ບໍ່ມີການປ່ຽນແປງໃຫ້ບັນທຶກ");
       return;
     }
-    if (duplicateNode) {
-      showToast("err", `ສິນຄ້າ ${duplicateNode.item_code} ຊ້ຳຢູ່ບ່ອນຈັດເກັບດຽວກັນ`);
+    const issue = blockingIssue();
+    if (issue) {
+      showToast("err", issue);
       return;
     }
     if (fillGaps.length > 0) {
@@ -735,29 +868,35 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
           wh_code: whCode,
           reason,
           note,
-          lines: changedItems.map((i) =>
-            bySerial(i, snOn)
-              ? {
-                  item_code: i.item_code,
-                  item_name: i.item_name,
-                  unit_code: i.unit_code,
-                  rack: i.rack,
-                  location: i.location,
-                  pallet: i.pallet,
-                  serials_remove: i.serialsRemove,
-                  serials_add: i.serialsAdd,
-                  serials_generate: i.serialsGenerate,
-                }
-              : {
-                  item_code: i.item_code,
-                  item_name: i.item_name,
-                  unit_code: i.unit_code,
-                  rack: i.rack,
-                  location: i.location,
-                  pallet: i.pallet,
-                  counted_qty: parsedCount(i.counted),
-                },
-          ).concat(
+          lines: changedItems.map((i) => {
+            const head = {
+              item_code: i.item_code,
+              item_name: i.item_name,
+              unit_code: i.unit_code,
+              rack: i.rack,
+              location: i.location,
+              pallet: i.pallet,
+              mode: i.mode,
+            };
+            if (isMoveMode(i.mode)) {
+              return {
+                ...head,
+                to_rack: i.toRack,
+                to_location: i.toLocation,
+                to_pallet: i.toPallet,
+                serials_move: i.serialsMove,
+              };
+            }
+            if (bySerial(i, snOn)) {
+              return {
+                ...head,
+                serials_remove: i.serialsRemove,
+                serials_add: i.serialsAdd,
+                serials_generate: i.serialsGenerate,
+              };
+            }
+            return { ...head, counted_qty: parsedCount(i.counted) };
+          }).concat(
             // ບ່ອນທີ່ບໍ່ໄດ້ນັບ → ປັບເປັນ 0 ເພື່ອໃຫ້ຍອດທັງສາງເທົ່າກັບຜົນລວມທີ່ນັບໄດ້
             zeroRest
               ? fillGaps.flatMap((g) =>
@@ -768,6 +907,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                     rack: b.rack,
                     location: b.location,
                     pallet: b.pallet,
+                    mode: "qty" as LineMode,
                     counted_qty: 0,
                   })),
                 )
@@ -775,9 +915,12 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
           ),
         }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; adjust_code?: string; changed?: number; sn_generated?: number };
+      const data = (await res.json()) as { ok?: boolean; error?: string; adjust_code?: string; changed?: number; sn_generated?: number; sn_moved?: number };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
-      showToast("ok", `ບັນທຶກແລ້ວ ${data.adjust_code} · ${data.changed} ລາຍການ${data.sn_generated ? ` · gen ${data.sn_generated} ISN` : ""}`);
+      showToast(
+        "ok",
+        `ບັນທຶກແລ້ວ ${data.adjust_code} · ${data.changed} ລາຍການ${data.sn_generated ? ` · gen ${data.sn_generated} ISN` : ""}${data.sn_moved ? ` · ຍ້າຍ ${data.sn_moved} SN` : ""}`,
+      );
       setItems([]);
       setNote("");
       setStep(1);
@@ -790,7 +933,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
 
   function canGoTo(n: number) {
     if (n === 1) return true;
-    if (n === 2) return changedItems.length > 0 && !duplicateNode;
+    if (n === 2) return changedItems.length > 0 && blockingIssue() === null;
     return false;
   }
 
@@ -895,11 +1038,24 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
           ) : (
             <div className="space-y-3">
               {items.map((i) => {
-                const d = deltaOf(i, snOn);
+                const moving = isMoveMode(i.mode);
+                // ໂໝດຍ້າຍ: ຕົວເລກ "ປ່ຽນແປງ" ຄືຜົນກະທົບຕໍ່ ຈຸດທີ 1.
+                const d = nodeDeltaOf(i, snOn);
                 const dColor =
                   d === null || d === 0 ? "text-zinc-400" : d > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
                 const dup = duplicateNode?.id === i.id;
                 const proj = whProjection(items, i.item_code, snOn);
+                const toNode = { rack: i.toRack, location: i.toLocation, pallet: i.toPallet };
+                const toHasNode = !!(i.toRack || i.toLocation || i.toPallet);
+                const toKnownQty = knownNodeQty(i.locations, toNode);
+                // ຍ້າຍສະເພາະ SN → ຈຸດທີ 2 ຕ້ອງມີຈຳນວນ WMS ຮອງຮັບ. ຕົວເລກຈາກ chips
+                // ອາດບໍ່ຄົບ (API ຄືນສູງສຸດ 8 ບ່ອນ) — ຈຶ່ງເຕືອນເທົ່ານັ້ນ, server ເປັນຜູ້ຕັດສິນ.
+                const lockWarn =
+                  i.mode === "sn_move" &&
+                  toHasNode &&
+                  i.serialsMove.length > 0 &&
+                  toKnownQty !== null &&
+                  toKnownQty < i.serialsMove.length;
                 return (
                   <div
                     key={i.id}
@@ -1004,10 +1160,55 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                       </button>
                     </div>
 
+                    {/* ຮູບແບບການປັບປຸງຂອງແຖວນີ້ — ຈຳນວນ / ນັບ SN / ຍ້າຍ SN (± ຈຳນວນ). */}
+                    {modesFor(i, snOn).length > 1 && (
+                      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">ຮູບແບບ</span>
+                        {modesFor(i, snOn).map((m) => {
+                          const on = i.mode === m;
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setLineMode(i.id, m)}
+                              title={MODE_LABELS[m].hint}
+                              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                                on
+                                  ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900"
+                                  : "bg-white text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-700 dark:hover:bg-zinc-800"
+                              }`}
+                            >
+                              {MODE_LABELS[m].label}
+                            </button>
+                          );
+                        })}
+                        <span className="text-[10px] text-zinc-400">· {MODE_LABELS[i.mode].hint}</span>
+                      </div>
+                    )}
+
                     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)_auto]">
                       <div>
-                        <span className={fieldLabel}>ນັບໄດ້</span>
-                        {bySerial(i, snOn) ? (
+                        <span className={fieldLabel}>{moving ? "SN ທີ່ຈະຍ້າຍ" : "ນັບໄດ້"}</span>
+                        {moving ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              readOnly
+                              tabIndex={-1}
+                              value={i.serialsMove.length}
+                              title="ຈຳນວນ SN ທີ່ເລືອກຈະຍ້າຍ"
+                              className="w-16 cursor-not-allowed rounded-lg bg-zinc-100 px-2 py-1.5 text-center font-mono text-sm font-semibold tabular-nums text-zinc-500 ring-1 ring-zinc-200 outline-none dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setMoveLine(i.id)}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-brand-200 transition hover:bg-brand-100 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50"
+                            >
+                              <LayersIcon className="h-3.5 w-3.5" />
+                              {i.serialsMove.length > 0 ? `ເລືອກແລ້ວ ${i.serialsMove.length}` : "ເລືອກ SN"}
+                            </button>
+                          </div>
+                        ) : bySerial(i, snOn) ? (
                           <div className="flex items-center gap-2">
                             <input
                               type="text"
@@ -1059,7 +1260,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
 
                       <div className="grid grid-cols-3 gap-2">
                         <div>
-                          <span className={fieldLabel}>Rack</span>
+                          <span className={fieldLabel}>{moving ? "Rack (ຈຸດທີ 1)" : "Rack"}</span>
                           <select value={i.rack} onChange={(e) => setLineNode(i.id, { rack: e.target.value, location: "" })} className={smallSelect}>
                             <option value="">— ທຸກ rack —</option>
                             {/* A node picked from the chips may name a rack the master list has dropped. */}
@@ -1072,7 +1273,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                           </select>
                         </div>
                         <div>
-                          <span className={fieldLabel}>Location</span>
+                          <span className={fieldLabel}>{moving ? "Location (ຈຸດທີ 1)" : "Location"}</span>
                           <select value={i.location} onChange={(e) => setLineNode(i.id, { location: e.target.value })} disabled={!i.rack && !i.location} className={smallSelect}>
                             <option value="">{i.rack ? "— ທຸກ location —" : "ເລືອກ rack"}</option>
                             {i.location && !locationsForRack(i.rack).some((l) => l.code === i.location) && (
@@ -1086,7 +1287,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                           </select>
                         </div>
                         <div>
-                          <span className={fieldLabel}>Pallet</span>
+                          <span className={fieldLabel}>{moving ? "Pallet (ຈຸດທີ 1)" : "Pallet"}</span>
                           <select
                             value={i.pallet}
                             onChange={(e) => {
@@ -1114,17 +1315,136 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
 
                       <div className="flex items-center justify-end gap-4 lg:pl-2">
                         <div className="text-right">
-                          <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-400">ຍອດບ່ອນນີ້</div>
+                          <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-400">
+                            {moving ? "ຍອດຈຸດທີ 1" : "ຍອດບ່ອນນີ້"}
+                          </div>
                           <div className="font-mono text-sm tabular-nums text-zinc-600 dark:text-zinc-400">{i.balLoading ? "…" : formatQty(i.before_qty)}</div>
                         </div>
                         <div className="text-right">
-                          <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-400">ປ່ຽນແປງ</div>
+                          <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-400">
+                            {moving ? "ຈຸດທີ 1 ປ່ຽນແປງ" : "ປ່ຽນແປງ"}
+                          </div>
                           <div className={`font-mono text-base font-bold tabular-nums ${dColor}`}>
                             {d === null ? "—" : d === 0 ? "0" : `${d > 0 ? "+" : ""}${formatQty(d)}`}
                           </div>
                         </div>
                       </div>
                     </div>
+
+                    {/* ຈຸດທີ 2 (ປາຍທາງ) — ສະເພາະໂໝດຍ້າຍ SN. */}
+                    {moving && (
+                      <div className="mt-3 rounded-xl bg-white p-3 ring-1 ring-emerald-200 dark:bg-zinc-900 dark:ring-emerald-900/50">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                            ຈຸດທີ 2 (ຍ້າຍໄປ)
+                          </span>
+                          <span className="text-[10px] text-zinc-500">
+                            {i.mode === "sn_move"
+                              ? "ຈຳນວນ WMS ບໍ່ຂຶ້ນລົງ · ຈຸດທີ 2 ຕ້ອງມີຈຳນວນຢູ່ກ່ອນ"
+                              : `ຈຸດທີ 1 −${i.serialsMove.length} · ຈຸດທີ 2 +${i.serialsMove.length}`}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <span className={fieldLabel}>Rack</span>
+                            <select
+                              value={i.toRack}
+                              onChange={(e) => setLineToNode(i.id, { toRack: e.target.value, toLocation: "" })}
+                              className={smallSelect}
+                            >
+                              <option value="">— ເລືອກ rack —</option>
+                              {i.toRack && !racks.some((r) => r.code === i.toRack) && <option value={i.toRack}>{i.toRack}</option>}
+                              {racks.map((r) => (
+                                <option key={r.code} value={r.code}>
+                                  {r.code}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <span className={fieldLabel}>Location</span>
+                            <select
+                              value={i.toLocation}
+                              onChange={(e) => setLineToNode(i.id, { toLocation: e.target.value })}
+                              disabled={!i.toRack && !i.toLocation}
+                              className={smallSelect}
+                            >
+                              <option value="">{i.toRack ? "— ທຸກ location —" : "ເລືອກ rack"}</option>
+                              {i.toLocation && !locationsForRack(i.toRack).some((l) => l.code === i.toLocation) && (
+                                <option value={i.toLocation}>{i.toLocation}</option>
+                              )}
+                              {locationsForRack(i.toRack).map((l) => (
+                                <option key={l.code} value={l.code}>
+                                  {l.code}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <span className={fieldLabel}>Pallet</span>
+                            <select
+                              value={i.toPallet}
+                              onChange={(e) => {
+                                const code = e.target.value;
+                                const p = pallets.find((x) => x.code === code);
+                                setLineToNode(i.id, {
+                                  toPallet: code,
+                                  ...(p?.rack ? { toRack: p.rack } : {}),
+                                  ...(p?.location ? { toLocation: p.location } : {}),
+                                });
+                              }}
+                              className={smallSelect}
+                            >
+                              <option value="">— ບໍ່ມີ —</option>
+                              {i.toPallet && !pallets.some((p) => p.code === i.toPallet) && <option value={i.toPallet}>{i.toPallet}</option>}
+                              {pallets.map((p) => (
+                                <option key={p.code} value={p.code}>
+                                  {p.code}
+                                  {p.location ? ` → ${p.location}` : ""}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        {/* ບ່ອນທີ່ສິນຄ້ານີ້ມີເຄື່ອງຢູ່ແລ້ວ → ກົດເລືອກເປັນ ຈຸດທີ 2 ໄດ້ໄວ */}
+                        {i.locations.length > 0 && (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] text-zinc-400">ເລືອກໄວ:</span>
+                            {i.locations
+                              .filter((n) => !sameNode(i, n))
+                              .map((n) => (
+                                <button
+                                  key={`to-${pNodePath(n)}`}
+                                  type="button"
+                                  onClick={() => setLineToNode(i.id, { toRack: n.rack, toLocation: n.location, toPallet: n.pallet })}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] transition ${
+                                    sameNode(toNode, n)
+                                      ? "bg-emerald-600 text-white shadow-sm"
+                                      : "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50"
+                                  }`}
+                                >
+                                  {pNodePath(n)}
+                                  <span className="tabular-nums opacity-70">{formatQty(n.qty)}</span>
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                        {!toHasNode && (
+                          <p className="mt-2 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                            ⚠ ຍັງບໍ່ໄດ້ເລືອກ ຈຸດທີ 2
+                          </p>
+                        )}
+                        {toHasNode && sameNode(i, toNode) && (
+                          <p className="mt-2 text-[11px] font-semibold text-rose-500">⚠ ຈຸດທີ 2 ຄືກັນກັບ ຈຸດທີ 1</p>
+                        )}
+                        {lockWarn && (
+                          <p className="mt-2 text-[11px] font-semibold text-rose-500">
+                            ⚠ ຈຸດທີ 2 ມີຈຳນວນ WMS {formatQty(toKnownQty ?? 0)} ແຕ່ຈະຍ້າຍ SN {i.serialsMove.length} —
+                            ໃຫ້ໃຊ້ໂໝດ &quot;ຍ້າຍ SN + ຈຳນວນ&quot; ຫຼື ປັບຈຳນວນຈຸດທີ 2 ກ່ອນ
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {dup && <p className="mt-2 text-[11px] font-semibold text-rose-500">⚠ ຊ້ຳກັບອີກແຖວທີ່ບ່ອນຈັດເກັບດຽວກັນ — ປ່ຽນ location ຫຼື ລວມແຖວ</p>}
                   </div>
@@ -1177,18 +1497,33 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                     {changedItems.map((i) => {
-                      const d = deltaOf(i, snOn) ?? 0;
-                      const dColor = d > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+                      // ຄໍລຳ ກ່ອນ/ຫຼັງ/ປ່ຽນແປງ ໝາຍເຖິງ ຈຸດທີ 1 (ຕົ້ນທາງ) ຂອງແຖວນີ້.
+                      const d = nodeDeltaOf(i, snOn) ?? 0;
+                      const dColor = d > 0 ? "text-emerald-600 dark:text-emerald-400" : d < 0 ? "text-red-600 dark:text-red-400" : "text-zinc-400";
+                      const mv = isMoveMode(i.mode);
                       return (
                         <tr key={i.id}>
                           <td className="px-3 py-2">
                             <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{i.item_code}</div>
                             <div className="max-w-xs truncate text-xs text-zinc-700 dark:text-zinc-300" title={i.item_name ?? ""}>{i.item_name ?? "—"}</div>
+                            {mv && (
+                              <div className="mt-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-400">
+                                {MODE_LABELS[i.mode].label} · {i.serialsMove.length} SN
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2">
-                            <span className="inline-flex items-center gap-1 font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
+                            <span className="inline-flex flex-wrap items-center gap-1 font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
                               <MapPinIcon className="h-3 w-3 text-brand-400" />
                               {pNodePath(i)}
+                              {mv && (
+                                <>
+                                  <span className="text-zinc-400">→</span>
+                                  <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                    {pNodePath({ rack: i.toRack, location: i.toLocation, pallet: i.toPallet })}
+                                  </span>
+                                </>
+                              )}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-xs tabular-nums text-zinc-500">{formatQty(i.before_qty)}</td>
@@ -1311,6 +1646,25 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
             onDone={(plan: SerialPlan) => {
               setItems((prev) => prev.map((x) => (x.id === serialLine ? { ...x, ...plan } : x)));
               setSerialLine(null);
+            }}
+          />
+        );
+      })()}
+
+      {moveLine && (() => {
+        const it = items.find((x) => x.id === moveLine);
+        if (!it) return null;
+        return (
+          <AdjustMoveSnModal
+            whCode={whCode}
+            from={{ rack: it.rack, location: it.location, pallet: it.pallet }}
+            to={{ rack: it.toRack, location: it.toLocation, pallet: it.toPallet }}
+            item={{ item_code: it.item_code, item_name: it.item_name }}
+            initial={it.serialsMove}
+            onClose={() => setMoveLine(null)}
+            onDone={(serials: string[]) => {
+              setItems((prev) => prev.map((x) => (x.id === moveLine ? { ...x, serialsMove: serials } : x)));
+              setMoveLine(null);
             }}
           />
         );
@@ -1452,17 +1806,20 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
       if (!res.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       const loadedItems: LWorking[] = (data.items ?? []).map((r) => {
         const before = Number.parseFloat(r.balance_qty ?? "0") || 0;
+        const serialized = (r.is_isn ?? 0) === 1;
         return {
           item_code: r.ic_code,
           item_name: r.ic_name,
           unit_code: r.ic_unit_code,
           before_qty: before,
           wh_balance: null,
+          mode: serialized && snOn ? "sn_count" : "qty",
           counted: String(before),
-          serialized: (r.is_isn ?? 0) === 1,
+          serialized,
           serialsRemove: [],
           serialsAdd: [],
           serialsGenerate: 0,
+          serialsMove: [],
         };
       });
       setItems(loadedItems);
@@ -1519,11 +1876,13 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
         unit_code: hit.unit_code,
         before_qty: before,
         wh_balance: whBal,
+        mode: (hit.is_isn ?? 0) === 1 && snOn ? "sn_count" : "qty",
         counted: String(before),
         serialized: (hit.is_isn ?? 0) === 1,
         serialsRemove: [],
         serialsAdd: [],
         serialsGenerate: 0,
+        serialsMove: [],
       },
       ...prev,
     ]);
@@ -1551,15 +1910,21 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
     setItems((prev) => prev.filter((i) => i.item_code !== itemCode));
   }
 
-  const changedItems = useMemo(
-    () =>
-      items.filter((i) => {
-        if (bySerial(i, snOn)) return serialActivity(i) > 0;
-        const d = deltaOf(i, snOn);
-        return d !== null && d !== 0;
-      }),
-    [items, snOn],
-  );
+  const changedItems = useMemo(() => items.filter((i) => lineHasWork(i, snOn)), [items, snOn]);
+
+  /**
+   * ສະຫຼັບຮູບແບບຂອງແຖວ: ຈຳນວນ WMS ຫຼື ນັບຕາມ SN. ການຍ້າຍ SN ຈຸດທີ 1 → ຈຸດທີ 2
+   * ໃຫ້ໃຊ້ໂໝດ "ເລີ່ມຈາກສິນຄ້າ" ເພາະໜ້ານີ້ຜູກກັບບ່ອນຈັດເກັບດຽວທັງໃບ.
+   */
+  function setLineMode(itemCode: string, mode: LineMode) {
+    setItems((prev) =>
+      prev.map((i) =>
+        i.item_code === itemCode
+          ? { ...i, mode, counted: mode === "qty" ? String(i.before_qty) : "", serialsRemove: [], serialsAdd: [], serialsGenerate: 0 }
+          : i,
+      ),
+    );
+  }
 
   async function submit() {
     if (changedItems.length === 0) {
@@ -1584,6 +1949,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   item_code: i.item_code,
                   item_name: i.item_name,
                   unit_code: i.unit_code,
+                  mode: i.mode,
                   serials_remove: i.serialsRemove,
                   serials_add: i.serialsAdd,
                   serials_generate: i.serialsGenerate,
@@ -1592,6 +1958,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   item_code: i.item_code,
                   item_name: i.item_name,
                   unit_code: i.unit_code,
+                  mode: "qty" as LineMode,
                   counted_qty: parsedCount(i.counted),
                 },
           ),
@@ -1822,6 +2189,29 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                           <div className="max-w-md truncate text-sm text-zinc-800 dark:text-zinc-200" title={i.item_name ?? ""}>
                             {i.item_name ?? "—"}
                           </div>
+                          {/* ສິນຄ້າ serial: ເລືອກໄດ້ວ່າຈະນັບຕາມ SN ຫຼື ປັບສະເພາະຈຳນວນ WMS. */}
+                          {i.serialized && snOn && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
+                              {(["qty", "sn_count"] as LineMode[]).map((m) => {
+                                const on = i.mode === m;
+                                return (
+                                  <button
+                                    key={m}
+                                    type="button"
+                                    onClick={() => setLineMode(i.item_code, m)}
+                                    title={MODE_LABELS[m].hint}
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
+                                      on
+                                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                                        : "bg-white text-zinc-500 ring-1 ring-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-400 dark:ring-zinc-700"
+                                    }`}
+                                  >
+                                    {MODE_LABELS[m].label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums text-zinc-600 dark:text-zinc-400">
                           {formatQty(i.before_qty)}

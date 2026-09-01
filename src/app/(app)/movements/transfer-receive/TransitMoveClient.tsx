@@ -22,8 +22,8 @@ type SerialRow = { item_code: string; sn: string | null; isn: string | null; id:
 export type TransitMoveMode = "receive" | "return";
 
 const T = {
-  receive: { verb: "ຮັບ", landing: "ສາງปลายทาง", doneCol: "ຮັບແລ້ວ", btn: "ຢືນຢັນ ຮັບໂອນ", empty: "ບໍ່ມີໃບຂໍໂອນຄ້າງຮັບ" },
-  return: { verb: "ຮັບคืน", landing: "ສาງต้นทาง", doneCol: "ຮັບຄืນແລ້ວ", btn: "ຢືນຢັນ ຮັບຄืน", empty: "ບໍ່ມີໃบຂໍໂอนค้างรับคืน" },
+  receive: { verb: "ຮັບ", landing: "ສາງປາຍທາງ", doneCol: "ຮັບແລ້ວ", btn: "ຢືນຢັນ ຮັບໂອນ", empty: "ບໍ່ມີໃບຂໍໂອນຄ້າງຮັບ" },
+  return: { verb: "ຮັບຄືນ", landing: "ສາງຕົ້ນທາງ", doneCol: "ຮັບຄືນແລ້ວ", btn: "ຢືນຢັນ ຮັບຄືນ", empty: "ບໍ່ມີໃບຂໍໂອນຄ້າງຮັບຄືນ" },
 } as const;
 
 // ── Draft-scan persistence (survives a page refresh) ─────────────────────────
@@ -253,7 +253,7 @@ export default function TransitMoveClient({
     const t = raw.trim();
     if (!t) return;
     const hit = scanIndex.get(t.toUpperCase());
-    if (!hit) { setMsg({ tone: "err", text: `serial ${raw} ບໍ່ຢູ່ໃນສາງລະຫວ່າງທາງຂອງໃບนี้` }); setScan(""); return; }
+    if (!hit) { setMsg({ tone: "err", text: `serial ${raw} ບໍ່ຢູ່ໃນສາງລະຫວ່າງທາງຂອງໃບນີ້` }); setScan(""); return; }
     setPicked((p) => {
       const cur = new Set(p[hit.item_code] ?? []);
       if (cur.has(hit.id)) { setMsg({ tone: "err", text: `serial ${raw} ເລືອກໄປແລ້ວ` }); return p; }
@@ -307,7 +307,7 @@ export default function TransitMoveClient({
       });
       const j = await r.json();
       if (!r.ok) { setMsg({ tone: "err", text: j.error || "ບໍ່ສຳເລັດ" }); setSubmitting(false); return; }
-      setMsg({ tone: "ok", text: `${t.verb}สำเร็จ · WMS ${j.wmsDoc} · ERP ${j.erpDoc}` });
+      setMsg({ tone: "ok", text: `${t.verb}ສຳເລັດ · WMS ${j.wmsDoc} · ERP ${j.erpDoc}` });
       setLastDoc(j.wmsDoc ?? null);
       // Units just consumed — clear the stashed scan state before the refresh
       // reload gives us fresh (possibly zero) remaining lines.
@@ -315,7 +315,7 @@ export default function TransitMoveClient({
       await loadList();
       await openDoc(sel); // refresh remaining; if 0 left it drops out of the list
     } catch (e) {
-      setMsg({ tone: "err", text: e instanceof Error ? e.message : "ບໍ່ສຳเรັจ" });
+      setMsg({ tone: "err", text: e instanceof Error ? e.message : "ບໍ່ສຳເລັດ" });
     }
     setSubmitting(false);
   };
@@ -328,7 +328,7 @@ export default function TransitMoveClient({
     const pct = totalInT > 0 ? Math.min(100, Math.round((totalGot / totalInT) * 100)) : 0;
     return (
       <div className="space-y-4 pb-24">
-        <button onClick={() => { lsDel(lsActiveKey(mode)); setSel(null); setMsg(null); }} className="inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-slate-800 cursor-pointer">← ກັບໄປລາຍกານ</button>
+        <button onClick={() => { lsDel(lsActiveKey(mode)); setSel(null); setMsg(null); }} className="inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-slate-800 cursor-pointer">← ກັບໄປລາຍການ</button>
 
         {/* header */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -367,7 +367,7 @@ export default function TransitMoveClient({
         {/* big scan */}
         {lines.some((l) => l.serialized) && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-3.5">
-            <label className="mb-1 block text-[11px] font-bold text-emerald-700">🔫 ຍິງ / ປ້ອນ serial ทີ່ {t.verb} ຈິງ ແລ້ວ Enter</label>
+            <label className="mb-1 block text-[11px] font-bold text-emerald-700">🔫 ຍິງ / ປ້ອນ serial ທີ່ {t.verb} ຈິງ ແລ້ວ Enter</label>
             <input ref={scanRef} value={scan} onChange={(e) => setScan(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleScan(scan); } }}
               autoFocus placeholder="scan SN / ISN …"
@@ -417,7 +417,7 @@ export default function TransitMoveClient({
                       <span className="text-xs font-bold text-amber-600">ຂາດ {inT - got} →</span>
                       <select value={reasons[l.item_code] ?? ""} onChange={(e) => setReasons((r) => ({ ...r, [l.item_code]: e.target.value }))}
                         className="rounded-lg border border-amber-300 bg-amber-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none">
-                        <option value="">ເຫດຜລ (ຖ້າรັບບໍ່ຄົບ)…</option>
+                        <option value="">ເຫດຜລ (ຖ້າຮັບບໍ່ຄົບ)…</option>
                         {MOVE_REASONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
                       </select>
                     </div>
@@ -481,8 +481,8 @@ export default function TransitMoveClient({
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:left-64">
           <div className="flex w-full items-center justify-between gap-3">
             <span className="text-sm font-bold text-slate-600">
-              รధม {t.verb} {totalGot}/{totalInT}
-              {missingLoc && <span className="ml-2 text-xs font-bold text-amber-600">⚠ ຍັງບໍ່ໄດ້ເລືອກບ່ອນຈັດເກັບໃຫ້ຄົບທຸກລາຍการ</span>}
+              ລວມ {t.verb} {totalGot}/{totalInT}
+              {missingLoc && <span className="ml-2 text-xs font-bold text-amber-600">⚠ ຍັງບໍ່ໄດ້ເລືອກບ່ອນຈັດເກັບໃຫ້ຄົບທຸກລາຍການ</span>}
             </span>
             <button onClick={submit} disabled={!canSubmit}
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-7 py-3 text-sm font-bold text-white shadow-md hover:shadow-lg active:scale-98 transition disabled:opacity-50 cursor-pointer">
@@ -604,7 +604,7 @@ export default function TransitMoveClient({
               <div className="text-xs text-slate-500">{d.wh_name} · ອ້າງອີງ {d.doc_ref} · {d.doc_date}</div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-500">{Number.parseFloat(d.qty)} ใน {d.items} ລາຍการ</span>
+              <span className="text-xs text-slate-500">{Number.parseFloat(d.qty)} ໃນ {d.items} ລາຍການ</span>
               <button type="button" onClick={() => setDetailDoc(d.doc_no)}
                 title="ເບິ່ງລາຍລະອຽດ — SN / ISN, ບ່ອນທີ່ຮັບເຂົ້າ, ເອກະສານ ERP"
                 className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-50">
@@ -652,7 +652,7 @@ export default function TransitMoveClient({
                 </div>
               </div>
               <div className="text-right">
-                <div className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-600">ຄ້າງ {Number.parseFloat(d.in_transit)} ໃນ {d.items} ລາຍการ</div>
+                <div className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-600">ຄ້າງ {Number.parseFloat(d.in_transit)} ໃນ {d.items} ລາຍການ</div>
               </div>
             </button>
           ))}

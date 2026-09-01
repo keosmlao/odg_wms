@@ -1,7 +1,7 @@
 ------------------------------------------------------------
--- 028: Stock card opening balance moves from WAREHOUSE level to RACK → LOCATION
+-- 040: Stock card opening balance moves from WAREHOUSE level to RACK → LOCATION
 --
--- Migration 027 built the opening balance on SML's
+-- Migration 039 built the opening balance on SML's
 -- sml_ic_function_stock_balance_warehouse(), which only knows warehouses. That
 -- forced the card to carry an "unlocated" bucket: everything synced in landed
 -- outside any bin and only moved into a bin once someone hand-posted an entry.
@@ -49,7 +49,7 @@ COMMENT ON COLUMN public.odg_wms_stock_card_opening.qty
 -- as_of_date used to hold the date handed to the SML function; there is no such
 -- date any more — the WMS ledger sum is always "as of now".
 COMMENT ON COLUMN public.odg_wms_stock_card_sync_log.as_of_date
-  IS 'ບໍ່ໄດ້ໃຊ້ແລ້ວ (ເກັບ NULL) — ຕັ້ງແຕ່ migration 028 ຍອດຕັ້ງຕົ້ນດຶງຈາກ odg_wms_trans_detail ເຊິ່ງເປັນຍອດປັດຈຸບັນສະເໝີ.';
+  IS 'ບໍ່ໄດ້ໃຊ້ແລ້ວ (ເກັບ NULL) — ຕັ້ງແຕ່ migration 040 ຍອດຕັ້ງຕົ້ນດຶງຈາກ odg_wms_trans_detail ເຊິ່ງເປັນຍອດປັດຈຸບັນສະເໝີ.';
 
 -- Existing warehouse-level rows carry no bin and would read as "unlocated"
 -- forever. They are a stale baseline under the new rule, so clear them: every

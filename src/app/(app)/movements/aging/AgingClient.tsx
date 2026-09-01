@@ -160,7 +160,7 @@ function WhAgingBlock({ r, q, bucket, setBucket }: { r: WhAging; q: string; buck
 
           {/* aging buckets (clickable filter) */}
           <section className="shadow-card rounded-2xl bg-white p-5 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
-            <div className="mb-3 text-xs font-semibold text-zinc-600 dark:text-zinc-300">ໄລຍະຄ້າງ (ກົດເພື່ອกอง)</div>
+            <div className="mb-3 text-xs font-semibold text-zinc-600 dark:text-zinc-300">ໄລຍະຄ້າງ (ກົດເພື່ອກອງ)</div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               {BUCKET_DEF.map((b) => {
                 const n = kpi.buckets[b.key];
@@ -218,7 +218,7 @@ function WhAgingBlock({ r, q, bucket, setBucket }: { r: WhAging; q: string; buck
                 </tbody>
               </table>
             </div>
-            <p className="mt-3 text-[11px] text-zinc-400">ⓘ "ຄ້າງ (ມື້)" = ມື້ນັບແຕ່ຈ່າຍອອກລ່າສຸດ; ຖ້າບໍ່ເຄີຍຈ່າຍ = ນັບແຕ່ຮັບเข้าครั้งแรก. ສິນຄ້າ 180+ ມື້ = ควรพิจารณาระบาย/ลดราคา.</p>
+            <p className="mt-3 text-[11px] text-zinc-400">ⓘ "ຄ້າງ (ມື້)" = ມື້ນັບແຕ່ຈ່າຍອອກລ່າສຸດ; ຖ້າບໍ່ເຄີຍຈ່າຍ = ນັບແຕ່ຮັບເຂົ້າຄັ້ງທຳອິດ. ສິນຄ້າ 180+ ມື້ = ຄວນພິຈາລະນາລະບາຍ/ຫຼຸດລາຄາ.</p>
           </section>
         </>
       )}

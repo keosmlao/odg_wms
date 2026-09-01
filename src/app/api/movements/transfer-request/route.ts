@@ -41,9 +41,9 @@ export async function POST(request: Request) {
   const locTo = str(body.location_to);
   const title = str(body.doc_ref) || str(body.remark);
   const remark = str(body.remark);
-  const wantDate = str(body.want_date); // ວັນທີ່ຕ້ອງการรับสินค้า (YYYY-MM-DD)
+  const wantDate = str(body.want_date); // ວັນທີ່ຕ້ອງການຮັບສິນຄ້າ (YYYY-MM-DD)
   if (!whFrom || !whTo) return NextResponse.json({ error: "ກະລຸນາເລືອກສາງຕົ້ນທາງ ແລະ ປາຍທາງ" }, { status: 400 });
-  if (whFrom === whTo) return NextResponse.json({ error: "ສາງຕົ້ນທາງ ແລະ ປາຍທາງ ຕ້ອງຕ່າງกัน" }, { status: 400 });
+  if (whFrom === whTo) return NextResponse.json({ error: "ສາງຕົ້ນທາງ ແລະ ປາຍທາງ ຕ້ອງຕ່າງກັນ" }, { status: 400 });
 
   // The requester (destination warehouse) must be accessible to the user.
   const accessible = accessibleWarehouses(session);
@@ -127,7 +127,7 @@ export async function DELETE(request: Request) {
     const accessible = accessibleWarehouses(session);
     if (Array.isArray(accessible) && !accessible.includes(whTo)) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: "ບໍ່ມີສິດຍົກເລີກໃບนี้" }, { status: 403 });
+      return NextResponse.json({ error: "ບໍ່ມີສິດຍົກເລີກໃບນີ້" }, { status: 403 });
     }
     // Block if fulfilment already started (any WMS movement or pick draft on this ref).
     const used = await client.query<{ n: string }>(
@@ -137,7 +137,7 @@ export async function DELETE(request: Request) {
     );
     if ((Number.parseInt(used.rows[0]?.n ?? "0", 10) || 0) > 0) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: "ຍົກເລີກບໍ່ໄດ້ — ໃບนี้ເລີ່ມຈ່າຍ/ດຶງไปแล้ว" }, { status: 409 });
+      return NextResponse.json({ error: "ຍົກເລີກບໍ່ໄດ້ — ໃບນີ້ເລີ່ມຈ່າຍ/ດຶງໄປແລ້ວ" }, { status: 409 });
     }
     await client.query(`DELETE FROM public.ic_trans_detail WHERE doc_no = $1 AND trans_flag = ${FLAG}`, [doc]);
     await client.query(`DELETE FROM public.ic_trans WHERE doc_no = $1 AND trans_flag = ${FLAG}`, [doc]);
@@ -192,11 +192,11 @@ export async function PATCH(request: Request) {
     );
     const whTo = hdr.rows[0]?.wh_to ?? "";
     if (!whTo) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ບໍ່ພົບໃບຂໍໂອນ" }, { status: 404 }); }
-    if (whFrom === whTo) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ສາງຕົ້ນທາງ ແລະ ປາຍທາງ ຕ້ອງຕ່າງกัน" }, { status: 400 }); }
+    if (whFrom === whTo) { await client.query("ROLLBACK"); return NextResponse.json({ error: "ສາງຕົ້ນທາງ ແລະ ປາຍທາງ ຕ້ອງຕ່າງກັນ" }, { status: 400 }); }
     const accessible = accessibleWarehouses(session);
     if (Array.isArray(accessible) && !accessible.includes(whTo)) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: "ບໍ່ມີສິດແກ້ໄຂໃບนี้" }, { status: 403 });
+      return NextResponse.json({ error: "ບໍ່ມີສິດແກ້ໄຂໃບນີ້" }, { status: 403 });
     }
     const used = await client.query<{ n: string }>(
       `SELECT ((SELECT count(*) FROM public.odg_wms_trans_detail WHERE doc_ref = $1 AND trans_flag = 72)
@@ -205,7 +205,7 @@ export async function PATCH(request: Request) {
     );
     if ((Number.parseInt(used.rows[0]?.n ?? "0", 10) || 0) > 0) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: "ແກ້ໄຂບໍ່ໄດ້ — ໃບนี้ເລີ່ມຈ່າຍ/ດຶງไปแล้ว" }, { status: 409 });
+      return NextResponse.json({ error: "ແກ້ໄຂບໍ່ໄດ້ — ໃບນີ້ເລີ່ມຈ່າຍ/ດຶງໄປແລ້ວ" }, { status: 409 });
     }
     // Editing returns the request to "awaiting approval" (status 0).
     await client.query(
@@ -280,7 +280,7 @@ export async function GET(request: Request) {
        ORDER BY r.item_code`,
       [doc],
     );
-    // Short-movement reasons for this request (table may not exist → degrade).
+    // ເຫດຜົນການເຄື່ອນຍ້າຍບໍ່ຄົບ — ອ່ານບໍ່ໄດ້ ບໍ່ຄວນລົ້ມທັງໜ້າ ແຕ່ຕ້ອງເຫັນໃນ log.
     const notes: Record<string, string> = {};
     try {
       const nr = await query<{ item_code: string; reason_code: string | null }>(
@@ -288,7 +288,9 @@ export async function GET(request: Request) {
         [doc],
       );
       for (const n of nr) notes[n.item_code] = REASON_LABEL[n.reason_code ?? ""] ?? (n.reason_code ?? "");
-    } catch { /* table not created yet */ }
+    } catch (err) {
+      console.warn("[transfer-request] ອ່ານ odg_wms_move_note ບໍ່ໄດ້ (migration 038?)", err);
+    }
     return NextResponse.json({ doc, lines, notes });
   }
 

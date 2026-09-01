@@ -22,7 +22,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "ຂໍ້ມູນບໍ່ຖືກຕ້ອງ" }, { status: 400 });
   }
   if (!Array.isArray(body.brands)) {
-    return NextResponse.json({ error: "ຕ້ອງระบุ brands[]" }, { status: 400 });
+    return NextResponse.json({ error: "ຕ້ອງລະບຸ brands[]" }, { status: 400 });
   }
   const brands = (body.brands as unknown[]).map((b) => String(b));
   const saved = await setSnDualBrands(brands, guard.session.employee_code ?? null);

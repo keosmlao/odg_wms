@@ -5,8 +5,8 @@ import { accessibleWarehouses } from "@/lib/session-shared";
 
 /**
  * Putaway location suggestions for a warehouse:
- *   sameLocs  = locations already holding one of the given items (รวมกอง)
- *   emptyLocs = known locations whose net balance is ≤ 0 (ว่าง)
+ *   sameLocs  = locations already holding one of the given items (ລວມກອງ)
+ *   emptyLocs = known locations whose net balance is ≤ 0 (ວ່າງ)
  * Query: ?wh=<code>&items=<code,code,...>
  */
 export async function GET(request: Request) {

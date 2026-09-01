@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { KpiCard, EmptyState } from "@/components/ui/Card";
 import { LayersIcon, PackageIcon, SearchIcon, TrendIcon } from "@/components/ui/Icons";
-import { UNLOCATED_LABEL, directionLabel, fmtQty } from "@/lib/stockCard";
+import { UNLOCATED_LABEL, directionLabel, fmtQty, getJson } from "@/lib/stockCard";
 
 export type WarehouseOption = { code: string; name: string | null };
 type Option = { code: string; name: string | null };
@@ -49,21 +49,22 @@ export default function StockCardView({ warehouses }: { warehouses: WarehouseOpt
   const [rows, setRows] = useState<Row[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const [openItem, setOpenItem] = useState<string | null>(null);
   const [breakdown, setBreakdown] = useState<Record<string, Breakdown>>({});
+  const [bdErr, setBdErr] = useState<Record<string, string>>({});
 
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch("/api/stock-card/filters");
-        const d = (await res.json()) as { groups?: Option[]; brands?: Option[]; categories?: Option[] };
+        const d = await getJson<{ groups?: Option[]; brands?: Option[]; categories?: Option[] }>("/api/stock-card/filters");
         setGroups(d.groups ?? []); setBrands(d.brands ?? []); setCategories(d.categories ?? []);
       } catch { /* filters are a convenience — the card still loads without them */ }
     })();
   }, []);
 
   const load = useCallback(async () => {
-    if (!wh) { setRows([]); setTotals(null); return; }
+    if (!wh) { setRows([]); setTotals(null); setErr(null); return; }
     setLoading(true);
     try {
       const p = new URLSearchParams({ wh });
@@ -72,24 +73,36 @@ export default function StockCardView({ warehouses }: { warehouses: WarehouseOpt
       if (category) p.set("category", category);
       if (q.trim()) p.set("q", q.trim());
       if (hideZero) p.set("hide_zero", "1");
-      const res = await fetch(`/api/stock-card/report?${p}`);
-      const d = (await res.json()) as { rows?: Row[]; totals?: Totals };
+      const d = await getJson<{ rows?: Row[]; totals?: Totals }>(`/api/stock-card/report?${p}`);
+      setErr(null);
       setRows(d.rows ?? []); setTotals(d.totals ?? null);
-      setOpenItem(null); setBreakdown({});
+      setOpenItem(null); setBreakdown({}); setBdErr({});
+    } catch (e) {
+      // A failed report must read as a failure — showing the empty state instead
+      // would claim the warehouse has no stock.
+      setErr(e instanceof Error ? e.message : "ໂຫຼດບໍ່ສຳເລັດ");
+      setRows([]); setTotals(null); setOpenItem(null); setBreakdown({}); setBdErr({});
     } finally { setLoading(false); }
   }, [wh, group, brand, category, q, hideZero]);
 
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [wh, group, brand, category, hideZero]);
 
+  async function loadBreakdown(item: string) {
+    setBdErr((p) => { const { [item]: _drop, ...rest } = p; return rest; });
+    try {
+      const d = await getJson<Breakdown>(`/api/stock-card/breakdown?wh=${encodeURIComponent(wh)}&item=${encodeURIComponent(item)}`);
+      setBreakdown((p) => ({ ...p, [item]: d }));
+    } catch (e) {
+      // Without this the row would sit on "ກຳລັງໂຫຼດ..." forever.
+      setBdErr((p) => ({ ...p, [item]: e instanceof Error ? e.message : "ໂຫຼດບໍ່ສຳເລັດ" }));
+    }
+  }
+
   async function toggleItem(item: string) {
     if (openItem === item) { setOpenItem(null); return; }
     setOpenItem(item);
     if (breakdown[item]) return;
-    try {
-      const res = await fetch(`/api/stock-card/breakdown?wh=${encodeURIComponent(wh)}&item=${encodeURIComponent(item)}`);
-      const d = (await res.json()) as Breakdown;
-      setBreakdown((p) => ({ ...p, [item]: d }));
-    } catch { /* leave the row expanded but empty — retryable by collapsing */ }
+    await loadBreakdown(item);
   }
 
   return (
@@ -159,6 +172,14 @@ export default function StockCardView({ warehouses }: { warehouses: WarehouseOpt
       <section className="shadow-card overflow-hidden rounded-2xl bg-white ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800">
         {!wh ? <div className="py-12 text-center text-sm text-zinc-400">ເລືອກສາງເພື່ອເບິ່ງບັດສະຕັອກ</div>
         : loading ? <div className="py-12 text-center text-sm text-zinc-400">ກຳລັງໂຫຼດ...</div>
+        : err ? (
+          <div className="space-y-3 px-4 py-10 text-center">
+            <div className="text-sm font-bold text-rose-600 dark:text-rose-400">ໂຫຼດບັດສະຕັອກບໍ່ສຳເລັດ</div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400">{err}</div>
+            <button type="button" onClick={() => void load()}
+              className="rounded-lg bg-zinc-900 px-4 py-1.5 text-xs font-bold text-white dark:bg-zinc-100 dark:text-zinc-900">ລອງໃໝ່</button>
+          </div>
+        )
         : rows.length === 0 ? (
           <EmptyState icon={<PackageIcon className="h-6 w-6" />} title="ບໍ່ມີຂໍ້ມູນ"
             description="ຍັງບໍ່ໄດ້ sync ຍອດຕັ້ງຕົ້ນ ຫຼື ບໍ່ມີລາຍການທີ່ຕົງກັບການກອງ" />
@@ -206,7 +227,13 @@ export default function StockCardView({ warehouses }: { warehouses: WarehouseOpt
                       {openItem === r.item_code && (
                         <tr>
                           <td colSpan={8} className="bg-zinc-50/60 px-4 py-3 dark:bg-zinc-950/30">
-                            {!bd ? <div className="text-center text-xs text-zinc-400">ກຳລັງໂຫຼດ...</div> : (
+                            {bdErr[r.item_code] ? (
+                              <div className="flex items-center justify-center gap-3 text-xs text-rose-600 dark:text-rose-400">
+                                <span>{bdErr[r.item_code]}</span>
+                                <button type="button" onClick={(ev) => { ev.stopPropagation(); void loadBreakdown(r.item_code); }}
+                                  className="rounded bg-zinc-900 px-2 py-1 text-[10px] font-bold text-white dark:bg-zinc-100 dark:text-zinc-900">ລອງໃໝ່</button>
+                              </div>
+                            ) : !bd ? <div className="text-center text-xs text-zinc-400">ກຳລັງໂຫຼດ...</div> : (
                               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                                 <div>
                                   <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">ຍອດຕາມບ່ອນເກັບ (rack / location)</div>
@@ -232,7 +259,7 @@ export default function StockCardView({ warehouses }: { warehouses: WarehouseOpt
                                               <td className={`px-3 py-1.5 text-right font-mono font-bold tabular-nums ${qtyCls(n.qty)}`}>{fmtQty(n.qty)}</td>
                                             </tr>
                                           ))}
-                                          {/* since 028 the sync places stock in bins, so this row should read 0 —
+                                          {/* since 040 the sync places stock in bins, so this row should read 0 —
                                               anything else means a row came through with no shelf code */}
                                           {Number(bd.summary.unlocated) !== 0 && (
                                             <tr className="bg-amber-50/60 dark:bg-amber-950/20">

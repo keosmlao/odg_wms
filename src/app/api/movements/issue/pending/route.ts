@@ -85,7 +85,7 @@ export async function GET(request: Request) {
        GROUP BY d.doc_no, d.wh_code
      ),
      issued AS (
-       -- ນັບเฉพาะขาออกจากต้นทาง (calc_flag −1, ไม่ใช่ขา +1 เข้าสางกลาง 9903)
+       -- ນັບສະເພາະຂາອອກຈາກຕົ້ນທາງ (calc_flag −1, ບໍ່ແມ່ນຂາ +1 ເຂົ້າສາງກາງ 9903)
        SELECT w.doc_ref AS doc_no, w.wh_code, SUM(w.qty) AS wms_qty
        FROM public.odg_wms_trans_detail w
        WHERE w.trans_flag = ${ISSUE_STOCK_FLAG}
@@ -94,7 +94,7 @@ export async function GET(request: Request) {
          AND w.doc_ref IN (SELECT doc_no FROM src)
        GROUP BY w.doc_ref, w.wh_code
      ),
-     -- ໃບສັ່ງຈ່າຍ (pick) ທີ່ສ້າງແລ້ວ ລໍຖ້າຢືນຢັນ (status 0) — ຫักออกจากค้างทันที
+     -- ໃບສັ່ງຈ່າຍ (pick) ທີ່ສ້າງແລ້ວ ລໍຖ້າຢືນຢັນ (status 0) — ຫັກອອກຈາກຄ້າງທັນທີ
      -- ໃບຖ້ຽວ (1 ໃບ ຫຼາຍບິນ) ເກັບບິນຕົ້ນທາງໄວ້ລະດັບແຖວ → ໃຊ້ d.ref_doc_no ກ່ອນ.
      pending AS (
        SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) AS doc_no,
@@ -126,7 +126,7 @@ export async function GET(request: Request) {
      LEFT JOIN public.ar_customer cu ON cu.code = h.cust_code
      WHERE COALESCE(h.is_cancel, 0) = 0
        -- ໃບຂໍໂອນ (124) ບໍ່ຕ້ອງລໍການອະນຸມັດອີກຕໍ່ໄປ — ລໍຖ້າ (0) ຫຼື ອະນຸມັດ (1) ຈ່າຍໄດ້ເລີຍ.
-       -- ກັນໄວ້ສະເພາະໃບທີ່ຖືກ "ປฏิเสธ" (2) ເພາະນັ້ນຄືການປະຕິເສດໂດຍເຈດຕະນາ.
+       -- ກັນໄວ້ສະເພາະໃບທີ່ຖືກ "ປະຕິເສດ" (2) ເພາະນັ້ນຄືການປະຕິເສດໂດຍເຈດຕະນາ.
        AND (h.trans_flag <> 124 OR COALESCE(h.status, 0) <> 2)
        AND (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0)) > 0.0001
      ORDER BY s.wh_code, h.doc_date DESC, s.doc_no DESC

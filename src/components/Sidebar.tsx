@@ -15,6 +15,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   ClipboardIcon,
+  EyeIcon,
   FileTextIcon,
   HomeIcon,
   LayersIcon,
@@ -26,6 +27,7 @@ import {
   SearchIcon,
   SettingsIcon,
   ShieldIcon,
+  TrendIcon,
   UsersIcon,
 } from "@/components/ui/Icons";
 
@@ -178,10 +180,47 @@ const groups: Group[] = [
     ],
   },
   {
+    label: "ລາຍການສິນຄ້າມີຕຳນິ",
+    basePath: "/defects",
+    icon: <AlertIcon className="h-4.5 w-4.5" />,
+    items: [
+      {
+        label: "ບັນທຶກເຄື່ອງມີຕຳນິ",
+        href: "/defects/new",
+        icon: <PlusIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ຄົງເຫຼືອ (ຍັງບໍ່ເບີກຈ່າຍ)",
+        href: "/defects",
+        icon: <ListIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ຄົງເຫຼືອ (ເບີກຈ່າຍແລ້ວ)",
+        href: "/defects/dispatched",
+        icon: <ArrowUpIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ຄົງເຫຼືອໃນສາງມີຕຳນິ",
+        href: "/defects/sml",
+        icon: <BuildingIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        label: "ຮູບພາບ & ໝາຍເລກເຄື່ອງ",
+        href: "/defects/photos",
+        icon: <EyeIcon className="h-3.5 w-3.5" />,
+      },
+    ],
+  },
+  {
     label: "ລາຍງານ & ວິເຄາະ",
     basePath: "/movements/reports",
     icon: <ListIcon className="h-4.5 w-4.5" />,
     items: [
+      {
+        label: "ປະສິດທິພາບສາງ (KPI)",
+        href: "/movements/performance",
+        icon: <TrendIcon className="h-3.5 w-3.5" />,
+      },
       {
         label: "ເຄື່ອນໄຫວປະຈຳວັນ",
         href: "/movements/daily",

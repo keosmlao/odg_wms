@@ -16,6 +16,7 @@ export type MovementItemHit = {
   item_code: string;
   item_name: string | null;
   unit_code: string | null;
+  item_brand: string | null;
   /** Balance of this item at the exact (wh, rack, location, pallet) node. */
   balance_qty: string | null;
   /** Total balance of this item across the whole warehouse. */
@@ -131,7 +132,7 @@ export async function GET(request: Request) {
   // per-item scan of the (un-indexed-on-item) movements table.
   const rows = await query<MovementItemHit>(
     `WITH hits AS (
-       SELECT i.code, i.name_1, i.unit_standard,
+       SELECT i.code, i.name_1, i.unit_standard, i.item_brand,
               (CASE WHEN ${needsIsnSql("i")} THEN 1 ELSE 0 END) AS is_isn
        FROM public.ic_inventory i
        WHERE (i.code ILIKE $5 ESCAPE '\\' OR i.name_1 ILIKE $5 ESCAPE '\\')
@@ -157,6 +158,7 @@ export async function GET(request: Request) {
        h.code AS item_code,
        h.name_1 AS item_name,
        h.unit_standard AS unit_code,
+       h.item_brand,
        COALESCE(m.node_q, 0)::text AS balance_qty,
        COALESCE(m.wh_q, 0)::text AS wh_balance,
        h.is_isn${wantLocations ? `,\n       COALESCE(l.locations, '[]'::json) AS locations` : ""}

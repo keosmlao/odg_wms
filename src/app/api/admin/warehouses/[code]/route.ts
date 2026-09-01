@@ -104,7 +104,7 @@ export async function PATCH(
     return NextResponse.json({ error: "flag ບໍ່ຖືກຕ້ອງ" }, { status: 400 });
   }
   if (typeof body.value !== "boolean") {
-    return NextResponse.json({ error: "ຕ້ອງระบุ value (true/false)" }, { status: 400 });
+    return NextResponse.json({ error: "ຕ້ອງລະບຸ value (true/false)" }, { status: 400 });
   }
 
   const exists = await query<{ code: string }>(

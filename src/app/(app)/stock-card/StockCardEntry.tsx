@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CheckIcon, PackageIcon, PlusIcon, SearchIcon } from "@/components/ui/Icons";
-import { type CalcFlag, UNLOCATED_LABEL, fmtQty } from "@/lib/stockCard";
+import { type CalcFlag, UNLOCATED_LABEL, fmtQty, getJson } from "@/lib/stockCard";
 import type { WarehouseOption } from "./StockCardView";
 
 type Option = { code: string; name: string | null };
@@ -53,8 +53,7 @@ export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOp
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch("/api/stock-card/filters");
-        const d = (await res.json()) as { groups?: Option[]; brands?: Option[]; categories?: Option[] };
+        const d = await getJson<{ groups?: Option[]; brands?: Option[]; categories?: Option[] }>("/api/stock-card/filters");
         setGroups(d.groups ?? []); setBrands(d.brands ?? []); setCategories(d.categories ?? []);
       } catch { /* non-fatal */ }
     })();
@@ -68,8 +67,7 @@ export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOp
     if (!wh) return;
     void (async () => {
       try {
-        const res = await fetch(`/api/stock-card/locations?wh=${encodeURIComponent(wh)}`);
-        const d = (await res.json()) as { racks?: RackOption[]; locations?: LocationOption[] };
+        const d = await getJson<{ racks?: RackOption[]; locations?: LocationOption[] }>(`/api/stock-card/locations?wh=${encodeURIComponent(wh)}`);
         setRacks(d.racks ?? []); setLocations(d.locations ?? []);
       } catch { /* non-fatal — bins are optional on an entry */ }
     })();
@@ -88,9 +86,12 @@ export default function StockCardEntry({ warehouses }: { warehouses: WarehouseOp
       if (brand) p.set("brand", brand);
       if (category) p.set("category", category);
       if (q.trim()) p.set("q", q.trim());
-      const res = await fetch(`/api/stock-card/items?${p}`);
-      const d = (await res.json()) as { items?: Hit[] };
+      const d = await getJson<{ items?: Hit[] }>(`/api/stock-card/items?${p}`);
       setHits(d.items ?? []); setPicked(new Set()); setSearched(true);
+    } catch (e) {
+      // ບໍ່ພົບ ແລະ ຄົ້ນຫາລົ້ມເຫຼວ ຕ້ອງບໍ່ອ່ານຄືກັນ
+      setHits([]); setSearched(false);
+      showToast("err", e instanceof Error ? e.message : "ຄົ້ນຫາບໍ່ສຳເລັດ");
     } finally { setSearching(false); }
   }, [wh, group, brand, category, q]);
 

@@ -18,7 +18,7 @@ export default async function TransferApprovePage() {
       <BackButton href="/movements/transfer-dashboard" />
       <Hero
         title="ອະນຸມັດ ໃບຂໍໂອນ"
-        description="ສາງຕົ້ນທາງ ກວດ ແລະ ອະນຸມັດ ໃບຂໍໂອນ ກ່ອນ — ສະເພาะໃບທີ່ອະນຸມັດแล้วจึงจ่ายออกได้"
+        description="ສາງຕົ້ນທາງ ກວດ ແລະ ອະນຸມັດ ໃບຂໍໂອນ ກ່ອນ — ສະເພາະໃບທີ່ອະນຸມັດແລ້ວຈຶ່ງຈ່າຍອອກໄດ້"
         icon={<CheckIcon className="h-6 w-6" />}
         tone="brand"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}

@@ -74,7 +74,7 @@ export default async function IssuePage({
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Workflow segmented control: ① ສ້າງ pick → ② ຢືนยันจ่าย */}
+        {/* Workflow segmented control: ① ສ້າງ pick → ② ຢືນຢັນຈ່າຍ */}
         <div className="inline-flex items-center gap-1 rounded-2xl border border-zinc-200/70 bg-white/70 p-1.5 shadow-sm backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-900/70">
           {steps.map((s, idx) => {
             const on = tab === s.key;
@@ -100,7 +100,7 @@ export default async function IssuePage({
           })}
         </div>
 
-        {/* ປະຫวัด — ghost */}
+        {/* ປະຫວັດ — ghost */}
         <Link
           href="/movements/issue?tab=history"
           className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${

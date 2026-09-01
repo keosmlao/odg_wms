@@ -161,7 +161,7 @@ export default function DashboardClient() {
 
   return (
     <div className="space-y-5">
-      {/* ปุ่มลัด workflow */}
+      {/* ປຸ່ມລັດ workflow */}
       <div className="flex flex-wrap items-center gap-2">
         <Link href="/movements/transfer-request" className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-aqua-700 to-brand-800 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg active:scale-98">📝 ອອກໃບຂໍໂອນ</Link>
         <span className="text-slate-300">›</span>
@@ -199,7 +199,7 @@ export default function DashboardClient() {
         <div className="py-12 text-center text-sm text-slate-400">ກຳລັງໂຫລດ…</div>
       ) : combined.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
-          {q.trim() ? (itemBusy ? "ກຳລັງຄົ້ນຫາ…" : `ບໍ່ພົບ ໃບຂໍໂອນ ທີ່ຍັງບໍ່ສຳເລັດ ສຳລັບ “${q.trim()}”`) : "ບໍ່ມີ ໃບຂໍໂອນ ທີ່ກຳລັງດำเนินการ ໃນທຸກສາງທີ່ທ່ານຮັບຜິດຊອບ"}
+          {q.trim() ? (itemBusy ? "ກຳລັງຄົ້ນຫາ…" : `ບໍ່ພົບ ໃບຂໍໂອນ ທີ່ຍັງບໍ່ສຳເລັດ ສຳລັບ “${q.trim()}”`) : "ບໍ່ມີ ໃບຂໍໂອນ ທີ່ກຳລັງດຳເນີນການ ໃນທຸກສາງທີ່ທ່ານຮັບຜິດຊອບ"}
         </div>
       ) : (
         <div className="space-y-6">
@@ -238,7 +238,7 @@ function roleAction(role: "out" | "in", d: Row, t: ReturnType<typeof track>) {
   }
   if (t.current === 1) return { href: `/movements/transfer-approve?doc=${doc}`, label: "→ ໄປອະນຸມັດ", cls: "bg-amber-500" };
   if (t.req - t.toT > 1e-6 && t.st >= 1) return { href: `/movements/issue?type=transfer&doc=${doc}${d.wh_from ? `&wh=${encodeURIComponent(d.wh_from)}` : ""}`, label: "→ ໄປຈ່າຍ", cls: "bg-red-500" };
-  // ຈ່າຍຄົບແລ້ວ ກຳລັງຄ້າງທາງ → ลำ ปลายทางรับ (ไม่ใช่งานต้นทาง); ມີทางเลือก ฮับคืน
+  // ຈ່າຍຄົບແລ້ວ ກຳລັງຄ້າງທາງ → ລໍ ປາຍທາງຮັບ (ບໍ່ແມ່ນວຽກຕົ້ນທາງ); ມີທາງເລືອກ ຮັບຄືນ
   return null;
 }
 
@@ -279,10 +279,10 @@ function TrackCard({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; 
         <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${role === "out" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{role === "out" ? "📤 ຈ່າຍ" : "📥 ຮັບ"}</span>
         <span className="font-mono text-sm font-bold text-aqua-700">{d.doc_no}</span>
         <span className="text-xs text-slate-500">{d.wh_from_name ?? d.wh_from} → {d.wh_to_name ?? d.wh_to}</span>
-        {t.rejected ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">ຖືກປฏิเสธ</span>
+        {t.rejected ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">ຖືກປະຕິເສດ</span>
           : t.done ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">ສຳເລັດ ✓</span>
           : waiting ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">ລໍ ຕົ້ນທາງຈ່າຍ</span>
-          : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">{STAGES[t.current]?.label ?? "ດำเนินการ"}</span>}
+          : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">{STAGES[t.current]?.label ?? "ດຳເນີນການ"}</span>}
         {overdue && <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">ເກີນກຳນົດ {fmtD(d.want_date)}</span>}
         <span className="ml-auto flex items-center gap-2">
           {!t.done && t.req - t.rcv > 1e-6 && <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 ring-1 ring-amber-200">ຍັງຄ້າງ {t.req - t.rcv}/{t.req}</span>}
@@ -332,7 +332,7 @@ function TrackCard({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; 
         const cr = ms(d.created_at), iss = ms(d.issued_at), rec = ms(d.received_at);
         const segs: { label: string; val: string; live?: boolean; cls: string }[] = [];
         if (Number.isFinite(iss)) segs.push({ label: "ຂໍ→ຈ່າຍ", val: dur(cr, iss), cls: "text-slate-500" });
-        else if (!t.rejected && !t.done) segs.push({ label: t.current === 1 ? "ລໍอนุมัติมาแล้ว" : "ລໍจ่ายมาแล้ว", val: dur(cr, now), live: true, cls: "text-amber-600" });
+        else if (!t.rejected && !t.done) segs.push({ label: t.current === 1 ? "ລໍອະນຸມັດມາແລ້ວ" : "ລໍຈ່າຍມາແລ້ວ", val: dur(cr, now), live: true, cls: "text-amber-600" });
         if (Number.isFinite(iss)) {
           if (Number.isFinite(rec) && t.done) segs.push({ label: "ໃນທາງ", val: dur(iss, rec), cls: "text-slate-500" });
           else if (t.inT > 1e-6) segs.push({ label: "ໃນທາງ (ລໍຮັບ)", val: dur(iss, now), live: true, cls: "text-amber-600" });
@@ -347,7 +347,7 @@ function TrackCard({ d, role, now, today, hits }: { d: Row; role: "out" | "in"; 
       })()}
 
       {(() => {
-        // ต้นทาง: จ่ายครบแล้ว ของอยู่ในทาง → รอปลายทางรับ (text) + ทางเลือก รับคืน
+        // ຕົ້ນທາງ: ຈ່າຍຄົບແລ້ວ ຂອງຢູ່ໃນທາງ → ລໍປາຍທາງຮັບ (text) + ທາງເລືອກ ຮັບຄືນ
         const outWaiting = role === "out" && !t.done && !t.rejected && t.inT > 1e-6 && t.req - t.toT <= 1e-6;
         if (act) return <div className="mt-3 flex justify-end"><Link href={act.href} className={`rounded-lg px-3 py-1.5 text-xs font-bold text-white ${act.cls}`}>{act.label}</Link></div>;
         if (outWaiting) return (

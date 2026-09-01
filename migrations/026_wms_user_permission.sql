@@ -25,6 +25,6 @@ CREATE TABLE IF NOT EXISTS public.wms_user_permission (
 COMMENT ON TABLE public.wms_user_permission
   IS 'ສິດເພີ່ມເຕີມຕໍ່ພະນັກງານ (ນອກເໜືອຈາກ role) — ເຊັ່ນ ລົບໃບໂອນອອກ / ໂອນເຂົ້າ. ຜູ້ຈັດການມີທຸກສິດໂດຍປະລິຍາຍ.';
 COMMENT ON COLUMN public.wms_user_permission.perm
-  IS 'delete_transfer_out = ລົບໃບໂອນອອກ · delete_transfer_in = ລົບໃບໂອນເຂົ້າ/ຮັບຄືນ';
+  IS 'delete_transfer_out = ລົບໃບໂອນອອກ · delete_transfer_in = ລົບໃບໂອນເຂົ້າ/ຮັບຄືນ · delete_adjust = ລົບໃບປັບປຸງ stock';
 
 CREATE INDEX IF NOT EXISTS idx_wms_user_permission_emp ON public.wms_user_permission (employee_id);

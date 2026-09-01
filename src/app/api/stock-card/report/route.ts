@@ -14,7 +14,7 @@ import { accessibleWarehouses } from "@/lib/session-shared";
  *
  * `unlocated` is not a separate stored number — it is whatever the warehouse
  * total has left over once the binned rows are accounted for. Since migration
- * 028 the opening balance syncs per bin too, so on a clean warehouse this is 0;
+ * 040 the opening balance syncs per bin too, so on a clean warehouse this is 0;
  * anything non-zero means some row carries no shelf code and is worth chasing.
  *
  * A FULL OUTER JOIN is what keeps both halves visible: an item can have an
@@ -74,7 +74,7 @@ export async function GET(request: Request) {
 
   const rows = await query<StockCardRow>(
     `WITH op AS (
-       -- one opening row per (item, rack, location) since 028 — fold to the item
+       -- one opening row per (item, rack, location) since 040 — fold to the item
        SELECT item_code,
               MAX(item_name) AS item_name,
               MAX(unit_code) AS unit_code,

@@ -105,7 +105,7 @@ export default async function PrintPickPage({ params, searchParams }: { params: 
             <thead>
               <tr className="bg-slate-100 text-left">
                 <th className="border border-slate-300 px-2 py-1 w-8">#</th>
-                <th className="border border-slate-300 px-2 py-1">ບ່ອນเก็บ (walk order)</th>
+                <th className="border border-slate-300 px-2 py-1">ບ່ອນເກັບ (walk order)</th>
                 <th className="border border-slate-300 px-2 py-1">ສິນຄ້າ</th>
                 <th className="border border-slate-300 px-2 py-1 w-32">ບິນຂາຍ</th>
                 <th className="border border-slate-300 px-2 py-1 text-right w-24">ຈຳນວນ</th>
@@ -142,7 +142,7 @@ export default async function PrintPickPage({ params, searchParams }: { params: 
               </div>
             ))}
           </div>
-          <p className="no-print mt-6 text-center text-xs text-slate-400">* ໃບนี้ໃຫ້ forklift ໄປເກັບກ່ອນ — ກັບมาຢືນຢັນ "② จ่าย" เพื่อตัด stock จริง</p>
+          <p className="no-print mt-6 text-center text-xs text-slate-400">* ໃບນີ້ໃຫ້ forklift ໄປເກັບກ່ອນ — ກັບມາຢືນຢັນ "② ຈ່າຍ" ເພື່ອຕັດ stock ຈິງ</p>
         </>
       )}
     </div>

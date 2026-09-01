@@ -75,7 +75,7 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
       });
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error ?? "ບໍ່ສຳເລັດ");
-      show("ok", `ຮັບคืนสำเร็จ · ${j.doc_no} · ${j.lines} ລາຍການ`);
+      show("ok", `ຮັບຄືນສຳເລັດ · ${j.doc_no} · ${j.lines} ລາຍການ`);
       setLastDoc(j.doc_no); setLines([]); setCust(""); setRefInv(""); setReason("");
     } catch (e) { show("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ"); }
     setSubmitting(false);
@@ -88,7 +88,7 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
       <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
-            <label className="mb-1 block text-[11px] font-semibold text-slate-500">ສາງที่รับคืนเข้า</label>
+            <label className="mb-1 block text-[11px] font-semibold text-slate-500">ສາງທີ່ຮັບຄືນເຂົ້າ</label>
             {wh ? (
               <div className="flex items-center gap-2">
                 <span className="rounded-lg bg-aqua-50 px-3 py-2 font-mono text-sm font-black text-aqua-700 ring-1 ring-aqua-200">{wh}</span>
@@ -100,16 +100,16 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
             )}
           </div>
           <div>
-            <label className="mb-1 block text-[11px] font-semibold text-slate-500">ລະຫัสลูกค้า (ถ้ามี)</label>
+            <label className="mb-1 block text-[11px] font-semibold text-slate-500">ລະຫັດລູກຄ້າ (ຖ້າມີ)</label>
             <input value={cust} onChange={(e) => setCust(e.target.value)} placeholder="cust_code" className={`${inputCls} w-full`} />
           </div>
           <div>
-            <label className="mb-1 block text-[11px] font-semibold text-slate-500">ບິลขายเดิม (ref)</label>
+            <label className="mb-1 block text-[11px] font-semibold text-slate-500">ບິນຂາຍເດີມ (ref)</label>
             <input value={refInv} onChange={(e) => setRefInv(e.target.value)} placeholder="INHPB..." className={`${inputCls} w-full`} />
           </div>
         </div>
         <div className="mt-3">
-          <label className="mb-1 block text-[11px] font-semibold text-slate-500">ເຫດผลรับคืน</label>
+          <label className="mb-1 block text-[11px] font-semibold text-slate-500">ເຫດຜົນຮັບຄືນ</label>
           <select value={reason} onChange={(e) => setReason(e.target.value)} className={`${inputCls} w-full max-w-xs`}>
             <option value="">— ເລືອກ —</option>
             {MOVE_REASONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
@@ -120,7 +120,7 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
       {(
         <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <div className="relative">
-            <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ຄົ້ນຫາ ສິນຄ້າ ເພື່ອเพิ่ม…" className={`${inputCls} w-full`} />
+            <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ຄົ້ນຫາ ສິນຄ້າ ເພື່ອເພີ່ມ…" className={`${inputCls} w-full`} />
             {hits.length > 0 && (
               <div className="absolute z-10 mt-1 max-h-80 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
                 {hitGroups.map((g) => (
@@ -146,7 +146,7 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
 
           <div className="mt-3 space-y-2">
             {lines.length === 0 ? (
-              <p className="py-6 text-center text-sm text-slate-400">ຍັງບໍ່ມີລາຍການ — ຄົ້ນຫາ ເພື່ອเพิ่ม</p>
+              <p className="py-6 text-center text-sm text-slate-400">ຍັງບໍ່ມີລາຍການ — ຄົ້ນຫາ ເພື່ອເພີ່ມ</p>
             ) : lines.map((l, i) => (
               <div key={l.item_code} className="rounded-xl border border-slate-200 p-3">
                 <div className="flex items-start justify-between gap-2">
@@ -157,7 +157,7 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
                   <button onClick={() => remove(i)} className="rounded p-1 text-slate-300 hover:text-rose-500">✕</button>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <label className="text-xs text-slate-500">ຈำนวน</label>
+                  <label className="text-xs text-slate-500">ຈຳນວນ</label>
                   <input type="number" min={0} value={l.qty} onChange={(e) => upd(i, { qty: e.target.value })} className={`${inputCls} w-24`} />
                   <label className="text-xs text-slate-500">location</label>
                   <input value={l.location} onChange={(e) => upd(i, { location: e.target.value })} placeholder="ບ່ອນຈັດເກັບ" className={`${inputCls} w-40`} />
@@ -166,7 +166,7 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
                   <div className="flex items-center gap-2">
                     <input value={l.serialInput} onChange={(e) => upd(i, { serialInput: e.target.value })}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSerial(i); } }}
-                      placeholder="ຍິງ / ພິມ SN ແລ້ວ Enter (ถ้ามี serial)" className={`${inputCls} flex-1 font-mono text-xs`} />
+                      placeholder="ຍິງ / ພິມ SN ແລ້ວ Enter (ຖ້າມີ serial)" className={`${inputCls} flex-1 font-mono text-xs`} />
                     <button onClick={() => addSerial(i)} className="rounded-lg bg-aqua-600 px-3 py-2 text-xs font-bold text-white hover:bg-aqua-700">ເພີ່ມ SN</button>
                   </div>
                   {l.serials.length > 0 && (
@@ -184,10 +184,10 @@ export default function SaleReturnClient({ warehouses }: { warehouses: Warehouse
           </div>
 
           <div className="mt-4 flex items-center justify-between">
-            {lastDoc && <a href={`/print/wms/${encodeURIComponent(lastDoc)}?auto=1`} target="_blank" rel="noopener" className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">🖨 ພິมໃບຮັບคืน {lastDoc}</a>}
+            {lastDoc && <a href={`/print/wms/${encodeURIComponent(lastDoc)}?auto=1`} target="_blank" rel="noopener" className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">🖨 ພິມໃບຮັບຄືນ {lastDoc}</a>}
             <button onClick={submit} disabled={submitting || lines.length === 0}
               className="ml-auto inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-aqua-700 to-brand-800 px-6 py-3 text-sm font-bold text-white shadow-md hover:shadow-lg active:scale-98 transition disabled:opacity-50 cursor-pointer">
-              {submitting ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : "✓"} ບັນທຶก ຮັບคืน
+              {submitting ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : "✓"} ບັນທຶກ ຮັບຄືນ
             </button>
           </div>
         </section>

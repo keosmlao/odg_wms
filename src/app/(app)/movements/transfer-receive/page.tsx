@@ -21,7 +21,7 @@ export default async function TransferReceivePage() {
       <BackButton href="/movements/transfer-dashboard" />
       <Hero
         title="ຮັບໂອນເຂົ້າສາງ"
-        description="ຮັບສິນຄ້າຈາກສາງລະຫວ່າງທາງ (9903) ເຂົ້າສາງຕົນ — ຮັບໄດ້ຕາມຕົວຈິງ. ຮັບບໍ່ຄົບ → ส่วนที่ເຫลือຍັງຄ້າງ pending"
+        description="ຮັບສິນຄ້າຈາກສາງລະຫວ່າງທາງ (9903) ເຂົ້າສາງຕົນ — ຮັບໄດ້ຕາມຕົວຈິງ. ຮັບບໍ່ຄົບ → ສ່ວນທີ່ເຫຼືອຍັງຄ້າງ pending"
         icon={<ArrowLeftRightIcon className="h-6 w-6" />}
         tone="emerald"
         chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}

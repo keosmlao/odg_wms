@@ -1,5 +1,5 @@
 ------------------------------------------------------------
--- 027: Stock card (ບັດສະຕັອກ) — a manual, self-contained stock ledger
+-- 039: Stock card (ບັດສະຕັອກ) — a manual, self-contained stock ledger
 --
 -- Deliberately SEPARATE from the WMS movement ledger (odg_wms_trans_detail):
 -- nothing here is written by receive/issue/transfer. An operator syncs an

@@ -6,7 +6,7 @@ import { accessibleWarehouses } from "@/lib/session-shared";
 /**
  * Drill-down for ONE item on a warehouse's card:
  *   · `nodes`   — net qty per rack → location, combining the synced opening
- *     balance (per bin since migration 028) with the hand-posted entries. Each
+ *     balance (per bin since migration 040) with the hand-posted entries. Each
  *     node also reports its two halves so an operator can see how much of a bin
  *     came from the sync and how much was typed in.
  *   · `unlocated` — the remainder (opening + all movements − located net), i.e.

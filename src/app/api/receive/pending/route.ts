@@ -9,8 +9,8 @@ import { needsIsnSql } from "@/lib/isnScope";
  *
  *   po            ໃບສັ່ງຊື້            trans_flag 6  → odg_po_remain (qty_balance)
  *   transfer      ໃບໂອນສິນຄ້າ        trans_flag 72 → ic_trans (received at wh_to)
- *   sales_return  ໃບຮັບคืนจากการขาย   trans_flag 48 → ic_trans_detail (wh_code, calc_flag +1)
- *   issue_return  ໃບຮັບคืนจากการເບີກ  trans_flag 58 → ic_trans_detail (wh_code, calc_flag +1)
+ *   sales_return  ໃບຮັບຄືນຈາກການຂາຍ   trans_flag 48 → ic_trans_detail (wh_code, calc_flag +1)
+ *   issue_return  ໃບຮັບຄືນຈາກການເບີກ  trans_flag 58 → ic_trans_detail (wh_code, calc_flag +1)
  *
  * For every type the WMS amount already received (wms_product_receive_detail by
  * ref_doc_no = source doc) is subtracted, so a line never double-receives:

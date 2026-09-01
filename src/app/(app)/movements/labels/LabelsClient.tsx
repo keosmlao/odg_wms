@@ -53,7 +53,7 @@ export default function LabelsClient({ warehouses }: { warehouses: WarehouseOpti
   const labels = useMemo<Label[]>(() => {
     const ql = q.trim().toLowerCase();
     const src: Label[] = kind === "pallet"
-      ? pallets.map((p) => ({ key: `${p.wh_code}|${p.code}`, wh_code: p.wh_code, code: p.code, line1: p.name ?? "Pallet", line2: [p.rack, p.location].filter(Boolean).join(" / ") || "(ສาง)" }))
+      ? pallets.map((p) => ({ key: `${p.wh_code}|${p.code}`, wh_code: p.wh_code, code: p.code, line1: p.name ?? "Pallet", line2: [p.rack, p.location].filter(Boolean).join(" / ") || "(ສາງ)" }))
       : bins.map((b) => ({ key: `${b.wh_code}|${b.code}`, wh_code: b.wh_code, code: b.code, line1: b.name ?? "Location", line2: b.rack_code ? `Rack ${b.rack_code}` : "" }));
     return ql ? src.filter((l) => l.code.toLowerCase().includes(ql) || l.line1.toLowerCase().includes(ql)) : src;
   }, [kind, pallets, bins, q]);

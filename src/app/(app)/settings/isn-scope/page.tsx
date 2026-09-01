@@ -15,7 +15,7 @@ export default async function IsnScopePage() {
   ]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">ສິນຄ້າທີ່ຕ້ອງເກັບ ISN</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">

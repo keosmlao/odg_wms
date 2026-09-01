@@ -1,6 +1,14 @@
 import type { ReactNode } from "react";
 
-export type AccentTone = "neutral" | "emerald" | "red" | "aqua" | "navy" | "amber" | "brand";
+export type AccentTone =
+  | "neutral"
+  | "emerald"
+  | "red"
+  | "aqua"
+  | "navy"
+  | "amber"
+  | "violet"
+  | "brand";
 
 const iconColorMap: Record<AccentTone, string> = {
   neutral: "text-zinc-700 dark:text-zinc-200",
@@ -9,6 +17,7 @@ const iconColorMap: Record<AccentTone, string> = {
   aqua: "text-aqua-600 dark:text-aqua-400",
   navy: "text-brand-900 dark:text-brand-300",
   amber: "text-amber-600 dark:text-amber-400",
+  violet: "text-violet-600 dark:text-violet-400",
   brand: "text-brand-600 dark:text-brand-400",
 };
 
@@ -19,6 +28,7 @@ const iconBgMap: Record<AccentTone, string> = {
   aqua: "bg-aqua-50 dark:bg-aqua-950/40",
   navy: "bg-brand-100 dark:bg-brand-900/50",
   amber: "bg-amber-50 dark:bg-amber-950/40",
+  violet: "bg-violet-50 dark:bg-violet-950/40",
   brand: "bg-brand-50 dark:bg-brand-950/40",
 };
 
@@ -29,6 +39,7 @@ const valueColorMap: Record<AccentTone, string> = {
   aqua: "text-aqua-600 dark:text-aqua-400",
   navy: "text-brand-900 dark:text-brand-300",
   amber: "text-amber-600 dark:text-amber-400",
+  violet: "text-violet-600 dark:text-violet-400",
   brand: "text-brand-600 dark:text-brand-400",
 };
 
@@ -43,6 +54,8 @@ const heroGradientMap: Record<AccentTone, string> = {
   navy: "from-brand-900/10 via-brand-500/5 to-transparent dark:from-brand-900/25 dark:via-brand-500/10",
   amber:
     "from-amber-500/10 via-orange-500/5 to-transparent dark:from-amber-500/15 dark:via-orange-500/10",
+  violet:
+    "from-violet-500/10 via-fuchsia-500/5 to-transparent dark:from-violet-500/15 dark:via-fuchsia-500/10",
   brand:
     "from-brand-500/10 via-aqua-500/5 to-transparent dark:from-brand-500/15 dark:via-aqua-500/10",
 };

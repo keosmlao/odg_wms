@@ -17,7 +17,7 @@ export default async function TransferDashboardPage() {
     <div className="w-full space-y-5">
       <BackButton href="/" />
       <Hero
-        title="ພາบรวม ການໂອນ (Dashboard)"
+        title="ພາບລວມ ການໂອນ (Dashboard)"
         description="ສະຫຼຸບ ໃບຂໍໂອນ ທີ່ active — ລໍຖ້າອະນຸມັດ · ລໍຖ້າຈ່າຍ · ຄ້າງລະຫວ່າງທາງ · ເກີນກຳນົດ"
         icon={<ArrowLeftRightIcon className="h-6 w-6" />}
         tone="aqua"

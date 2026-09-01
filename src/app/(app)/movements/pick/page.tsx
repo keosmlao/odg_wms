@@ -27,7 +27,7 @@ export default async function PickPage() {
       <div className="print:hidden">
         <Hero
           title="ໃບເກັບສິນຄ້າ / Pick List"
-          description="ສ້າງໃບເກັບຈາກ ໃບຂໍເບີກ / ໃບຂໍໂອນ / ບິນຂາຍ — ຈັດລຳດັບ location ໃຫ້ຍ່າງเก็บไวຄັ້ງດຽວ"
+          description="ສ້າງໃບເກັບຈາກ ໃບຂໍເບີກ / ໃບຂໍໂອນ / ບິນຂາຍ — ຈັດລຳດັບ location ໃຫ້ຍ່າງເກັບໄວຄັ້ງດຽວ"
           icon={<ListIcon className="h-6 w-6" />}
           tone="emerald"
           chips={<Chip tone="primary">{ROLE_LABEL_LO[session.role]}</Chip>}

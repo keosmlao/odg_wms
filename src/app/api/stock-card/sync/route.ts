@@ -7,7 +7,7 @@ import { hasPerm } from "@/lib/permissions";
 /**
  * Opening-balance sync for the stock card, one warehouse at a time.
  *
- * Source: the WMS movement ledger, netted per BIN (migration 028) —
+ * Source: the WMS movement ledger, netted per BIN (migration 040) —
  *   SUM(qty * calc_flag) GROUP BY wh_code, item_code, shelf_code, shelf_code1
  * so the baseline arrives already placed at rack → location. The old SML path
  * (sml_ic_function_stock_balance_warehouse) only knew warehouses and is retired.
@@ -38,7 +38,7 @@ export async function GET() {
           `SELECT code, name_1 AS name FROM public.ic_warehouse WHERE code = ANY($1) ORDER BY code`, [accessible]);
 
   // `items` counts DISTINCT products, `nodes` counts the (item, rack, location)
-  // rows — since 028 one item spans as many rows as it has bins.
+  // rows — since 040 one item spans as many rows as it has bins.
   const state = warehouses.length === 0 ? [] : await query<{ wh_code: string; items: number; nodes: number; total_qty: string; synced_at: string | null; user_created: string | null }>(
     `SELECT wh_code,
             count(DISTINCT item_code)::int AS items,

@@ -96,8 +96,8 @@ export async function GET(_request: Request, ctx: { params: Promise<{ doc: strin
   ]);
 
   // Putaway suggestions for this warehouse:
-  //  sameLocs  = locations already holding one of this sheet's items (รวมกอง)
-  //  emptyLocs = known locations whose net balance is ≤ 0 (ว่าง)
+  //  sameLocs  = locations already holding one of this sheet's items (ລວມກອງ)
+  //  emptyLocs = known locations whose net balance is ≤ 0 (ວ່າງ)
   const itemCodes = (lines as { item_code: string }[]).map((l) => l.item_code);
   const wh = (header as { wh_code: string | null }).wh_code;
   const [sameLocs, emptyLocs] = wh

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { query } from "@/lib/db";
+import DeleteAdjustButton from "./DeleteAdjustButton";
+import { hasPerm } from "@/lib/permissions";
 import { type Session, accessibleWarehouses } from "@/lib/session-shared";
 import { Chip, KpiCard, EmptyState } from "@/components/ui/Card";
 import {
@@ -243,6 +245,8 @@ export default async function AdjustHistory({
     else linesByDoc.set(l.doc_no, [l]);
   }
 
+  const canDeleteAdjust = await hasPerm(session, "delete_adjust");
+
   const todayCount = pageDocs.filter((d) => d.doc_date === today).length;
 
   const dateLabel = allTime
@@ -399,6 +403,16 @@ export default async function AdjustHistory({
                     </div>
                     <div className="text-[10px] text-zinc-400">{d.line_count} ລາຍການ</div>
                   </div>
+                  {canDeleteAdjust ? (
+                    <DeleteAdjustButton docNo={d.doc_no} />
+                  ) : (
+                    <span
+                      title="ບໍ່ມີສິດລົບໃບປັບປຸງ stock — ໃຫ້ຜູ້ຈັດການເປີດສິດໃນ ຕັ້ງຄ່າ › ຈັດການສິດເຂົ້າເຖິງ"
+                      className="shrink-0 cursor-not-allowed rounded-lg bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-300 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-600 dark:ring-zinc-800"
+                    >
+                      🔒 ລົບ
+                    </span>
+                  )}
                 </summary>
 
                 <div className="border-t border-zinc-100 dark:border-zinc-800">

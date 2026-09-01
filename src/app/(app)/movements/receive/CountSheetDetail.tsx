@@ -378,7 +378,7 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
                 {l.isIsn && l.showSn && sns.length > 0 && (
                   <div className="rounded-lg bg-aqua-50/50 p-2">
                     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1">
-                      <span className="text-[10px] text-slate-500">ກົດ serial ເພື່ອสลับ: <b className="text-emerald-600">ຮັບ</b> → <b className="text-amber-600">ພັກ</b> → <b className="text-rose-600">ຍົກເລີກ</b></span>
+                      <span className="text-[10px] text-slate-500">ກົດ serial ເພື່ອສະຫຼັບ: <b className="text-emerald-600">ຮັບ</b> → <b className="text-amber-600">ພັກ</b> → <b className="text-rose-600">ຍົກເລີກ</b></span>
                       <span className="flex gap-2">
                         <button type="button" onClick={() => setAllSerials(l.item_code, "recv")} className="text-[10px] font-semibold text-emerald-600 hover:underline">ຮັບໝົດ</button>
                         <button type="button" onClick={() => setAllSerials(l.item_code, "hold")} className="text-[10px] font-semibold text-amber-600 hover:underline">ພັກໝົດ</button>
@@ -442,7 +442,7 @@ export default function CountSheetDetail({ docNo }: { docNo: string }) {
       <ConfirmModal
         open={confirmDelete}
         title="ລົບໃບກວດນັບນີ້?"
-        message={<>ໃບກວດນັບ <span className="font-mono font-semibold">{header.doc_no}</span> ພ້ອມ serial ທີ່ gen ໄວ້ຈະຖືກລົບ. ການກະທຳນີ້ກັບคืนບໍ່ໄດ້.</>}
+        message={<>ໃບກວດນັບ <span className="font-mono font-semibold">{header.doc_no}</span> ພ້ອມ serial ທີ່ gen ໄວ້ຈະຖືກລົບ. ການກະທຳນີ້ກັບຄືນບໍ່ໄດ້.</>}
         confirmLabel="ລົບໃບກວດນັບ"
         busy={deleting}
         onConfirm={discard}

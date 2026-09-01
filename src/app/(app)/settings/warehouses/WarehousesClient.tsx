@@ -63,6 +63,9 @@ type Rack = {
   roworder: number;
   code: string | null;
   name_1: string | null;
+  width: string | null;
+  length: string | null;
+  height: string | null;
   is_active: number | null;
 };
 type Loc = {
@@ -76,11 +79,18 @@ type Loc = {
   floor: number | null;
   is_active: number | null;
 };
+/** ຂະໜາດຂັ້ນສາງ — ແຖວດຽວກັບຜັງໃນ /rack-visualization (odg_wms_layout_canvas). */
+type Canvas = {
+  width_cm: string | null;
+  depth_cm: string | null;
+  height_cm: string | null;
+};
 type Structure = {
   loading: boolean;
   error: string | null;
   racks: Rack[];
   locations: Loc[];
+  canvas: Canvas | null;
 };
 
 const COL_COUNT = 9;
@@ -181,7 +191,10 @@ export default function WarehousesClient({
       return n;
     });
     if (structure[code]) return; // cached
-    setStructure((s) => ({ ...s, [code]: { loading: true, error: null, racks: [], locations: [] } }));
+    setStructure((s) => ({
+      ...s,
+      [code]: { loading: true, error: null, racks: [], locations: [], canvas: null },
+    }));
     try {
       const res = await fetch(
         `/api/settings/warehouse-structure?wh=${encodeURIComponent(code)}`,
@@ -189,17 +202,30 @@ export default function WarehousesClient({
       const data = (await res.json().catch(() => ({}))) as {
         racks?: Rack[];
         locations?: Loc[];
+        canvas?: Canvas | null;
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? "ໂຫຼດໂຄງສ້າງບໍ່ສຳເລັດ");
       setStructure((s) => ({
         ...s,
-        [code]: { loading: false, error: null, racks: data.racks ?? [], locations: data.locations ?? [] },
+        [code]: {
+          loading: false,
+          error: null,
+          racks: data.racks ?? [],
+          locations: data.locations ?? [],
+          canvas: data.canvas ?? null,
+        },
       }));
     } catch (e) {
       setStructure((s) => ({
         ...s,
-        [code]: { loading: false, error: e instanceof Error ? e.message : "ໂຫຼດບໍ່ສຳເລັດ", racks: [], locations: [] },
+        [code]: {
+          loading: false,
+          error: e instanceof Error ? e.message : "ໂຫຼດບໍ່ສຳເລັດ",
+          racks: [],
+          locations: [],
+          canvas: null,
+        },
       }));
     }
   }
@@ -508,7 +534,15 @@ export default function WarehousesClient({
                       colSpan={COL_COUNT + 1}
                       className="bg-zinc-50/60 px-4 py-3 dark:bg-zinc-900/40"
                     >
-                      <WarehouseStructure st={st} />
+                      <WarehouseStructure
+                        whCode={w.code}
+                        st={st}
+                        update={(fn) =>
+                          setStructure((prev) =>
+                            prev[w.code] ? { ...prev, [w.code]: fn(prev[w.code]) } : prev,
+                          )
+                        }
+                      />
                     </td>
                   </tr>
                 )}
@@ -829,15 +863,21 @@ function DeleteConfirm({
 }
 
 // Lazily-loaded rack / location tree for one expanded warehouse.
-function WarehouseStructure({ st }: { st: Structure | undefined }) {
+// ຂະໜາດ (ຊມ.) ແກ້ໄດ້ຄົບ 3 ຂັ້ນ ໃນນີ້: ສາງ → rack → location (migration 037).
+function WarehouseStructure({
+  whCode,
+  st,
+  update,
+}: {
+  whCode: string;
+  st: Structure | undefined;
+  update: (fn: (s: Structure) => Structure) => void;
+}) {
   if (!st || st.loading) {
     return <p className="py-1 text-xs text-zinc-500 dark:text-zinc-400">ກຳລັງໂຫຼດ rack / location...</p>;
   }
   if (st.error) {
     return <p className="py-1 text-xs text-red-600 dark:text-red-400">{st.error}</p>;
-  }
-  if (st.racks.length === 0 && st.locations.length === 0) {
-    return <p className="py-1 text-xs text-zinc-500 dark:text-zinc-400">ສາງນີ້ຍັງບໍ່ມີ rack / location</p>;
   }
 
   const locByRack = new Map<string, Loc[]>();
@@ -852,60 +892,366 @@ function WarehouseStructure({ st }: { st: Structure | undefined }) {
 
   return (
     <div className="space-y-2">
-      <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-        {st.racks.length} rack · {st.locations.length} location
+      {/* ຂັ້ນ 1 — ຂະໜາດອາຄານສາງ */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
+        <span className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">ຂະໜາດສາງ</span>
+        <DimEditor
+          level="warehouse"
+          wh={whCode}
+          width={st.canvas?.width_cm ?? null}
+          length={st.canvas?.depth_cm ?? null}
+          height={st.canvas?.height_cm ?? null}
+          onSaved={(d) =>
+            update((s) => ({
+              ...s,
+              canvas: { width_cm: d.width, depth_cm: d.length, height_cm: d.height },
+            }))
+          }
+        />
+        <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+          ພື້ນສາງໃຊ້ແຖວດຽວກັບຜັງໃນໜ້າ rack-visualization
+        </span>
       </div>
-      {st.racks.map((r) => {
-        const locs = locByRack.get(r.code ?? "") ?? [];
-        return (
-          <details key={r.roworder} className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50">
-              <span className="text-zinc-400">▸</span>
-              <span className="font-mono text-xs font-semibold">{r.code ?? "-"}</span>
-              <span className="text-sm text-zinc-700 dark:text-zinc-200">{r.name_1 ?? "-"}</span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                  r.is_active === 1
-                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                    : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-                }`}
-              >
-                {r.is_active === 1 ? "ເປີດ" : "ປິດ"}
-              </span>
-              <span className="ml-auto text-[11px] text-zinc-400">{locs.length} location</span>
-            </summary>
-            {locs.length > 0 && (
-              <div className="grid grid-cols-2 gap-1.5 px-3 pb-3 pt-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-                {locs.map((l) => (
-                  <div key={l.roworder} className="rounded-md border border-zinc-200 px-2 py-1.5 dark:border-zinc-800">
-                    <div className="truncate font-mono text-[11px] font-semibold">{l.code ?? "-"}</div>
-                    {l.name_1 && (
-                      <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">{l.name_1}</div>
-                    )}
-                    <LocMeta l={l} />
+
+      {st.racks.length === 0 && st.locations.length === 0 ? (
+        <p className="py-1 text-xs text-zinc-500 dark:text-zinc-400">ສາງນີ້ຍັງບໍ່ມີ rack / location</p>
+      ) : (
+        <>
+          <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+            {st.racks.length} rack · {st.locations.length} location
+          </div>
+          {st.racks.map((r) => {
+            const locs = locByRack.get(r.code ?? "") ?? [];
+            return (
+              <details key={r.roworder} className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50">
+                  <span className="text-zinc-400">▸</span>
+                  <span className="font-mono text-xs font-semibold">{r.code ?? "-"}</span>
+                  <span className="text-sm text-zinc-700 dark:text-zinc-200">{r.name_1 ?? "-"}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      r.is_active === 1
+                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                        : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                    }`}
+                  >
+                    {r.is_active === 1 ? "ເປີດ" : "ປິດ"}
+                  </span>
+                  <span className="ml-auto flex items-center gap-2 text-[11px] text-zinc-400">
+                    <DimText w={r.width} l={r.length} h={r.height} />
+                    <span>{locs.length} location</span>
+                  </span>
+                </summary>
+
+                <div className="space-y-2 px-3 pb-3 pt-1">
+                  {/* ຂັ້ນ 2 — ຂະໜາດ rack */}
+                  <div className="flex flex-wrap items-center gap-2 rounded-md bg-zinc-50 px-2 py-1.5 dark:bg-zinc-800/40">
+                    <span className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">ຂະໜາດ rack</span>
+                    <DimEditor
+                      level="rack"
+                      wh={whCode}
+                      roworder={r.roworder}
+                      width={r.width}
+                      length={r.length}
+                      height={r.height}
+                      onSaved={(d) =>
+                        update((s) => ({
+                          ...s,
+                          racks: s.racks.map((x) =>
+                            x.roworder === r.roworder
+                              ? { ...x, width: d.width, length: d.length, height: d.height }
+                              : x,
+                          ),
+                        }))
+                      }
+                    />
                   </div>
-                ))}
-              </div>
-            )}
-          </details>
-        );
-      })}
-      {orphan.length > 0 && (
-        <div className="text-[11px] text-zinc-400">+ {orphan.length} location ບໍ່ໄດ້ຜູກ rack</div>
+
+                  {locs.length > 0 && (
+                    <BulkLocationDims wh={whCode} rack={r} locs={locs} update={update} />
+                  )}
+
+                  {/* ຂັ້ນ 3 — ຂະໜາດແຕ່ລະ location */}
+                  {locs.length > 0 && (
+                    <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                      {locs.map((l) => (
+                        <div
+                          key={l.roworder}
+                          className="rounded-md border border-zinc-200 px-2 py-1.5 dark:border-zinc-800"
+                        >
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="truncate font-mono text-[11px] font-semibold">{l.code ?? "-"}</span>
+                            {l.floor != null && (
+                              <span className="text-[10px] text-zinc-400">floor {l.floor}</span>
+                            )}
+                          </div>
+                          {l.name_1 && (
+                            <div className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">{l.name_1}</div>
+                          )}
+                          <div className="mt-1">
+                            <DimEditor
+                              level="location"
+                              wh={whCode}
+                              roworder={l.roworder}
+                              width={l.width}
+                              length={l.length}
+                              height={l.height}
+                              onSaved={(d) =>
+                                update((s) => ({
+                                  ...s,
+                                  locations: s.locations.map((x) =>
+                                    x.roworder === l.roworder
+                                      ? { ...x, width: d.width, length: d.length, height: d.height }
+                                      : x,
+                                  ),
+                                }))
+                              }
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </details>
+            );
+          })}
+          {orphan.length > 0 && (
+            <div className="text-[11px] text-zinc-400">+ {orphan.length} location ບໍ່ໄດ້ຜູກ rack</div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function LocMeta({ l }: { l: Loc }) {
-  const size = [l.width, l.length, l.height].filter(Boolean).join("×");
-  if (!size && l.floor == null) return null;
+/**
+ * ໃສ່ຂະໜາດດຽວກັນໃຫ້ທຸກ location ໃນ rack — ບ່ອນເກັບໃນ rack ດຽວກັນມັກເທົ່າກັນ
+ * ຈຶ່ງບໍ່ຄວນໃຫ້ພິມເທື່ອລະຊ່ອງ. "ທັບທັງໝົດ" ຖາມຢືນຢັນກ່ອນ ເພາະລົບຄ່າທີ່ວັດມາແລ້ວ.
+ */
+function BulkLocationDims({
+  wh,
+  rack,
+  locs,
+  update,
+}: {
+  wh: string;
+  rack: Rack;
+  locs: Loc[];
+  update: (fn: (s: Structure) => Structure) => void;
+}) {
+  const [w, setW] = useState("");
+  const [l, setL] = useState("");
+  const [h, setH] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ k: "ok" | "err"; t: string } | null>(null);
+
+  const incomplete = locs.filter((x) => !x.width || !x.length || !x.height).length;
+  const ready = Number.parseFloat(w) > 0 && Number.parseFloat(l) > 0;
+
+  async function apply(mode: "empty" | "all") {
+    if (mode === "all" && !confirm(`ທັບຂະໜາດ ${locs.length} location ໃນ rack ${rack.code ?? "-"} ທັງໝົດ?\nຄ່າທີ່ວັດໄວ້ແລ້ວຈະຖືກແທນທີ່.`)) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/settings/warehouse-structure", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          level: "rack-locations",
+          wh,
+          roworder: rack.roworder,
+          mode,
+          width: w.trim(),
+          length: l.trim(),
+          height: h.trim(),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; updated?: number };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "ບັນທຶກບໍ່ສຳເລັດ");
+      const next = { width: w.trim() || null, length: l.trim() || null, height: h.trim() || null };
+      const codes = new Set(
+        locs.filter((x) => mode === "all" || !x.width || !x.length || !x.height).map((x) => x.roworder),
+      );
+      update((s) => ({
+        ...s,
+        locations: s.locations.map((x) => (codes.has(x.roworder) ? { ...x, ...next } : x)),
+      }));
+      setMsg({ k: "ok", t: `ໃສ່ໃຫ້ ${data.updated ?? 0} location ແລ້ວ` });
+    } catch (e) {
+      setMsg({ k: "err", t: e instanceof Error ? e.message : "ບັນທຶກບໍ່ສຳເລັດ" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className="mt-0.5 text-[10px] text-zinc-400">
-      {size}
-      {size && l.floor != null ? " · " : ""}
-      {l.floor != null ? `floor ${l.floor}` : ""}
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-zinc-300 px-2 py-1.5 dark:border-zinc-700">
+      <span className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">ໃສ່ໃຫ້ທຸກ location</span>
+      <DimInput value={w} onChange={setW} label="ຄວາມກ້ວງ (ຊມ.)" placeholder="ກ້ວງ" onEnter={() => ready && apply("empty")} />
+      <span className="text-[10px] text-zinc-400">×</span>
+      <DimInput value={l} onChange={setL} label="ຄວາມເລິກ (ຊມ.)" placeholder="ເລິກ" onEnter={() => ready && apply("empty")} />
+      <span className="text-[10px] text-zinc-400">×</span>
+      <DimInput value={h} onChange={setH} label="ຄວາມສູງ (ຊມ.)" placeholder="ສູງ" onEnter={() => ready && apply("empty")} />
+      <span className="text-[10px] text-zinc-400">ຊມ.</span>
+      <button
+        type="button"
+        disabled={busy || !ready || incomplete === 0}
+        onClick={() => apply("empty")}
+        title="ໃສ່ສະເພາະ location ທີ່ຂະໜາດຍັງບໍ່ຄົບ"
+        className="rounded-md border border-zinc-300 px-2 py-0.5 text-[10px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+      >
+        ສະເພາະທີ່ຍັງບໍ່ຄົບ ({incomplete})
+      </button>
+      <button
+        type="button"
+        disabled={busy || !ready || locs.length === 0}
+        onClick={() => apply("all")}
+        title="ທັບຂະໜາດທຸກ location ໃນ rack ນີ້"
+        className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-40 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
+      >
+        ທັບທັງໝົດ ({locs.length})
+      </button>
+      {busy && <span className="text-[10px] text-zinc-400">ກຳລັງບັນທຶກ...</span>}
+      {msg && (
+        <span className={`text-[10px] font-semibold ${msg.k === "ok" ? "text-emerald-600" : "text-rose-600"}`}>
+          {msg.t}
+        </span>
+      )}
     </div>
+  );
+}
+
+/** ຂະໜາດແບບອ່ານຢ່າງດຽວ (ຫົວ rack) — ບໍ່ມີຄ່າເລີຍ = ບໍ່ສະແດງຫຍັງ. */
+function DimText({ w, l, h }: { w: string | null; l: string | null; h: string | null }) {
+  const size = [w, l, h].map(dimStr).filter(Boolean).join("×");
+  if (!size) return null;
+  return <span className="tabular-nums">{size} ຊມ.</span>;
+}
+
+/** numeric ຂອງ PG ("450.00") → ຂໍ້ຄວາມສັ້ນສຳລັບຊ່ອງປ້ອນ. */
+function dimStr(v: string | null): string {
+  if (v == null || v === "") return "";
+  const n = Number.parseFloat(v);
+  return Number.isFinite(n) ? String(n) : "";
+}
+
+type DimValues = { width: string | null; length: string | null; height: string | null };
+
+/**
+ * ຊ່ອງປ້ອນຂະໜາດ ກ້ວງ × ເລິກ × ສູງ (ຊມ.) ໃຊ້ຮ່ວມກັນທັງ 3 ຂັ້ນ.
+ * ປຸ່ມບັນທຶກຂຶ້ນມາເມື່ອມີການປ່ຽນເທົ່ານັ້ນ — ກົດ Enter ກໍ່ບັນທຶກໄດ້.
+ * ຄ່າຫວ່າງ = ລຶບຂະໜາດ (ກັບໄປ "ບໍ່ໄດ້ວັດ").
+ */
+function DimEditor({
+  level,
+  wh,
+  roworder,
+  width,
+  length,
+  height,
+  onSaved,
+}: {
+  level: "warehouse" | "rack" | "location";
+  wh: string;
+  roworder?: number;
+  width: string | null;
+  length: string | null;
+  height: string | null;
+  onSaved: (d: DimValues) => void;
+}) {
+  const [w, setW] = useState(() => dimStr(width));
+  const [l, setL] = useState(() => dimStr(length));
+  const [h, setH] = useState(() => dimStr(height));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+
+  const dirty = w !== dimStr(width) || l !== dimStr(length) || h !== dimStr(height);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    setOk(false);
+    try {
+      const res = await fetch("/api/settings/warehouse-structure", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          level,
+          wh,
+          roworder,
+          width: w.trim(),
+          length: l.trim(),
+          height: h.trim(),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "ບັນທຶກບໍ່ສຳເລັດ");
+      onSaved({ width: w.trim() || null, length: l.trim() || null, height: h.trim() || null });
+      setOk(true);
+      setTimeout(() => setOk(false), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ບັນທຶກບໍ່ສຳເລັດ");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <DimInput value={w} onChange={setW} label="ຄວາມກ້ວງ (ຊມ.)" placeholder="ກ້ວງ" onEnter={save} />
+      <span className="text-[10px] text-zinc-400">×</span>
+      <DimInput value={l} onChange={setL} label="ຄວາມເລິກ (ຊມ.)" placeholder="ເລິກ" onEnter={save} />
+      <span className="text-[10px] text-zinc-400">×</span>
+      <DimInput value={h} onChange={setH} label="ຄວາມສູງ (ຊມ.)" placeholder="ສູງ" onEnter={save} />
+      <span className="text-[10px] text-zinc-400">ຊມ.</span>
+      {dirty && (
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="rounded-md border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
+        >
+          {saving ? "..." : "ບັນທຶກ"}
+        </button>
+      )}
+      {ok && !dirty && <span className="text-[10px] font-semibold text-emerald-600">✓</span>}
+      {error && <span className="text-[10px] text-rose-600 dark:text-rose-400">{error}</span>}
+    </span>
+  );
+}
+
+function DimInput({
+  value,
+  onChange,
+  label,
+  placeholder,
+  onEnter,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  label: string;
+  placeholder: string;
+  onEnter: () => void;
+}) {
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={value}
+      title={label}
+      aria-label={label}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onEnter();
+        }
+      }}
+      className="w-14 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right text-[11px] tabular-nums text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+    />
   );
 }
 

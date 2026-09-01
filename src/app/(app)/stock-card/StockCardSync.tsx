@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AlertIcon, BuildingIcon, LayersIcon } from "@/components/ui/Icons";
-import { SYNC_SOURCE_LABEL, fmtQty } from "@/lib/stockCard";
+import { SYNC_SOURCE_LABEL, fmtQty, getJson } from "@/lib/stockCard";
 
 type WhState = {
   code: string; name: string | null; items: number; nodes: number; total_qty: string;
@@ -21,9 +21,11 @@ export default function StockCardSync() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/stock-card/sync");
-      const d = (await res.json()) as { warehouses?: WhState[]; can_sync?: boolean };
+      const d = await getJson<{ warehouses?: WhState[]; can_sync?: boolean }>("/api/stock-card/sync");
       setRows(d.warehouses ?? []); setCanSync(!!d.can_sync);
+    } catch (e) {
+      setRows([]); setCanSync(false);
+      showToast("err", e instanceof Error ? e.message : "ໂຫຼດບໍ່ສຳເລັດ");
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);

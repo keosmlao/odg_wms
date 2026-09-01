@@ -198,7 +198,7 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
                 <optgroup key={g.code} label={`${g.code}${warehouses.find((w) => w.code === g.code)?.name ? ` · ${warehouses.find((w) => w.code === g.code)?.name}` : ""} (${g.rows.length})`}>
                   {g.rows.map((p) => (
                     <option key={`${p.wh_code}|${p.code}`} value={`${p.wh_code}|${p.code}`}>
-                      {p.code}{p.location ? ` @ ${p.location}` : " (ສาง)"}
+                      {p.code}{p.location ? ` @ ${p.location}` : " (ສາງ)"}
                     </option>
                   ))}
                 </optgroup>
@@ -207,7 +207,7 @@ export default function PalletLoadClient({ warehouses }: { warehouses: Warehouse
           </div>
         </div>
         {pallet && (
-          <p className="mt-2 text-[11px] text-zinc-500">📦 {pallet.code} · ບ່ອນ: <span className="font-mono text-emerald-600 dark:text-emerald-400">{[rack, loc].filter(Boolean).join(" / ") || "(ສาง)"}</span></p>
+          <p className="mt-2 text-[11px] text-zinc-500">📦 {pallet.code} · ບ່ອນ: <span className="font-mono text-emerald-600 dark:text-emerald-400">{[rack, loc].filter(Boolean).join(" / ") || "(ສາງ)"}</span></p>
         )}
       </section>
 

@@ -34,19 +34,17 @@ type ColorMode = "heat" | "rack";
 const SNAP = 10; // ຊມ.
 const PAD = 700; // ຂອບນອກກຳແພງ ສຳລັບປ້າຍຂະໜາດ (ຊມ.)
 
+// ── ຮູບແບບຕົວອັກສອນຂອງຜັງ — ໃຊ້ຄ່າດຽວກັນທຸກບລ໋ອກ ທຸກສາງ ທັງ 2D ແລະ 3D ──
+const LABEL_SIZE = 130; // ຫົວໜ່ວຍ viewBox (ຊມ.)
+const LABEL_COLOR = "#0f172a";
+const LABEL_HALO = "#ffffff"; // ພື້ນຫຼັງຕົວອັກສອນ — ຂາວທຸກບ່ອນ ຈຶ່ງອ່ານອອກທຸກສີພື້ນ
+/** ກວ້າງໂດຍປະມານຂອງ 1 ໂຕອັກສອນ ທຽບກັບ font-size — ໃຊ້ຫຼຸດຂະໜາດສະເພາະປ້າຍທີ່ຍາວເກີນກອບ. */
+const CHAR_W = 0.62;
+
 function snap(v: number) {
   return Math.round(v / SNAP) * SNAP;
 }
 
-/** ຕົວອັກສອນດຳ ຫຼື ຂາວ ຕາມຄວາມເຂັ້ມຂອງພື້ນ ເພື່ອໃຫ້ອ່ານອອກທັງໂໝດສີ. */
-function labelColor(fill: string): string {
-  const hex = fill.replace("#", "");
-  if (hex.length !== 6) return "#111827";
-  const r = Number.parseInt(hex.slice(0, 2), 16);
-  const g = Number.parseInt(hex.slice(2, 4), 16);
-  const b = Number.parseInt(hex.slice(4, 6), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#111827" : "#ffffff";
-}
 
 /** client px → ພິກັດພາຍໃນ SVG (ຊມ.) */
 function toSvgPoint(svg: SVGSVGElement, clientX: number, clientY: number) {
@@ -460,15 +458,17 @@ export default function WarehousePlan({
                   : highlightLocs.size > 0 && !highlightLocs.has(shape.code);
               const label = shape.label ?? shape.code;
               // ບລ໋ອກແຄບແຕ່ຍາວ (ເຊັ່ນ RECEIVE & PACKING) ຂຽນປ້າຍຕັ້ງ ບໍ່ດັ່ງນັ້ນ
-              // ຂໍ້ຄວາມຈະລົ້ນອອກນອກກອບ. ຂະໜາດຕົວອັກສອນຈຳກັດດ້ວຍດ້ານທີ່ຂຽນຕາມ.
+              // ຂໍ້ຄວາມຈະລົ້ນອອກນອກກອບ.
               const vertical = shape.d > shape.w * 1.6;
               const along = vertical ? shape.d : shape.w;
               const across = vertical ? shape.w : shape.d;
               const cx = shape.x + shape.w / 2;
               const cy = shape.y + shape.d / 2;
-              const labelSize = Math.max(
-                55,
-                Math.min(across / 2.4, (along * 1.5) / Math.max(3, label.length), 190),
+              // ຂະໜາດຄົງທີ່ທຸກບລ໋ອກ — ຫຼຸດລົງສະເພາະປ້າຍທີ່ຍາວ/ກອບນ້ອຍເກີນຈົນລົ້ນ.
+              const labelSize = Math.min(
+                LABEL_SIZE,
+                (along * 0.92) / (label.length * CHAR_W),
+                across * 0.66,
               );
               return (
                 <g key={shape.code} opacity={dimmed ? 0.22 : 1}>
@@ -499,14 +499,21 @@ export default function WarehousePlan({
                     </title>
                   </rect>
 
+                  {/* ຕົວອັກສອນ: font ດຽວກັນກັບໜ້າ, ສີດຽວ, ມີຂອບຂາວອ້ອມ (ພື້ນຫຼັງ)
+                      ຈຶ່ງອ່ານອອກເທົ່າກັນທຸກສີພື້ນ ແລະ ຄືກັນກັບປ້າຍໃນ 3D. */}
                   <text
                     x={cx}
                     y={cy}
                     textAnchor="middle"
                     dominantBaseline="middle"
+                    fontFamily="inherit"
                     fontSize={labelSize}
-                    fontWeight={800}
-                    fill={labelColor(shapeFill(shape))}
+                    fontWeight={700}
+                    fill={LABEL_COLOR}
+                    stroke={LABEL_HALO}
+                    strokeWidth={labelSize * 0.3}
+                    strokeLinejoin="round"
+                    paintOrder="stroke"
                     transform={vertical ? `rotate(-90 ${cx} ${cy})` : undefined}
                     pointerEvents="none"
                   >
@@ -515,11 +522,17 @@ export default function WarehousePlan({
                   {!isZone && cell && cell.pct != null && !vertical && shape.d > 300 && (
                     <text
                       x={cx}
-                      y={cy + labelSize}
+                      y={cy + LABEL_SIZE}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fontSize={labelSize * 0.72}
-                      fill={labelColor(shapeFill(shape))}
+                      fontFamily="inherit"
+                      fontSize={LABEL_SIZE * 0.72}
+                      fontWeight={600}
+                      fill={LABEL_COLOR}
+                      stroke={LABEL_HALO}
+                      strokeWidth={LABEL_SIZE * 0.2}
+                      strokeLinejoin="round"
+                      paintOrder="stroke"
                       pointerEvents="none"
                     >
                       {Math.round(cell.pct)}%
