@@ -2,7 +2,7 @@
   "name": "ODG WMS",
   "short_name": "ODG WMS",
   "description": "ລະບົບຄຸ້ມຄອງຄັງສິນຄ້າ ODG",
-  "start_url": "/",
+  "start_url": "/m",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
@@ -18,10 +18,22 @@
   ],
   "shortcuts": [
     {
-      "name": "ກວດນັບສິນຄ້າ",
-      "short_name": "ກວດນັບ",
-      "url": "/stocktake",
-      "description": "ຮອບກວດນັບ"
+      "name": "ຮັບສິນຄ້າ",
+      "short_name": "ຮັບເຂົ້າ",
+      "url": "/m/receive",
+      "description": "ຍິງເຄື່ອງທີ່ມາຮອດ ແລ້ວຮັບເຂົ້າສາງ"
+    },
+    {
+      "name": "ຈັດເຄື່ອງ (Pick)",
+      "short_name": "ຈັດເຄື່ອງ",
+      "url": "/m/pick",
+      "description": "ໃບຈັດເຄື່ອງ ຍິງຕາມລາຍການ"
+    },
+    {
+      "name": "ນັບ / ປັບປຸງ stock",
+      "short_name": "ນັບ",
+      "url": "/m/adjust",
+      "description": "ຍິງປ້າຍບ່ອນເກັບ ແລ້ວນັບ"
     },
     {
       "name": "ຄົງເຫຼືອ",

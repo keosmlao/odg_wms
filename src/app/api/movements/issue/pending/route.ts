@@ -38,6 +38,10 @@ export async function GET(request: Request) {
   const q = url.searchParams.get("q")?.trim() ?? "";
   const days = Math.min(Math.max(Number.parseInt(url.searchParams.get("days") ?? "90", 10) || 90, 1), 730);
   const limit = Math.min(Math.max(Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 1), 200);
+  // ໂຫຼດເປັນຊຸດ (infinite scroll): ໜ້າຈໍດຶງ 20 ໃບກ່ອນ ແລ້ວຄ່ອຍດຶງເພີ່ມເມື່ອເລື່ອນລົງ.
+  // ດຶງເກີນມາ 1 ແຖວແລ້ວຕັດຖິ້ມ — ຮູ້ວ່າ "ຍັງມີຕໍ່" ໂດຍບໍ່ຕ້ອງນັບທັງໝົດ
+  // (ການນັບທັງໝົດຄື aggregate ອັນດຽວກັນທີ່ໜັກຢູ່ແລ້ວ).
+  const offset = Math.max(Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
 
   const flag = FLAG_BY_TYPE[type];
   if (flag === undefined) return NextResponse.json({ error: "ປະເພດເອກະສານບໍ່ຖືກຕ້ອງ" }, { status: 400 });
@@ -52,8 +56,10 @@ export async function GET(request: Request) {
     args.push(`%${escapeLike(q)}%`);
     searchSql = `AND (d.doc_no ILIKE $${args.length} ESCAPE '\\' OR d.item_code ILIKE $${args.length} ESCAPE '\\' OR d.item_name ILIKE $${args.length} ESCAPE '\\')`;
   }
-  args.push(limit);
+  args.push(limit + 1);
   const limitIdx = args.length;
+  args.push(offset);
+  const offsetIdx = args.length;
 
   const docs = await query<{
     doc_no: string;
@@ -76,10 +82,16 @@ export async function GET(request: Request) {
               count(*)::int AS line_count,
               SUM(GREATEST(d.qty - COALESCE(d.cancel_qty, 0), 0)) AS src_qty
        FROM public.ic_trans_detail d
+       -- ວັນທີເລີ່ມໃຊ້ WMS ຕໍ່ສາງ (migration 043). ການເປີດໃຊ້ເປັນການທະຍອຍ
+       -- ເປີດເປັນສາງໆ — ບິນທີ່ລົງວັນທີກ່ອນສາງນັ້ນເລີ່ມ ຖືວ່າຈັດການໄປແລ້ວ
+       -- ນອກລະບົບ ຈຶ່ງບໍ່ຄວນຄ້າງເຕັມລາຍການຈົນຫາບິນຈິງບໍ່ພົບ.
+       -- LEFT JOIN + IS NULL: ສາງທີ່ບໍ່ໄດ້ຕັ້ງວັນທີໄວ້ ຍັງເຮັດວຽກຄືເກົ່າທຸກປະການ.
+       LEFT JOIN public.odg_wms_warehouse_config wc ON wc.wh_code = d.wh_code
        WHERE d.trans_flag = $1
          AND d.wh_code = ANY($2)
          AND (d.status = 0 OR d.status IS NULL)
          AND d.doc_date >= CURRENT_DATE - ($3::int)
+         AND (wc.wms_start_date IS NULL OR d.doc_date >= wc.wms_start_date)
          AND d.item_code NOT LIKE '97%'  -- ໝວດ 97 ບໍ່ຈ່າຍອອກສາງ
          ${searchSql}
        GROUP BY d.doc_no, d.wh_code
@@ -130,13 +142,16 @@ export async function GET(request: Request) {
        AND (h.trans_flag <> 124 OR COALESCE(h.status, 0) <> 2)
        AND (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0)) > 0.0001
      ORDER BY s.wh_code, h.doc_date DESC, s.doc_no DESC
-     LIMIT $${limitIdx}`,
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
     args,
   );
 
+  const hasMore = docs.length > limit;
+  const pageDocs = hasMore ? docs.slice(0, limit) : docs;
+
   // Per-item lines for the listed docs (netted), so each card can show its
   // contents inline — like the goods-receipt bill cards.
-  const docNos = [...new Set(docs.map((d) => d.doc_no))];
+  const docNos = [...new Set(pageDocs.map((d) => d.doc_no))];
   const lineRows = docNos.length
     ? await query<{
         doc_no: string;
@@ -145,6 +160,7 @@ export async function GET(request: Request) {
         item_name: string | null;
         unit_code: string | null;
         remaining: string;
+        on_hand: string;
       }>(
         `WITH src AS (
            SELECT d.doc_no, d.wh_code, d.item_code, MAX(d.item_name) AS item_name, MAX(d.unit_code) AS unit_code,
@@ -171,11 +187,25 @@ export async function GET(request: Request) {
              AND COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), o.ref_doc_no) = ANY($1)
            GROUP BY 1, 2, d.item_code
          )
+         ,
+         -- ຄົງເຫຼືອຈິງໃນສາງຕໍ່ສິນຄ້າ — ໃຊ້ຕັດສິນວ່າໃບນີ້ "ພ້ອມຢິບ" ຫຼືບໍ່.
+         -- ບໍ່ກອງ status ໂດຍເຈດຕະນາ (status=1 ຄືຂາອອກຂອງການຍ້າຍບ່ອນພາຍໃນ
+         -- ບໍ່ແມ່ນການຍົກເລີກ) — ກົດດຽວກັບ lib/issueCore.ts ແລະ ໜ້າຄົງເຫຼືອ.
+         -- ໄວໄດ້ຍ້ອນ index (item_code, wh_code) ຈາກ migration 045.
+         onhand AS (
+           SELECT t.wh_code, t.item_code, SUM(t.qty * t.calc_flag) AS q
+             FROM public.odg_wms_trans_detail t
+            WHERE t.wh_code = ANY($3)
+              AND t.item_code IN (SELECT item_code FROM src)
+            GROUP BY 1, 2
+         )
          SELECT s.doc_no, s.wh_code, s.item_code, s.item_name, s.unit_code,
-                (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0))::numeric::text AS remaining
+                (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0))::numeric::text AS remaining,
+                GREATEST(COALESCE(oh.q, 0), 0)::numeric::text AS on_hand
          FROM src s
          LEFT JOIN issued i ON i.doc_no = s.doc_no AND i.wh_code = s.wh_code AND i.item_code = s.item_code
          LEFT JOIN pending pd ON pd.doc_no = s.doc_no AND pd.wh_code = s.wh_code AND pd.item_code = s.item_code
+         LEFT JOIN onhand oh ON oh.wh_code = s.wh_code AND oh.item_code = s.item_code
          WHERE (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0)) > 0.0001
          ORDER BY s.doc_no, s.item_code`,
         [docNos, flag, whCodes],
@@ -183,16 +213,52 @@ export async function GET(request: Request) {
     : [];
 
   const linesByDoc = new Map<string, { item_code: string; item_name: string | null; unit_code: string | null; remaining: string }[]>();
+  /**
+   * ສະຖານະຄວາມພ້ອມຂອງແຕ່ລະໃບ — ແນວຄິດ "Ready" ຂອງ Odoo.
+   *
+   *   ready   ຂອງມີພໍທຸກລາຍການ — ໄປຢິບໄດ້ເລີຍ
+   *   partial ຂອງມີບາງສ່ວນ — ຢິບໄດ້ເທົ່າທີ່ມີ
+   *   waiting ບໍ່ມີຂອງເລີຍ — ລໍຮັບເຂົ້າກ່ອນ
+   *
+   * ເມື່ອກ່ອນຄົນຮູ້ວ່າຂອງບໍ່ພໍ **ຕໍ່ເມື່ອເປີດໃບເຂົ້າໄປສ້າງ pick ແລ້ວ** ເສຍເວລາ
+   * ທັງເປີດທັງປິດ. ຄິດຢູ່ນີ້ຈຶ່ງເຫັນໄດ້ຕັ້ງແຕ່ຢູ່ໃນລາຍການ.
+   *
+   * ຄິດຕໍ່ລາຍການແລ້ວຈຶ່ງລວມ ບໍ່ແມ່ນທຽບຍອດລວມ — ໃບທີ່ມີ A ຢູ່ 100 ແຕ່ຂາດ B
+   * ໜຶ່ງໜ່ວຍ ບໍ່ແມ່ນໃບທີ່ "ພ້ອມ".
+   */
+  const readyByDoc = new Map<string, { available: number; needed: number }>();
   for (const r of lineRows) {
     const k = `${r.doc_no} ${r.wh_code}`;
     const arr = linesByDoc.get(k);
     const entry = { item_code: r.item_code, item_name: r.item_name, unit_code: r.unit_code, remaining: r.remaining };
     if (arr) arr.push(entry);
     else linesByDoc.set(k, [entry]);
+
+    const need = Number.parseFloat(r.remaining) || 0;
+    const have = Number.parseFloat(r.on_hand) || 0;
+    const acc = readyByDoc.get(k) ?? { available: 0, needed: 0 };
+    acc.needed += need;
+    acc.available += Math.min(need, have);
+    readyByDoc.set(k, acc);
   }
+
+  const readinessOf = (key: string): "ready" | "partial" | "waiting" | "unknown" => {
+    const a = readyByDoc.get(key);
+    if (!a || a.needed <= 0) return "unknown";
+    if (a.available >= a.needed - 1e-6) return "ready";
+    return a.available > 1e-6 ? "partial" : "waiting";
+  };
 
   return NextResponse.json({
     warehouses,
-    docs: docs.map((d) => ({ ...d, lines: linesByDoc.get(`${d.doc_no} ${d.wh_code}`) ?? [] })),
+    docs: pageDocs.map((d) => ({
+      ...d,
+      readiness: readinessOf(`${d.doc_no} ${d.wh_code}`),
+      available_qty: String(readyByDoc.get(`${d.doc_no} ${d.wh_code}`)?.available ?? 0),
+      lines: linesByDoc.get(`${d.doc_no} ${d.wh_code}`) ?? [] })),
+    /** ຍັງມີໃບຕໍ່ໄປ — ໜ້າຈໍໃຊ້ຄ່ານີ້ຕັດສິນວ່າຈະດຶງຊຸດຕໍ່ໄປເມື່ອເລື່ອນລົງ ຫຼື ບໍ່. */
+    has_more: hasMore,
+    offset,
+    limit,
   });
 }

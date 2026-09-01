@@ -113,7 +113,7 @@ export default function LabelsClient({ warehouses }: { warehouses: WarehouseOpti
       </section>
 
       {/* On-screen grid (selectable), ແຍກກຸ່ມຕາມສາງ. Hidden when printing. */}
-      <div className="space-y-7 print:hidden">
+      <div className="space-y-1 print:hidden">
         {labelGroups.map((g) => (
           <WarehouseGroup
             key={g.code}

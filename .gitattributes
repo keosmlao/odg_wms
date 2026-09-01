@@ -1,0 +1,18 @@
+# ໂຄງການນີ້ຂຽນຢູ່ Windows ແຕ່ແລ່ນຢູ່ Linux (10.0.40.9) ດ້ວຍ repo ດຽວກັນ.
+# ບັງຄັບ LF ໃນ working tree ທຸກເຄື່ອງ — ບໍ່ດັ່ງນັ້ນ core.autocrlf ຈະໃຫ້ໄຟລ໌
+# ດຽວກັນມີເນື້ອໃນຕ່າງກັນສອງຝັ່ງ ແລະ ສິ່ງທີ່ຄິດ checksum ຈາກໄຟລ໌ (ເຊັ່ນ ledger
+# ຂອງ migrations/run.mjs) ຈະລາຍງານວ່າ "ຖືກແກ້" ທັງທີ່ບໍ່ມີໃຜແກ້.
+* text=auto eol=lf
+
+# ໄຟລ໌ຖານສອງ — ຢ່າແຕະ
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary

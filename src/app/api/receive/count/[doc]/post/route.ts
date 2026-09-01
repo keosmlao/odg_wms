@@ -7,6 +7,7 @@ import {
   insertTransHeader, insertTransDetail,
 } from "@/lib/receive";
 import { postErpPurchaseReceipt } from "@/lib/erpPost";
+import { lockDoc } from "@/lib/binLock";
 
 /**
  * Turn a count sheet (ໃບກວດນັບ, status=9) into a posted WMS goods-receipt.
@@ -86,6 +87,10 @@ export async function POST(request: Request, ctx: { params: Promise<{ doc: strin
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // ລັອກໃບກວດນັບ — ກົດ "ຮັບເຂົ້າ WMS" ສອງເທື່ອຈະສ້າງໃບຮັບສອງໃບຈາກ
+    // ໃບກວດນັບດຽວກັນ ຖ້າບໍ່ກັນໄວ້.
+    await lockDoc(client, "count-post", countNo);
 
     // Count-sheet header (must be a draft).
     const hdr = (await client.query<{ wh_code: string | null; po_no: string | null; supplier: string | null; status: number | null; doc_type: number | null }>(

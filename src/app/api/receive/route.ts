@@ -5,6 +5,7 @@ import { accessibleWarehouses } from "@/lib/session-shared";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
 import { getIsnScope } from "@/lib/isnScope";
 import { postErpPurchaseReceipt } from "@/lib/erpPost";
+import { lockDoc } from "@/lib/binLock";
 
 /** WMS goods-receipt against a PO. Writes WMS tables only (path A — no ERP post). */
 const RECEIVE_TRANS_FLAG = 1; // receive (calc_flag +1)
@@ -104,6 +105,10 @@ export async function POST(request: Request) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // ລັອກໃບສັ່ງຊື້ກ່ອນອ່ານຍອດຄ້າງ — ກັນການກົດ "ຮັບເຂົ້າ" ສອງເທື່ອຕິດກັນ
+    // (ຫຼື ສອງຄົນຮັບໃບດຽວກັນ) ບໍ່ໃຫ້ຜ່ານການກວດທັງສອງແລ້ວຮັບຊ້ຳ.
+    await lockDoc(client, "receive", poNo);
 
     // Validate qty ≤ remaining. odg_po_remain only covers POs; transfer/return
     // docs aren't there, so the client already capped qty to the source remaining

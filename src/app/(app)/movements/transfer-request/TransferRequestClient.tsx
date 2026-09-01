@@ -249,7 +249,7 @@ export default function TransferRequestClient({ allWarehouses, destWarehouses, r
             <p className="mt-1 text-xs text-zinc-400">ກົດ &quot;ສ້າງໃບຂໍໂອນ&quot; ເພື່ອເລີ່ມ</p>
           </div>
         ) : (
-          <div className="space-y-7">
+          <div className="space-y-1">
             {docGroups.map((g) => (
             <WarehouseGroup
               key={g.code}

@@ -3,14 +3,14 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDownIcon, SearchIcon } from "@/components/ui/Icons";
+import { locLabel } from "@/lib/locationLabel";
 
 export type WhOpt = { code: string; name: string | null };
 export type RackOpt = { wh: string; code: string; name: string | null };
 export type LocOpt = { wh: string; rack: string; code: string; name: string | null };
 
-function optLabel(code: string, name: string | null) {
-  return name ? `${code} · ${name}` : code;
-}
+/** ຊື່ນຳ ລະຫັດຕາມ — ກົດດຽວກັນທົ່ວແອັບ (ເບິ່ງ `@/lib/locationLabel`). */
+const optLabel = locLabel;
 
 export default function BalanceFilters({
   warehouses,

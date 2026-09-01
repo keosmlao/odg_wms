@@ -18,8 +18,14 @@ export type TableStockRow = {
 
 export default function BalanceTableClient({
   rows,
+  rackNames = {},
+  locNames = {},
 }: {
   rows: TableStockRow[];
+  /** ຊື່ຊັ້ນວາງ ຕາມກະແຈ `wh_code + rack_code` (ຈາກ odg_wms_location). */
+  rackNames?: Record<string, string>;
+  /** ຊື່ບ່ອນເກັບ ຕາມກະແຈ `wh_code + rack_code + location_code`. */
+  locNames?: Record<string, string>;
 }) {
   const [selected, setSelected] = useState<{
     item_code: string;
@@ -83,11 +89,30 @@ export default function BalanceTableClient({
                 <td className="p-4 font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
                   {row.wh_code}
                 </td>
-                <td className="p-4 font-mono text-xs text-zinc-600 dark:text-zinc-400">
-                  {row.rack_code || <span className="text-zinc-400">—</span>}
+                {/* ຊື່ນຳ (ຄົນຈື່ຊື່ຊັ້ນ) — ລະຫັດຢູ່ແຖວນ້ອຍລຸ່ມ ໄວ້ທຽບກັບປ້າຍ */}
+                <td className="p-4 text-xs text-zinc-600 dark:text-zinc-400">
+                  {row.rack_code ? (
+                    <>
+                      <div className="font-semibold">{rackNames[row.wh_code + row.rack_code] ?? row.rack_code}</div>
+                      {rackNames[row.wh_code + row.rack_code] && (
+                        <div className="font-mono text-[10px] text-zinc-400">{row.rack_code}</div>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-zinc-400">—</span>
+                  )}
                 </td>
-                <td className="p-4 font-mono text-xs font-semibold text-zinc-950 dark:text-zinc-50">
-                  {row.location_code || <span className="text-zinc-400">—</span>}
+                <td className="p-4 text-xs font-semibold text-zinc-950 dark:text-zinc-50">
+                  {row.location_code ? (
+                    <>
+                      <div>{locNames[row.wh_code + row.rack_code + row.location_code] ?? row.location_code}</div>
+                      {locNames[row.wh_code + row.rack_code + row.location_code] && (
+                        <div className="font-mono text-[10px] font-normal text-zinc-400">{row.location_code}</div>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-zinc-400">—</span>
+                  )}
                 </td>
                 <td className="p-4">
                   {row.pallet_code ? (

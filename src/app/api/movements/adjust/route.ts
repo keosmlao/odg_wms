@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { getIsnInfo, getMaxIsnSeq, isnYearCode } from "@/lib/receive";
 import { warehouseSnEnabled } from "@/lib/warehouseConfig";
+import { lockBins } from "@/lib/binLock";
 
 /** trans_flag for WMS-internal stock adjustments in odg_wms_trans_detail. */
 const ADJUST_TRANS_FLAG = 99;
@@ -225,10 +226,10 @@ export async function POST(request: Request) {
         );
       }
     }
-    const key = `${item_code} ${shelf} ${shelf1} ${pallet}`;
+    const key = `${item_code}\u0000${shelf}\u0000${shelf1}\u0000${pallet}`;
     // A move's key carries ຈຸດທີ 2 too, so it never collides with a count of the
     // same item at the source node.
-    const dedupeKey = isMove ? `mv\0${key}\0${toShelf}\0${toShelf1}\0${toPallet}` : key;
+    const dedupeKey = isMove ? `mv\u0000${key}\u0000${toShelf}\u0000${toShelf1}\u0000${toPallet}` : key;
     if (seen.has(dedupeKey)) {
       return NextResponse.json(
         { error: `ສິນຄ້າ ${item_code} ຊ້ຳກັນຢູ່ບ່ອນຈັດເກັບດຽວກັນ` },
@@ -394,13 +395,26 @@ export async function POST(request: Request) {
       // This line's node (per-line location) — ຈຸດທີ 1 when the line is a move.
       const { shelf, shelf1, pallet } = line;
       const from = { shelf, shelf1, pallet };
+      const isMoveLine = line.mode === "sn_move" || line.mode === "qty_sn_move";
+
+      // ຈັບກຸນແຈບ່ອນເກັບກ່ອນອ່ານຍອດ — ສອງຄົນນັບບ່ອນດຽວກັນພ້ອມກັນ ຈະອ່ານ
+      // "before" ອັນດຽວກັນ ແລ້ວຂຽນ delta ທັງສອງ = ປັບຊ້ຳສອງເທື່ອ
+      // (ເບິ່ງ lib/binLock.ts). ໃນຮອບກວດນັບ ຄົນນັບພ້ອມກັນເປັນເລື່ອງປົກກະຕິ.
+      // ແຖວຍ້າຍແຕະສອງບ່ອນ ຈຶງລັອກທັງ ຈຸດທີ 1 ແລະ ຈຸດທີ 2 ພ້ອມກັນ —
+      // lockBins ຮຽງ key ໃຫ້ກ່ອນ ຈຶງບໍ່ deadlock ກັນເອງ.
+      await lockBins(client, [
+        { wh, rack: shelf, location: shelf1, pallet, item_code: line.item_code },
+        ...(isMoveLine
+          ? [{ wh, rack: line.toShelf, location: line.toShelf1, pallet: line.toPallet, item_code: line.item_code }]
+          : []),
+      ]);
 
       // ── ຍ້າຍ SN ຈາກ ຈຸດທີ 1 → ຈຸດທີ 2 ─────────────────────────────────────
       // sn_move     : ຍ້າຍສະເພາະ SN, ຈຳນວນ WMS ບໍ່ຂຶ້ນລົງ → ຈຸດທີ 2 ຕ້ອງມີຈຳນວນ
       //               WMS ຮອງຮັບ SN ທັງໝົດທີ່ຈະໄປຢູ່ນັ້ນ (ລັອກ).
       // qty_sn_move : ຍ້າຍທັງ SN ແລະ ຈຳນວນ (ຈຸດທີ 1 −n, ຈຸດທີ 2 +n) → ຈຸດທີ 2
       //               ບໍ່ຕ້ອງມີຈຳນວນຢູ່ກ່ອນ.
-      if (line.mode === "sn_move" || line.mode === "qty_sn_move") {
+      if (isMoveLine) {
         const to = { shelf: line.toShelf, shelf1: line.toShelf1, pallet: line.toPallet };
         const moveQty = line.mode === "qty_sn_move";
         const codes = line.serialsMove;

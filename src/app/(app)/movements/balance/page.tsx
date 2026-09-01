@@ -390,7 +390,11 @@ export default async function BalancePage({
             </div>
           ) : (
             <>
-              <BalanceTableClient rows={tableRows} />
+              <BalanceTableClient
+                rows={tableRows}
+                rackNames={Object.fromEntries(rackNameByKey)}
+                locNames={Object.fromEntries(locationNameByKey)}
+              />
               
               {/* Pagination bar */}
               <div className="flex flex-wrap items-center justify-between gap-4 border-t border-zinc-100 px-5 py-4 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30">

@@ -317,14 +317,6 @@ export const WORKFLOWS: Workflow[] = [
       },
       {
         no: 2,
-        role: "manager",
-        action: "ສາງຕົ້ນທາງ ອະນຸມັດ / ປະຕິເສດ",
-        detail: "ສະເພາະໃບທີ່ອະນຸມັດແລ້ວຈຶ່ງຈ່າຍອອກໄດ້; ແກ້ໄຂໃບ = ກັບໄປລໍຖ້າອະນຸມັດໃໝ່.",
-        screen: { label: "ອະນຸມັດ ໃບຂໍໂອນ", href: "/movements/transfer-approve" },
-        control: "ກວດຄວາມຈຳເປັນ ແລະ ຄົງເຫຼືອຂອງສາງຕົ້ນທາງກ່ອນອະນຸມັດ",
-      },
-      {
-        no: 3,
         role: "keeper",
         action: "ສາງຕົ້ນທາງ ຈ່າຍອອກ → ສາງລະຫວ່າງທາງ (9903)",
         detail: "ຂອງ ແລະ serial ຍ້າຍໄປພັກຢູ່ສາງລະຫວ່າງທາງ ບໍ່ແມ່ນຈ່າຍຂາດ.",
@@ -332,13 +324,13 @@ export const WORKFLOWS: Workflow[] = [
         form: "F-10",
       },
       {
-        no: 4,
+        no: 3,
         role: "driver",
         action: "ຂົນສົ່ງລະຫວ່າງສາງ",
         detail: "ຖືເອກະສານໄປພ້ອມ ແລະ ສົ່ງມອບໃຫ້ສາງປາຍທາງ.",
       },
       {
-        no: 5,
+        no: 4,
         role: "keeper",
         action: "ສາງປາຍທາງ ຮັບເຂົ້າຕາມຈິງ",
         detail: "ຮັບບໍ່ຄົບໄດ້ — ສ່ວນທີ່ເຫຼືອຍັງຄ້າງຢູ່ສາງລະຫວ່າງທາງ.",
@@ -346,14 +338,14 @@ export const WORKFLOWS: Workflow[] = [
         control: "ນັບຂອງຈິງກ່ອນຮັບ ແລະ ຍິງ ISN ໃຫ້ຄົບ",
       },
       {
-        no: 6,
+        no: 5,
         role: "keeper",
         action: "ສາງຕົ້ນທາງ ດຶງສ່ວນຄ້າງກັບຄືນ",
         detail: "ໃຊ້ເມື່ອປາຍທາງບໍ່ຮັບ ຫຼື ຮັບບໍ່ຄົບ ເພື່ອບໍ່ໃຫ້ຂອງຄ້າງລະຫວ່າງທາງ.",
         screen: { label: "ຮັບຄືນຈາກການຈ່າຍ", href: "/movements/transfer-return" },
       },
       {
-        no: 7,
+        no: 6,
         role: "supervisor",
         action: "ຕິດຕາມ dashboard ໃຫ້ບໍ່ມີໃບເກີນກຳນົດ",
         screen: { label: "ພາບລວມ ການໂອນ", href: "/movements/transfer-dashboard" },
@@ -366,7 +358,7 @@ export const WORKFLOWS: Workflow[] = [
     ],
     outputs: ["stock ຍ້າຍລະຫວ່າງສາງ", "ໃບໂອນ ERP", "ຍອດຄ້າງລະຫວ່າງທາງ = 0"],
     sops: ["SOP-WH-05"],
-    wis: ["WI-TRF-01", "WI-TRF-02", "WI-TRF-03", "WI-TRF-04", "WI-TRF-05"],
+    wis: ["WI-TRF-01", "WI-TRF-03", "WI-TRF-04", "WI-TRF-05"],
     forms: ["F-08", "F-10", "F-24"],
     kpis: [
       { name: "ໃບຄ້າງອະນຸມັດ", target: "0 ໃບ ເກີນ 1 ວັນ" },

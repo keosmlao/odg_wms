@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { feedback } from "@/lib/feedback";
 
 /**
  * Camera-based barcode/QR scanner overlay. Uses ZXing via @zxing/browser.
@@ -41,9 +42,9 @@ export default function BarcodeScanner({
             if (result) {
               const text = result.getText();
               if (text) {
-                if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-                  navigator.vibrate(60);
-                }
+                // ສັ່ນ + ສຽງ ຜ່ານ src/lib/feedback.ts ເພື່ອໃຫ້ການຍິງຕິດ
+                // ຮູ້ສຶກຄືກັນທຸກໜ້າ — ໃນສາງມີສຽງດັງ ສັ່ນຢ່າງດຽວບາງເທື່ອບໍ່ຮູ້ສຶກ
+                feedback("ok");
                 onDetect(text);
               }
             }

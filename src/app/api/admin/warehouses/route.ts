@@ -5,7 +5,14 @@ import {
   type SnFlags,
   isSnFlag,
   setManyWarehousesSnFlag,
+  setWarehouseKind,
+  warehouseKindError,
 } from "@/lib/warehouseConfig";
+import {
+  type WarehouseKind,
+  isWarehouseKind,
+  toWarehouseKind,
+} from "@/lib/warehouseKind";
 
 export type Warehouse = {
   code: string;
@@ -20,6 +27,15 @@ export type Warehouse = {
   latitude: string | null;
   longitude: string | null;
   sn: SnFlags;
+  /** ສາງຫຼັກ ຫຼື ສາງຍ່ອຍ (WMS-only — ບໍ່ຢູ່ໃນ master ຂອງ ERP). */
+  kind: WarehouseKind;
+  /** ສາງແມ່ທັງໝົດ — ສາງຍ່ອຍໜຶ່ງຂຶ້ນກັບໄດ້ຫຼາຍສາງຫຼັກ (migration 042). */
+  parent_codes: string[];
+  /**
+   * ວັນທີສາງນີ້ເລີ່ມຈ່າຍຜ່ານ WMS (YYYY-MM-DD) — ບິນຄ້າງຈ່າຍທີ່ລົງວັນທີ
+   * ກ່ອນໜ້ານີ້ຈະບໍ່ຂຶ້ນລາຍການ. null = ບໍ່ຈຳກັດ (migration 043).
+   */
+  wms_start_date: string | null;
 };
 
 const SELECT_FIELDS = `
@@ -27,7 +43,9 @@ const SELECT_FIELDS = `
   branch_code, wh_manager, status, latitude, longitude
 `;
 
-type WhRow = Omit<Warehouse, "sn"> & {
+type WhRow = Omit<Warehouse, "sn" | "kind" | "parent_codes"> & {
+  wh_kind: string | null;
+  parent_codes: string[] | null;
   sn_receive: boolean;
   sn_issue: boolean;
   sn_issue_pick: boolean;
@@ -38,9 +56,13 @@ type WhRow = Omit<Warehouse, "sn"> & {
 };
 
 function rowToWarehouse(r: WhRow): Warehouse {
-  const { sn_receive, sn_issue, sn_issue_pick, sn_transfer, sn_pallet, sn_adjust, sn_return, ...rest } = r;
+  const { sn_receive, sn_issue, sn_issue_pick, sn_transfer, sn_pallet, sn_adjust, sn_return, wh_kind, parent_codes, ...rest } = r;
+  const kind = toWarehouseKind(wh_kind);
   return {
     ...rest,
+    kind,
+    // ສາງຫຼັກມີແມ່ບໍ່ໄດ້ — ລ້າງໃຫ້ ເຜື່ອຂໍ້ມູນເກົ່າຄ້າງໄວ້
+    parent_codes: kind === "sub" ? (parent_codes ?? []) : [],
     sn: {
       receive: sn_receive ?? true,
       issue: sn_issue ?? true,
@@ -103,9 +125,16 @@ export async function GET() {
             COALESCE(c.sn_transfer, true)    AS sn_transfer,
             COALESCE(c.sn_pallet, true)   AS sn_pallet,
             COALESCE(c.sn_adjust, true)   AS sn_adjust,
-            COALESCE(c.sn_return, true)   AS sn_return
+            COALESCE(c.sn_return, true)   AS sn_return,
+            COALESCE(c.wh_kind, 'main')   AS wh_kind,
+            to_char(c.wms_start_date, 'YYYY-MM-DD') AS wms_start_date,
+            COALESCE(p.parent_codes, '{}') AS parent_codes
      FROM public.ic_warehouse w
      LEFT JOIN public.odg_wms_warehouse_config c ON c.wh_code = w.code
+     LEFT JOIN (
+       SELECT wh_code, array_agg(parent_code ORDER BY parent_code) AS parent_codes
+       FROM public.odg_wms_warehouse_parent GROUP BY wh_code
+     ) p ON p.wh_code = w.code
      ORDER BY w.code`,
   );
   return NextResponse.json({ warehouses: rows.map(rowToWarehouse) });
@@ -113,6 +142,12 @@ export async function GET() {
 
 function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
+}
+
+/** ລາຍການລະຫັດຈາກ body — ຮັບແຕ່ string ທີ່ບໍ່ວ່າງ ແລະ ບໍ່ຊ້ຳ. */
+function strList(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean))];
 }
 
 function nullableStr(v: unknown): string | null {
@@ -151,8 +186,13 @@ export async function POST(request: Request) {
 
   const status = body.status === 0 || body.status === false ? 0 : 1;
 
+  const kind: WarehouseKind = isWarehouseKind(body.kind) ? body.kind : "main";
+  const parentCodes = kind === "sub" ? strList(body.parent_codes) : [];
+  const kindErr = await warehouseKindError(code, kind, parentCodes);
+  if (kindErr) return NextResponse.json({ error: kindErr }, { status: 400 });
+
   try {
-    const rows = await query<Omit<Warehouse, "sn">>(
+    const rows = await query<Omit<Warehouse, "sn" | "kind" | "parent_codes">>(
       `INSERT INTO public.ic_warehouse
          (code, name_1, name_2, address, telephone, fax,
           branch_code, wh_manager, status, latitude, longitude)
@@ -175,7 +215,14 @@ export async function POST(request: Request) {
     );
     // New warehouses default to SN-on for every menu (no config row needed).
     const sn: SnFlags = { receive: true, issue: true, issue_pick: true, transfer: true, pallet: true, adjust: true, return: true };
-    return NextResponse.json({ ok: true, warehouse: { ...rows[0], sn } });
+    // ຂຽນແຖວ config ສະເພາະສາງຍ່ອຍ — ສາງຫຼັກຄືຄ່າເລີ່ມຕົ້ນຢູ່ແລ້ວ ຈຶ່ງບໍ່ຕ້ອງມີແຖວ.
+    if (kind === "sub") {
+      await setWarehouseKind(code, kind, parentCodes, guard.session.employee_code ?? null);
+    }
+    return NextResponse.json({
+      ok: true,
+      warehouse: { ...rows[0], sn, kind, parent_codes: parentCodes },
+    });
   } catch (err) {
     const e = err as { code?: string; message?: string };
     if (e.code === "23505") {
@@ -186,7 +233,7 @@ export async function POST(request: Request) {
     }
     console.error("create warehouse failed:", err);
     return NextResponse.json(
-      { error: "ບັນທຶກບໍ່ສຳເລັດ" },
+      { error: e.message?.startsWith("ຍັງບໍ່ໄດ້ run") ? e.message : "ບັນທຶກບໍ່ສຳເລັດ" },
       { status: 500 },
     );
   }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SearchIcon } from "@/components/ui/Icons";
 import { WarehouseGroup } from "@/components/ui/WarehouseGroup";
+import { DataList } from "@/components/ui/DataList";
 
 export type WarehouseOption = { code: string; name: string | null };
 
@@ -187,37 +188,58 @@ function WhAgingBlock({ r, q, bucket, setBucket }: { r: WhAging; q: string; buck
                 {bucket ? `ໄລຍະ ${BUCKET_DEF.find((b) => b.id === bucket)?.label}` : "ທັງໝົດ"} · {filtered.length} ລາຍການ
               </div>
             </div>
-            <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-zinc-50 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/50">
-                    <th className="px-4 py-2.5">ສິນຄ້າ</th>
-                    <th className="px-4 py-2.5 text-right">stock</th>
-                    <th className="px-4 py-2.5">ຈ່າຍອອກລ່າສຸດ</th>
-                    <th className="px-4 py-2.5">ຮັບລ່າສຸດ</th>
-                    <th className="px-4 py-2.5 text-right">ຄ້າງ (ມື້)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {filtered.slice(0, 500).map((r) => {
+            {/* ≥md ເປັນຕາຕະລາງເຕັມ, <md ກາຍເປັນບັດລະລາຍການ — ຫົວໜ້າຍັງໄດ້
+                ຂໍ້ມູນຄົບເທິງຄອມ ແລະ ຄົນເປີດເທິງມືຖືບໍ່ຕ້ອງເລື່ອນຊ້າຍຂວາ. */}
+            <DataList
+              rows={filtered.slice(0, 500)}
+              rowKey={(r) => r.item_code}
+              empty="ບໍ່ມີສິນຄ້າໃນໄລຍະນີ້"
+              columns={[
+                {
+                  header: "ສິນຄ້າ",
+                  card: "title",
+                  cell: (r) => (
+                    <>
+                      <div className="font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400">{r.item_code}</div>
+                      <div className="max-w-md truncate text-xs text-zinc-700 dark:text-zinc-300" title={r.item_name ?? ""}>{r.item_name ?? "—"}</div>
+                    </>
+                  ),
+                },
+                {
+                  header: "ຄ້າງ (ມື້)",
+                  align: "right",
+                  card: "value",
+                  cell: (r) => {
                     const d = r.days_idle ?? 0;
                     const tone = d > 180 ? "text-rose-600 dark:text-rose-400" : d > 90 ? "text-orange-600 dark:text-orange-400" : d > 60 ? "text-amber-600 dark:text-amber-400" : "text-zinc-600 dark:text-zinc-300";
-                    return (
-                      <tr key={r.item_code}>
-                        <td className="px-4 py-2.5">
-                          <div className="font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400">{r.item_code}</div>
-                          <div className="max-w-md truncate text-xs text-zinc-700 dark:text-zinc-300" title={r.item_name ?? ""}>{r.item_name ?? "—"}</div>
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums text-zinc-700 dark:text-zinc-200">{fmt(r.wms)}<span className="ml-1 text-[10px] uppercase text-zinc-400">{r.unit_code}</span></td>
-                        <td className="px-4 py-2.5 font-mono text-[11px] text-zinc-500">{r.last_out ? fmtDate(r.last_out) : <span className="text-rose-500">ບໍ່ເຄີຍຈ່າຍ</span>}</td>
-                        <td className="px-4 py-2.5 font-mono text-[11px] text-zinc-500">{fmtDate(r.last_in)}</td>
-                        <td className={`px-4 py-2.5 text-right font-mono text-sm font-bold tabular-nums ${tone}`}>{d.toLocaleString("en-US")}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    return <span className={`font-mono font-bold tabular-nums ${tone}`}>{d.toLocaleString("en-US")}</span>;
+                  },
+                },
+                {
+                  header: "stock",
+                  align: "right",
+                  cell: (r) => (
+                    <span className="font-mono tabular-nums text-zinc-700 dark:text-zinc-200">
+                      {fmt(r.wms)}
+                      <span className="ml-1 text-[10px] uppercase text-zinc-400">{r.unit_code}</span>
+                    </span>
+                  ),
+                },
+                {
+                  header: "ຈ່າຍອອກລ່າສຸດ",
+                  cell: (r) =>
+                    r.last_out ? (
+                      <span className="font-mono text-[11px] text-zinc-500">{fmtDate(r.last_out)}</span>
+                    ) : (
+                      <span className="text-rose-500">ບໍ່ເຄີຍຈ່າຍ</span>
+                    ),
+                },
+                {
+                  header: "ຮັບລ່າສຸດ",
+                  cell: (r) => <span className="font-mono text-[11px] text-zinc-500">{fmtDate(r.last_in)}</span>,
+                },
+              ]}
+            />
             <p className="mt-3 text-[11px] text-zinc-400">ⓘ "ຄ້າງ (ມື້)" = ມື້ນັບແຕ່ຈ່າຍອອກລ່າສຸດ; ຖ້າບໍ່ເຄີຍຈ່າຍ = ນັບແຕ່ຮັບເຂົ້າຄັ້ງທຳອິດ. ສິນຄ້າ 180+ ມື້ = ຄວນພິຈາລະນາລະບາຍ/ຫຼຸດລາຄາ.</p>
           </section>
         </>

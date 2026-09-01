@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { Warehouse } from "@/app/api/admin/warehouses/route";
+import { warehouseTreeMap } from "@/lib/warehouseConfig";
 import WarehousesClient from "./WarehousesClient";
 import { Hero, Chip, KpiCard } from "@/components/ui/Card";
 import {
@@ -45,7 +46,12 @@ export default async function WarehousesPage() {
   // Per-menu SN flags default true. Guarded so the page still renders before
   // migrations 019/020 create the config table & columns.
   const defaultSn = { receive: true, issue: true, issue_pick: true, transfer: true, pallet: true, adjust: true, return: true };
-  for (const w of warehouses) w.sn = { ...defaultSn };
+  for (const w of warehouses) {
+    w.sn = { ...defaultSn };
+    // ສາງທີ່ຍັງບໍ່ໄດ້ຕັ້ງ = ສາງຫຼັກ (ເບິ່ງ migration 041/042)
+    w.kind = "main";
+    w.parent_codes = [];
+  }
   try {
     const cfg = await query<{
       wh_code: string;
@@ -58,13 +64,22 @@ export default async function WarehousesPage() {
     const byCode = new Map(cfg.map((c) => [c.wh_code, c]));
     for (const w of warehouses) {
       const c = byCode.get(w.code);
-      if (c) w.sn = {
-        receive: c.sn_receive, issue: c.sn_issue, issue_pick: c.sn_issue_pick, transfer: c.sn_transfer,
-        pallet: c.sn_pallet, adjust: c.sn_adjust, return: c.sn_return,
-      };
+      if (c) {
+        w.sn = {
+          receive: c.sn_receive, issue: c.sn_issue, issue_pick: c.sn_issue_pick, transfer: c.sn_transfer,
+          pallet: c.sn_pallet, adjust: c.sn_adjust, return: c.sn_return,
+        };
+      }
     }
   } catch {
     // columns not present yet — keep defaults
+  }
+
+  // ສາງຫຼັກ/ຍ່ອຍ + ສາງແມ່ — ຕົວຊ່ວຍນີ້ທົນກັບ DB ທີ່ຍັງບໍ່ໄດ້ run 041/042 ຢູ່ແລ້ວ
+  const tree = await warehouseTreeMap(warehouses.map((w) => w.code));
+  for (const w of warehouses) {
+    w.kind = tree[w.code]?.kind ?? "main";
+    w.parent_codes = tree[w.code]?.parent_codes ?? [];
   }
 
   const rackCount = Number.parseInt(rackCountRow[0]?.n ?? "0", 10) || 0;

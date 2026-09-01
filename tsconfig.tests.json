@@ -1,0 +1,12 @@
+{
+  // ໄຟລ໌ test import ດ້ວຍນາມສະກຸນ .ts ເພາະ Node ແລ່ນມັນໂດຍກົງ
+  // (--experimental-strip-types) ບໍ່ໄດ້ຜ່ານ bundler ຂອງ Next.
+  // ແຍກ config ໄວ້ ເພື່ອບໍ່ໃຫ້ການ build ຂອງແອັບຕ້ອງຮູ້ຈັກເລື່ອງນີ້.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["tests/**/*.ts", "src/**/*.ts"],
+  "exclude": ["node_modules"]
+}

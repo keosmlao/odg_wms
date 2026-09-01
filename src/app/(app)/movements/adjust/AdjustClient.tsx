@@ -12,6 +12,7 @@ import {
   SearchIcon,
 } from "@/components/ui/Icons";
 import { WarehouseGroupHeader, groupByWarehouse } from "@/components/ui/WarehouseGroup";
+import { locLabel, nameBookOf, nodeName, nodePath, type NameBook } from "@/lib/locationLabel";
 import AdjustSerialModal, { type SerialPlan } from "./AdjustSerialModal";
 import AdjustMoveSnModal from "./AdjustMoveSnModal";
 
@@ -314,11 +315,10 @@ type PWorking = CountLine & {
 function pNodeKey(i: { item_code: string; rack: string; location: string; pallet: string }) {
   return `${i.item_code}|${i.rack}|${i.location}|${i.pallet}`;
 }
-function pNodePath(i: { rack: string; location: string; pallet: string }) {
-  const parts = [i.rack, i.location].filter(Boolean);
-  if (i.pallet) parts.push(`pallet:${i.pallet}`);
-  return parts.length ? parts.join(" / ") : "ບໍ່ລະບຸ (ສາງລວມ)";
-}
+/** ເສັ້ນທາງເປັນ **ລະຫັດ** — ໃຊ້ເປັນ key ແລະ ເປັນ title ຕອນສະແດງຊື່. */
+const pNodePath = (i: { rack: string; location: string; pallet: string }) => nodePath(i);
+/** ເສັ້ນທາງເປັນ **ຊື່** (ເບິ່ງ `@/lib/locationLabel`). */
+const pNodeLabel = nodeName;
 /** Same node? — compares only the three storage fields. */
 function sameNode(a: { rack: string; location: string; pallet: string }, b: { rack: string; location: string; pallet: string }) {
   return a.rack === b.rack && a.location === b.location && a.pallet === b.pallet;
@@ -435,7 +435,7 @@ function computeFillGaps(rows: PWorking[], snOn: boolean): FillGap[] {
 }
 
 /** Read-only "where it sits now" summary, shown on each search result. */
-function NodeSummary({ nodes, unit }: { nodes: StockNode[]; unit: string | null }) {
+function NodeSummary({ nodes, unit, names }: { nodes: StockNode[]; unit: string | null; names?: NameBook }) {
   if (nodes.length === 0) {
     return <span className="text-[10px] text-zinc-400">ຍັງບໍ່ມີໃນສາງນີ້</span>;
   }
@@ -446,9 +446,10 @@ function NodeSummary({ nodes, unit }: { nodes: StockNode[]; unit: string | null 
       {shown.map((n) => (
         <span
           key={pNodePath(n)}
+          title={pNodePath(n)}
           className="rounded bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] text-brand-700 dark:bg-brand-950/40 dark:text-brand-300"
         >
-          {pNodePath(n)}
+          {pNodeLabel(n, names)}
           <span className="ml-1 tabular-nums opacity-70">
             {formatQty(n.qty)}
             {unit ? ` ${unit}` : ""}
@@ -525,6 +526,9 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
   const hitGroups = useMemo(() => groupByWarehouse(hits, (h) => h.wh_code ?? "—", warehouses), [hits, warehouses]);
   const snOn = useMemo(() => warehouses.find((w) => w.code === whCode)?.sn_adjust ?? true, [warehouses, whCode]);
   const locationsForRack = (rack: string) => (rack ? locations.filter((l) => l.rack_code === rack) : locations);
+
+  /** ລະຫັດ → ຊື່ ຂອງ rack/location ຂອງສາງທີ່ເລືອກ — ໃຊ້ສະແດງແທນລະຫັດດິບ. */
+  const nameBook = useMemo<NameBook>(() => nameBookOf(racks, locations), [racks, locations]);
 
   // Debounced item search. ບໍ່ມີການເລືອກສາງແລ້ວ — ຄົ້ນຫາທຸກສາງທີ່ມີສິດ ແລ້ວແຍກ
   // ຜົນລັບເປັນກຸ່ມຕາມສາງ; ພໍເລືອກແຖວແລ້ວ ໃບປັບປຸງນີ້ຜູກກັບສາງນັ້ນ (1 ໃບ = 1 ສາງ).
@@ -1011,7 +1015,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                           <div className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">{h.item_code}</div>
                           <div className="truncate text-xs">{h.item_name}</div>
                           <div className="mt-1">
-                            <NodeSummary nodes={h.locations ?? []} unit={h.unit_code} />
+                            <NodeSummary nodes={h.locations ?? []} unit={h.unit_code} names={nameBook} />
                           </div>
                         </div>
                         <div className="shrink-0 text-right text-[10px]">
@@ -1132,7 +1136,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                                   ? focusNodeRow(i.item_code, { rack: n.rack, location: n.location, pallet: n.pallet })
                                   : setLineNode(i.id, { rack: n.rack, location: n.location, pallet: n.pallet })
                               }
-                              title={taken ? "ໄປທີ່ແຖວຂອງບ່ອນນີ້" : "ໃຊ້ບ່ອນຈັດເກັບນີ້"}
+                              title={`${taken ? "ໄປທີ່ແຖວຂອງບ່ອນນີ້" : "ໃຊ້ບ່ອນຈັດເກັບນີ້"} · ${pNodePath(n)}`}
                               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] transition ${
                                 active
                                   ? "bg-brand-600 text-white shadow-sm"
@@ -1141,7 +1145,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                                     : "bg-brand-50 text-brand-700 ring-1 ring-brand-100 hover:bg-brand-100 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50 dark:hover:bg-brand-900/40"
                               }`}
                             >
-                              {pNodePath(n)}
+                              {pNodeLabel(n, nameBook)}
                               <span className={`tabular-nums ${active ? "text-white/80" : taken ? "" : "text-brand-500/80 dark:text-brand-400/80"}`}>
                                 {formatQty(n.qty)}
                               </span>
@@ -1267,7 +1271,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             {i.rack && !racks.some((r) => r.code === i.rack) && <option value={i.rack}>{i.rack}</option>}
                             {racks.map((r) => (
                               <option key={r.code} value={r.code}>
-                                {r.code}
+                                {locLabel(r.code, r.name)}
                               </option>
                             ))}
                           </select>
@@ -1281,7 +1285,7 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             )}
                             {locationsForRack(i.rack).map((l) => (
                               <option key={l.code} value={l.code}>
-                                {l.code}
+                                {locLabel(l.code, l.name)}
                               </option>
                             ))}
                           </select>
@@ -1513,14 +1517,20 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                             )}
                           </td>
                           <td className="px-3 py-2">
-                            <span className="inline-flex flex-wrap items-center gap-1 font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
+                            <span
+                              title={pNodePath(i)}
+                              className="inline-flex flex-wrap items-center gap-1 font-mono text-[11px] text-zinc-600 dark:text-zinc-300"
+                            >
                               <MapPinIcon className="h-3 w-3 text-brand-400" />
-                              {pNodePath(i)}
+                              {pNodeLabel(i, nameBook)}
                               {mv && (
                                 <>
                                   <span className="text-zinc-400">→</span>
-                                  <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                                    {pNodePath({ rack: i.toRack, location: i.toLocation, pallet: i.toPallet })}
+                                  <span
+                                    title={pNodePath({ rack: i.toRack, location: i.toLocation, pallet: i.toPallet })}
+                                    className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                  >
+                                    {pNodeLabel({ rack: i.toRack, location: i.toLocation, pallet: i.toPallet }, nameBook)}
                                   </span>
                                 </>
                               )}
@@ -1592,8 +1602,8 @@ function ProductAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {g.bins.map((b) => (
-                      <span key={pNodePath(b)} className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-                        {pNodePath(b)} <span className="tabular-nums">{formatQty(b.qty)} → 0</span>
+                      <span key={pNodePath(b)} title={pNodePath(b)} className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                        {pNodeLabel(b, nameBook)} <span className="tabular-nums">{formatQty(b.qty)} → 0</span>
                       </span>
                     ))}
                   </div>
@@ -2037,8 +2047,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                   <optgroup key={g.code} label={`${g.code}${warehouses.find((w) => w.code === g.code)?.name ? ` · ${warehouses.find((w) => w.code === g.code)?.name}` : ""} (${g.rows.length})`}>
                     {g.rows.map((r) => (
                       <option key={`${r.wh_code}|${r.code}`} value={`${r.wh_code}|${r.code}`}>
-                        {r.code}
-                        {r.name ? ` · ${r.name}` : ""}
+                        {locLabel(r.code, r.name)}
                       </option>
                     ))}
                   </optgroup>
@@ -2051,8 +2060,7 @@ function LocationAdjust({ warehouses }: { warehouses: WarehouseOption[] }) {
                 <option value="">{rackCode ? "— ທຸກ location —" : "ເລືອກ rack ກ່ອນ"}</option>
                 {availableLocations.map((l) => (
                   <option key={l.code} value={l.code}>
-                    {l.code}
-                    {l.name ? ` · ${l.name}` : ""}
+                    {locLabel(l.code, l.name)}
                   </option>
                 ))}
               </select>
