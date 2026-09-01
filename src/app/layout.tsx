@@ -71,9 +71,15 @@ export default function RootLayout({
     >
       {/* ຕັ້ງ data-theme ກ່ອນ paint ຄັ້ງທຳອິດ — ບໍ່ດັ່ງນັ້ນຄົນທີ່ເລືອກໂໝດມືດ
           ຈະເຫັນຈໍຂາວແວັບໜຶ່ງທຸກເທື່ອທີ່ໂຫຼດໜ້າ. ຕ້ອງເປັນ script ທຳມະດາ
-          ບໍ່ແມ່ນ next/script ເພາະຕ້ອງແລ່ນກ່ອນ hydration. */}
-      <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-      <script dangerouslySetInnerHTML={{ __html: DENSITY_INIT_SCRIPT }} />
+          ບໍ່ແມ່ນ next/script ເພາະ beforeInteractive ບໍ່ຮັບປະກັນວ່າແລ່ນກ່ອນ paint.
+
+          ຕ້ອງຢູ່ໃນ <head> ເທົ່ານັ້ນ: script ທຳມະດາ (ບໍ່ມີ async) ທີ່ເປັນລູກ
+          ໂດຍກົງຂອງ <html> ຜິດ HTML — React ຈະຍ້າຍມັນລົງ <body> ເອງ ພ້ອມ
+          ຮ້ອງ hydration error ແລະ ບໍ່ຮັບປະກັນລຳດັບການແລ່ນອີກ. */}
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: DENSITY_INIT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col overflow-x-hidden" suppressHydrationWarning>
         <PWARegister />
         {children}
