@@ -102,6 +102,11 @@ export const groups: NavGroupDef[] = [
         icon: <LayersIcon className="h-3.5 w-3.5" />,
       },
       {
+        label: "ຍ້າຍບ່ອນເກັບ",
+        href: "/movements/relocate",
+        icon: <ArrowLeftRightIcon className="h-3.5 w-3.5" />,
+      },
+      {
         label: "ບ່ອນວ່າງ (Putaway)",
         href: "/movements/putaway",
         icon: <BuildingIcon className="h-3.5 w-3.5" />,
