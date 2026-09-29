@@ -117,9 +117,25 @@ export async function moveFromTransit(
     );
   }
 
+  // Rack for each landing location (odg_wms_location1: code → location_id), so
+  // the +1 row below splits shelf_code (rack) / shelf_code1 (location) the same
+  // way every other movement path does — see issueCore.ts's issue insert and
+  // putaway/route.ts. Previously this dumped the raw location string whole into
+  // shelf_code and left shelf_code1 NULL (ພົບ 28-09-2026: FR26090211 → DP260928-94012,
+  // shelf_code='110203-C10' shelf_code1=NULL ແທນທີ່ຈະແມ່ນ shelf_code='110203').
+  const locCodes = [...new Set(active.map((l) => (l.location && l.location.trim()) || locTo).filter((v): v is string => !!v))];
+  const rackRows = locCodes.length > 0
+    ? await client.query<{ code: string; rack: string | null }>(
+        `SELECT code, location_id AS rack FROM public.odg_wms_location1 WHERE wh_code = $1 AND code = ANY($2)`,
+        [whTo, locCodes],
+      )
+    : { rows: [] as { code: string; rack: string | null }[] };
+  const rackByLoc = new Map(rackRows.rows.map((r) => [r.code, r.rack]));
+
   for (const line of active) {
     // Per-line landing shelf; falls back to the doc-level locTo.
     const lineLoc = (line.location && line.location.trim()) ? line.location.trim() : locTo;
+    const lineRack = lineLoc ? rackByLoc.get(lineLoc) ?? null : null;
     // −1 out of 9903 (still tagged with the ref so the balance nets down)
     await client.query(
       `INSERT INTO public.odg_wms_trans_detail
@@ -133,27 +149,30 @@ export async function moveFromTransit(
       `INSERT INTO public.odg_wms_trans_detail
          (trans_flag, doc_date, doc_no, doc_ref, item_code, item_name, qty, unit_code,
           shelf_code, shelf_code1, wh_code, user_created, status, calc_flag, doc_time, pallet)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, NULL, $9, $10, 0, 1, to_char(now(), 'HH24:MI'), NULL)`,
-      [WMS_FLAG, wmsDoc, refDoc, line.item_code, line.item_name, line.qty, line.unit_code || null, lineLoc || null, whTo, user],
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 1, to_char(now(), 'HH24:MI'), NULL)`,
+      [WMS_FLAG, wmsDoc, refDoc, line.item_code, line.item_name, line.qty, line.unit_code || null, lineRack, lineLoc || null, whTo, user],
     );
 
     if (line.serials.length > 0) {
+      // rack = lineRack (same lookup as the odg_wms_trans_detail +1 row above) —
+      // previously hardcoded NULL here too, leaving sn_trans_detail/sn_inventory
+      // with the same missing-rack bug as the aggregate ledger.
       await client.query(
         `INSERT INTO public.sn_trans_detail
            (trans_flag, doc_no, doc_date, user_created, item_code, sn, qty, warehouse, item_name, doc_ref, calc_flag, rack, location, pallet, isn)
-         SELECT $1, $2, CURRENT_DATE, $3, $4::varchar, inv.sn, 1, $5::varchar, $6, $7::varchar, 1, NULL, $8, NULL, inv.isn
+         SELECT $1, $2, CURRENT_DATE, $3, $4::varchar, inv.sn, 1, $5::varchar, $6, $7::varchar, 1, $11, $8, NULL, inv.isn
          FROM public.sn_inventory inv
          WHERE COALESCE(NULLIF(inv.sn, ''), inv.isn) = ANY($9) AND inv.item_code = $4::varchar
            AND inv.wh_code = $10 AND inv.location = $7::varchar AND COALESCE(inv.status, 0) = 0`,
-        [SN_FLAG, wmsDoc, user, line.item_code, whTo, line.item_name, refDoc, lineLoc || null, line.serials, IN_TRANSIT_WH],
+        [SN_FLAG, wmsDoc, user, line.item_code, whTo, line.item_name, refDoc, lineLoc || null, line.serials, IN_TRANSIT_WH, lineRack],
       );
       // relocate the serial out of 9903 into whTo (still in-stock, status 0)
       await client.query(
         `UPDATE public.sn_inventory
-           SET wh_code = $1, location = $2, rack = NULL, pallet = NULL, user_mapping = $3, updated_at = now()
+           SET wh_code = $1, location = $2, rack = $8, pallet = NULL, user_mapping = $3, updated_at = now()
          WHERE COALESCE(NULLIF(sn, ''), isn) = ANY($4) AND item_code = $5
            AND wh_code = $6 AND location = $7::varchar AND COALESCE(status, 0) = 0`,
-        [whTo, lineLoc || null, user, line.serials, line.item_code, IN_TRANSIT_WH, refDoc],
+        [whTo, lineLoc || null, user, line.serials, line.item_code, IN_TRANSIT_WH, refDoc, lineRack],
       );
     }
   }
