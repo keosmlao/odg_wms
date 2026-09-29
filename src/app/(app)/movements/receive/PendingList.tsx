@@ -89,11 +89,17 @@ export default async function PendingList({
   const [allRemain, rcv, countSheets] = await Promise.all([
     getAllRemain(),
     query<{ po_no: string; item_code: string; received: string }>(
-      `SELECT h.ref_doc_no AS po_no, d.item_code, SUM(d.qty)::text AS received
+      // Attribute each received line to its own PO (multi-PO receipts set
+      // d.ref_doc_no per line); fall back to the header PO for legacy receipts —
+      // matching /api/receive/pending and reportData.ts. Without this fallback,
+      // a multi-PO receipt attributes ALL its lines to the header's primary PO,
+      // so a non-primary PO's item can look "received" from another PO's qty and
+      // wrongly drop off this pending list before it has actually arrived.
+      `SELECT COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no) AS po_no, d.item_code, SUM(d.qty)::text AS received
        FROM public.wms_product_receive h
        JOIN public.wms_product_receive_detail d ON d.doc_no = h.doc_no
-       WHERE h.ref_doc_no IS NOT NULL AND (h.status = 0 OR h.status IS NULL)
-       GROUP BY h.ref_doc_no, d.item_code`,
+       WHERE COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no) IS NOT NULL AND (h.status = 0 OR h.status IS NULL)
+       GROUP BY COALESCE(NULLIF(TRIM(d.ref_doc_no), ''), h.ref_doc_no), d.item_code`,
     ),
     // Open count sheets per (PO, warehouse) — to flag pending docs already counted.
     query<{ po: string; wh: string; doc_no: string }>(
