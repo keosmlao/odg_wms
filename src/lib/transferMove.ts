@@ -71,17 +71,26 @@ export async function moveFromTransit(
   );
 
   // 1) Validate: qty ≤ in-transit balance for this ref; serials parked in 9903.
-  for (const line of active) {
+  //    A single item can arrive as SEVERAL lines here (one per landing location,
+  //    when the operator scans its serials into more than one bin this receive) —
+  //    sum them per item FIRST, so splitting across locations can never let the
+  //    total slip past the true in-transit balance while each individual piece
+  //    still looks fine on its own.
+  const qtyByItem = new Map<string, number>();
+  for (const line of active) qtyByItem.set(line.item_code, (qtyByItem.get(line.item_code) ?? 0) + line.qty);
+  for (const [item_code, totalQty] of qtyByItem) {
     const balRes = await client.query<{ bal: string }>(
       `SELECT COALESCE(SUM(qty * calc_flag), 0)::numeric::text AS bal
        FROM public.odg_wms_trans_detail
        WHERE (status = 0 OR status IS NULL) AND wh_code = $1 AND doc_ref = $2 AND item_code = $3`,
-      [IN_TRANSIT_WH, refDoc, line.item_code],
+      [IN_TRANSIT_WH, refDoc, item_code],
     );
     const bal = Number.parseFloat(balRes.rows[0]?.bal ?? "0") || 0;
-    if (line.qty > bal + 1e-6) {
-      throw new Error(`ສິນຄ້າ ${line.item_code}: ${stage === "receive" ? "ຮັບ" : "ຮັບຄືນ"} ${line.qty} ເກີນທີ່ຄ້າງໃນສາງລະຫວ່າງທາງ ${bal}`);
+    if (totalQty > bal + 1e-6) {
+      throw new Error(`ສິນຄ້າ ${item_code}: ${stage === "receive" ? "ຮັບ" : "ຮັບຄືນ"} ${totalQty} ເກີນທີ່ຄ້າງໃນສາງລະຫວ່າງທາງ ${bal}`);
     }
+  }
+  for (const line of active) {
     if (line.serials.length > 0) {
       const okRes = await client.query<{ n: string }>(
         `SELECT count(*)::text AS n FROM public.sn_inventory
