@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { pool, query } from "@/lib/db";
+import { pool, query, pgErrorMessage } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { accessibleWarehouses } from "@/lib/session-shared";
 import { genDocNo, writeCountSerials, DOC_TYPE, RECEIVE_STATUS } from "@/lib/receive";
@@ -229,7 +229,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, count_code: docNo, pos: poNos.length, lines: lines.length, gen_isn: sn.generated, reused_sn: sn.reused, manual_sn: sn.manual });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
-    return NextResponse.json({ error: err instanceof Error ? err.message : "ບໍ່ສຳເລັດ" }, { status: 500 });
+    return NextResponse.json({ error: pgErrorMessage(err) }, { status: 500 });
   } finally {
     client.release();
   }
