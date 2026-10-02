@@ -21,6 +21,7 @@ import TripIssue from "./TripIssue";
 import { useBinNames } from "@/components/useBinNames";
 import { nodeName } from "@/lib/locationLabel";
 import { READINESS_LABEL, type PickReadiness } from "@/lib/pickPlan";
+import { ISSUE_CLOSE_REASONS } from "@/lib/issueClose";
 
 const PhoneIcon = ({ className = "h-4 w-4" }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -54,6 +55,8 @@ type PendingDoc = {
   doc_time: string | null;
   cust_code: string | null;
   cust_name: string | null;
+  sale_code: string | null;
+  sale_name: string | null;
   remark: string | null;
   line_count: number;
   remaining_qty: string;
@@ -325,6 +328,13 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
   const [serialSearch, setSerialSearch] = useState("");
   const serialScanRef = useRef<HTMLInputElement>(null);
   const [reloadKey, setReloadKey] = useState(0); // bump → re-fetch pending (after issue)
+  // "ປິດງານ" — hide a pending bill out of this list (with a reason) without
+  // posting anything against it, for when reality already diverged from the
+  // system (bill re-opened and can't be returned, or already issued outside WMS).
+  const [closeFor, setCloseFor] = useState<PendingDoc | null>(null);
+  const [closeReason, setCloseReason] = useState("");
+  const [closeNote, setCloseNote] = useState("");
+  const [closing, setClosing] = useState(false);
   const [removed, setRemoved] = useState<Set<string>>(new Set()); // lines excluded from this issue
   const allocSeq = useRef(0); // unique key counter for added allocation rows
   const [submitting, setSubmitting] = useState(false);
@@ -512,6 +522,28 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
     // Nothing allocatable (all locations zero) → one empty row on the first loc.
     if (allocs.length === 0) allocs.push({ ...base, key: `${l.item_code}#a0`, selIdx: 0, qty: "" });
     return allocs;
+  }
+
+  /** "ປິດງານ" — commit the close dialog's choice for `closeFor`. */
+  async function submitClose() {
+    if (!closeFor || !closeReason) return;
+    if (closeReason === "other" && !closeNote.trim()) { showToast("err", "ກະລຸນາລະບຸເຫດຜົນ"); return; }
+    setClosing(true);
+    try {
+      const res = await fetch(`/api/movements/issue/close`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc_no: closeFor.doc_no, wh_code: closeFor.wh_code, type, reason_code: closeReason, reason_text: closeNote.trim() || null }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
+      showToast("ok", `ປິດງານ ${closeFor.doc_no} ແລ້ວ`);
+      setDocs((prev) => prev.filter((d) => !(d.doc_no === closeFor.doc_no && d.wh_code === closeFor.wh_code)));
+      setCloseFor(null); setCloseReason(""); setCloseNote("");
+    } catch (e) {
+      showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ");
+    } finally {
+      setClosing(false);
+    }
   }
 
   /** ກາງ/ຍຸບລາຍການສິນຄ້າຂອງໃບໜຶ່ງໃນຕາຕະລາງ. */
@@ -1078,6 +1110,7 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                             <th scope="col" className="px-3 py-2.5">ຄວາມພ້ອມ</th>
                             <th scope="col" className="hidden px-3 py-2.5 xl:table-cell">ຕ້ອງການ</th>
                             <th scope="col" className="px-3 py-2.5">ລູກຄ້າ</th>
+                            <th scope="col" className="hidden px-3 py-2.5 lg:table-cell">ພະນັກງານຂາຍ</th>
                             <th scope="col" className="hidden px-3 py-2.5 lg:table-cell">ສາງ</th>
                             <th scope="col" className="px-3 py-2.5 text-right">ຄ້າງເບີກ</th>
                             <th scope="col" className="px-3 py-2.5 text-right">ລາຍການ</th>
@@ -1136,6 +1169,9 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                                   <span className="block truncate text-xs text-zinc-700 dark:text-zinc-300" title={customerDisplay}>{customerDisplay}</span>
                                 </td>
                                 <td className="hidden px-3 py-2.5 align-top lg:table-cell">
+                                  <span className="block truncate text-xs text-zinc-700 dark:text-zinc-300" title={d.sale_code ?? ""}>{d.sale_name?.trim() || d.sale_code || "—"}</span>
+                                </td>
+                                <td className="hidden px-3 py-2.5 align-top lg:table-cell">
                                   <span className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400" title={warehouses.find((w) => w.code === d.wh_code)?.name ?? undefined}>{d.wh_code}</span>
                                 </td>
                                 <td className="px-3 py-2.5 text-right align-top">
@@ -1148,12 +1184,22 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                                 </td>
                                 <td className="px-3 py-2.5 text-right align-top font-mono text-sm tabular-nums text-zinc-600 dark:text-zinc-300">{d.line_count}</td>
                                 <td className="px-3 py-2.5 text-right align-top">
-                                  <button type="button" onClick={() => openDoc(d)} disabled={loadingLines} className="cursor-pointer whitespace-nowrap rounded-lg bg-gradient-to-r from-red-500 to-orange-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:shadow active:scale-95 disabled:opacity-50">ສ້າງໃບຈ່າຍ →</button>
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => { setCloseFor(d); setCloseReason(""); setCloseNote(""); }}
+                                      title="ປິດງານ — ເຊື່ອງອອກຈາກລາຍການນີ້ພ້ອມເຫດຜົນ, ບໍ່ຕັດ stock"
+                                      className="cursor-pointer whitespace-nowrap rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-zinc-500 ring-1 ring-zinc-200 transition hover:bg-zinc-50 hover:text-rose-600 dark:bg-zinc-900 dark:text-zinc-400 dark:ring-zinc-800"
+                                    >
+                                      ປິດງານ
+                                    </button>
+                                    <button type="button" onClick={() => openDoc(d)} disabled={loadingLines} className="cursor-pointer whitespace-nowrap rounded-lg bg-gradient-to-r from-red-500 to-orange-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:shadow active:scale-95 disabled:opacity-50">ສ້າງໃບຈ່າຍ →</button>
+                                  </div>
                                 </td>
                               </tr>
                               {expanded && d.lines.length > 0 && (
                                 <tr className="bg-zinc-50/60 dark:bg-zinc-950/40">
-                                  <td colSpan={11} className="px-3 pb-3 pt-0">
+                                  <td colSpan={12} className="px-3 pb-3 pt-0">
                                     <table className="w-full text-sm">
                                       <thead>
                                         <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
@@ -1201,6 +1247,9 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                                   {overdueWant && <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">ກາຍກຳນົດ</span>}
                                 </div>
                                 <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">{customerDisplay}</p>
+                                {(d.sale_name || d.sale_code) && (
+                                  <p className="mt-0.5 truncate text-[11px] text-zinc-400">👤 {d.sale_name?.trim() || d.sale_code}</p>
+                                )}
                                 <p className="mt-1 text-[11px]"><Elapsed since={d.created_at} /></p>
                                 <p className="mt-1"><ReadyChip d={d} /></p>
                               </div>
@@ -1209,7 +1258,16 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                                 <div className="text-[10px] text-zinc-400">{d.line_count} ລາຍການ</div>
                               </div>
                             </div>
-                            <button type="button" onClick={() => openDoc(d)} disabled={loadingLines} className="mt-3 w-full rounded-xl bg-gradient-to-r from-red-500 to-orange-600 px-3 py-2.5 text-sm font-bold text-white disabled:opacity-50">ສ້າງໃບຈ່າຍ →</button>
+                            <div className="mt-3 flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => { setCloseFor(d); setCloseReason(""); setCloseNote(""); }}
+                                className="shrink-0 rounded-xl bg-white px-3 py-2.5 text-xs font-bold text-zinc-500 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-400 dark:ring-zinc-800"
+                              >
+                                ປິດງານ
+                              </button>
+                              <button type="button" onClick={() => openDoc(d)} disabled={loadingLines} className="flex-1 rounded-xl bg-gradient-to-r from-red-500 to-orange-600 px-3 py-2.5 text-sm font-bold text-white disabled:opacity-50">ສ້າງໃບຈ່າຍ →</button>
+                            </div>
                           </li>
                         );
                       })}
@@ -1747,6 +1805,50 @@ export default function SourceIssue({ warehouses }: { warehouses: WarehouseOptio
                 className="rounded-xl bg-gradient-to-r from-aqua-600 to-brand-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:shadow-lg active:scale-95 transition-all cursor-pointer"
               >
                 ສຳເລັດ ({pickerLine.selectedSerials.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ປິດງານ — ເຊື່ອງບິນອອກຈາກລາຍການຄ້າງຈ່າຍ ພ້ອມເຫດຜົນ (ບໍ່ຕັດ stock) */}
+      {closeFor && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => !closing && setCloseFor(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-sm font-black text-zinc-800 dark:text-zinc-100">ປິດງານ {closeFor.doc_no}</h3>
+              <button type="button" onClick={() => setCloseFor(null)} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"><XIcon className="h-4 w-4" /></button>
+            </div>
+            <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+              ບິນນີ້ຈະຖືກເຊື່ອງອອກຈາກລາຍການຄ້າງຈ່າຍ — ລະບົບ<span className="font-bold"> ບໍ່ຕັດ stock</span> ຫຍັງເລີຍ, ພຽງແຕ່ຫຍຸດຕິບານຕິດຕາມໃບນີ້.
+            </p>
+            <label className="mb-1 block text-[11px] font-bold text-zinc-500 dark:text-zinc-400">ເຫດຜົນ</label>
+            <select
+              value={closeReason}
+              onChange={(e) => setCloseReason(e.target.value)}
+              className="mb-2 w-full rounded-lg bg-zinc-50 px-3 py-2 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-red-500/30 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+            >
+              <option value="">— ເລືອກເຫດຜົນ —</option>
+              {ISSUE_CLOSE_REASONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+            </select>
+            {closeReason === "other" && (
+              <textarea
+                value={closeNote}
+                onChange={(e) => setCloseNote(e.target.value)}
+                placeholder="ລະບຸເຫດຜົນ…"
+                rows={2}
+                className="mb-2 w-full rounded-lg bg-zinc-50 px-3 py-2 text-sm ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-red-500/30 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-800"
+              />
+            )}
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button type="button" disabled={closing} onClick={() => setCloseFor(null)} className="rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-500 hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800">ຍົກເລີກ</button>
+              <button
+                type="button"
+                disabled={closing || !closeReason || (closeReason === "other" && !closeNote.trim())}
+                onClick={submitClose}
+                className="rounded-lg bg-rose-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {closing ? "ກຳລັງປິດ..." : "ຢືນຢັນປິດງານ"}
               </button>
             </div>
           </div>
