@@ -43,3 +43,19 @@ export async function query<T = unknown>(
   const res = await pool.query(text, params as never);
   return res.rows as T[];
 }
+
+/**
+ * Postgres includes WHICH table/column a write violated (length, not-null,
+ * check, …) in the wire protocol's ErrorResponse, and `pg` exposes it as
+ * `.table`/`.column`/`.constraint` on the thrown error — but a bare
+ * `err.message` drops that, leaving e.g. "value too long for type character
+ * varying(50)" with no clue which of a dozen columns in the statement it was.
+ * Routes should format their catch-block error through this instead of
+ * `err.message` alone, so the NEXT occurrence names the column outright.
+ */
+export function pgErrorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return "ບໍ່ສຳເລັດ";
+  const e = err as Error & { table?: string; column?: string; constraint?: string };
+  const where = e.table && e.column ? ` (${e.table}.${e.column})` : e.constraint ? ` (constraint: ${e.constraint})` : "";
+  return `${err.message}${where}`;
+}
