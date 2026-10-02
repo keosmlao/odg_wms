@@ -207,6 +207,11 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ doc: st
  *                           lowers its total qty below what was already pre-picked
  *                           in `wms_product_out_serial_detail`, the excess serials
  *                           (highest serial_number first) are dropped to match.
+ *   `restore_item`        — undo a `remove_item` from earlier in this same confirm
+ *                           session: re-insert the row (+ its serials) the client
+ *                           had cached before it called remove. Only usable while
+ *                           the draft still exists (removing the LAST item deletes
+ *                           the header too — that case has no "back" on this screen).
  */
 export async function PATCH(request: Request, ctx: { params: Promise<{ doc: string }> }) {
   const session = await getSession();
@@ -214,20 +219,27 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ doc: stri
   if (!session.role) return NextResponse.json({ error: "ບໍ່ມີສິດເຂົ້າເຖິງ" }, { status: 403 });
   const { doc } = await ctx.params;
   const docNo = decodeURIComponent(doc).trim();
-  let body: { remove_item?: unknown; set_qty?: { roworder?: unknown; qty?: unknown } };
+  let body: { remove_item?: unknown; set_qty?: { roworder?: unknown; qty?: unknown }; restore_item?: Record<string, unknown> };
   try { body = (await request.json()) as typeof body; } catch { body = {}; }
   const removeItem = typeof body.remove_item === "string" ? body.remove_item.trim() : "";
   const setQty = body.set_qty;
   const roworder = setQty && typeof setQty.roworder === "number" ? setQty.roworder : null;
   const newQty = setQty && typeof setQty.qty === "number" ? setQty.qty : null;
-  if (!removeItem && (roworder === null || newQty === null)) {
+  const restore = body.restore_item && typeof body.restore_item === "object" ? body.restore_item : null;
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const restoreItemCode = restore ? str(restore.item_code) : "";
+  const restoreQty = restore ? (typeof restore.qty === "number" ? restore.qty : Number.parseFloat(String(restore.qty ?? ""))) : null;
+  if (!removeItem && !restore && (roworder === null || newQty === null)) {
     return NextResponse.json({ error: "ບໍ່ມີການແກ້ໄຂ" }, { status: 400 });
   }
-  if (removeItem && roworder !== null) {
+  if ((removeItem ? 1 : 0) + (restore ? 1 : 0) + (roworder !== null ? 1 : 0) > 1) {
     return NextResponse.json({ error: "ແກ້ໄຂໄດ້ເທື່ອລະຢ່າງ" }, { status: 400 });
   }
   if (newQty !== null && !(newQty > 0)) {
     return NextResponse.json({ error: "ຈຳນວນຕ້ອງຫຼາຍກວ່າ 0 — ໃຊ້ 🗑 ຖ້າຕ້ອງການລົບອອກທັງແຖວ" }, { status: 400 });
+  }
+  if (restore && (!restoreItemCode || !restoreQty || !(restoreQty > 0))) {
+    return NextResponse.json({ error: "ຂໍ້ມູນລາຍການທີ່ຈະເພີ່ມກັບຄືນບໍ່ຄົບ" }, { status: 400 });
   }
 
   const client = await pool.connect();
@@ -254,6 +266,30 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ doc: stri
       }
       await client.query("COMMIT");
       return NextResponse.json({ ok: true, doc_no: docNo, emptied });
+    }
+
+    if (restore) {
+      const rack = str(restore.rack);
+      const location = str(restore.location);
+      const pallet = str(restore.pallet);
+      const itemName = typeof restore.item_name === "string" ? restore.item_name : null;
+      const unitCode = typeof restore.unit_code === "string" && restore.unit_code.trim() ? restore.unit_code.trim() : null;
+      const refDocNo = typeof restore.ref_doc_no === "string" && restore.ref_doc_no.trim() ? restore.ref_doc_no.trim() : null;
+      const serials = Array.isArray(restore.serials) ? (restore.serials as unknown[]).map((s) => String(s).trim()).filter(Boolean) : [];
+
+      await client.query(
+        `INSERT INTO public.wms_product_out_detail (doc_no, doc_date, item_code, item_name, unit_code, qty, shelf_code, box_code, ref_doc_no, create_date_time_now)
+         VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, now())`,
+        [docNo, restoreItemCode, itemName, unitCode, restoreQty, packNode({ rack, location, pallet }), location || null, refDocNo],
+      );
+      for (const s of serials) {
+        await client.query(
+          `INSERT INTO public.wms_product_out_serial_detail (ref_out_doc, item_code, serial_number) VALUES ($1, $2, $3)`,
+          [docNo, restoreItemCode, s],
+        );
+      }
+      await client.query("COMMIT");
+      return NextResponse.json({ ok: true, doc_no: docNo });
     }
 
     const row = (await client.query<{ item_code: string; shelf_code: string | null }>(

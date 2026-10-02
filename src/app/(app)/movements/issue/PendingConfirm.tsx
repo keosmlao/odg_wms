@@ -71,13 +71,13 @@ function lsSet(key: string, val: string) {
 function lsDel(key: string) {
   try { if (typeof window !== "undefined") window.localStorage.removeItem(key); } catch { /* ignore */ }
 }
-function loadScan(doc: string): { scanned: string[]; reasons: Record<string, string>; moves: Record<string, NodeRef> } {
+function loadScan(doc: string): { scanned: string[]; reasons: Record<string, string>; moves: Record<string, NodeRef>; removed: DraftLine[] } {
   try {
     const raw = lsGet(scanKey(doc));
-    if (!raw) return { scanned: [], reasons: {}, moves: {} };
-    const p = JSON.parse(raw) as { scanned?: string[]; reasons?: Record<string, string>; moves?: Record<string, NodeRef> };
-    return { scanned: Array.isArray(p.scanned) ? p.scanned : [], reasons: p.reasons ?? {}, moves: p.moves ?? {} };
-  } catch { return { scanned: [], reasons: {}, moves: {} }; }
+    if (!raw) return { scanned: [], reasons: {}, moves: {}, removed: [] };
+    const p = JSON.parse(raw) as { scanned?: string[]; reasons?: Record<string, string>; moves?: Record<string, NodeRef>; removed?: DraftLine[] };
+    return { scanned: Array.isArray(p.scanned) ? p.scanned : [], reasons: p.reasons ?? {}, moves: p.moves ?? {}, removed: Array.isArray(p.removed) ? p.removed : [] };
+  } catch { return { scanned: [], reasons: {}, moves: {}, removed: [] }; }
 }
 
 export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOption[] }) {
@@ -113,6 +113,10 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
   const scanRef = useRef<HTMLInputElement>(null);
   // The one line currently being qty-edited (roworder → the input's live text).
   const [qtyEdit, setQtyEdit] = useState<{ roworder: number; value: string } | null>(null);
+  // Lines 🗑-removed during THIS confirm session, kept client-side so an accidental
+  // removal can be undone with one tap instead of re-building the whole pick slip.
+  // Cleared whenever a different doc opens or this one is confirmed/left.
+  const [removedLines, setRemovedLines] = useState<DraftLine[]>([]);
 
   function showToast(k: "ok" | "err", t: string) { setToast({ k, t }); setTimeout(() => setToast(null), 2800); }
 
@@ -169,8 +173,8 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
 
   useEffect(() => {
     if (!active) return;
-    lsSet(scanKey(active.header.doc_no), JSON.stringify({ scanned: [...scanned], reasons, moves }));
-  }, [scanned, reasons, moves, active]);
+    lsSet(scanKey(active.header.doc_no), JSON.stringify({ scanned: [...scanned], reasons, moves, removed: removedLines }));
+  }, [scanned, reasons, moves, removedLines, active]);
 
   async function toggleExpand(doc_no: string) {
     if (expanded === doc_no) { setExpanded(null); return; }
@@ -184,7 +188,12 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
     }
   }
 
-  async function openDoc(doc_no: string) {
+  // `override` lets a caller that JUST changed scanned/removed in memory (removeLine,
+  // restoreLine) hand those values straight through, instead of openDoc reading them
+  // back from localStorage — that write only lands a render later (via the effect
+  // below), so reading it back synchronously here would restore the STALE pre-change
+  // copy and silently undo what the caller just did.
+  async function openDoc(doc_no: string, override?: { scanned?: Set<string>; removed?: DraftLine[] }) {
     setBusy(true);
     try {
       const res = await fetch(`/api/movements/issue/draft/${encodeURIComponent(doc_no)}`);
@@ -195,9 +204,15 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       logDoc.current = { doc_no: data.header.doc_no, ref_doc: data.header.ref_doc_no ?? null, wh: data.header.warehouse_code ?? null };
       // Restore any scans stashed for this doc from a previous (unconfirmed) session.
       const saved = loadScan(doc_no);
-      setScanned(new Set(saved.scanned));
+      setScanned(override?.scanned ?? new Set(saved.scanned));
       setReasons(saved.reasons);
       setMoves(saved.moves);
+      // Restore lines removed earlier this confirm (before a refresh, say) — but
+      // only the ones still actually missing from the freshly-loaded doc, so a
+      // stale stash never re-shows a line that's already back on the pick.
+      const liveItems = new Set((data.lines ?? []).map((l) => l.item_code));
+      const removedSource = override?.removed ?? saved.removed;
+      setRemovedLines(removedSource.filter((l) => !liveItems.has(l.item_code)));
       lsSet(LS_ACTIVE, doc_no);
       setTimeout(() => scanRef.current?.focus(), 50);
 
@@ -418,6 +433,9 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
   async function removeLine(item: string) {
     if (!active) return;
     if (!window.confirm(`ລົບ ${item} ອອກຈາກໃບ pick?`)) return;
+    // Snapshot every row of this item (its qty/node/serials) BEFORE deleting, so
+    // "ເພີ່ມກັບຄືນ" can re-insert them without a round trip back to the server data.
+    const snapshot = active.lines.filter((l) => l.item_code === item);
     setBusy(true);
     try {
       const res = await fetch(`/api/movements/issue/draft/${encodeURIComponent(active.header.doc_no)}`, {
@@ -428,7 +446,40 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
       if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
       showToast("ok", `ລົບ ${item} ແລ້ວ`);
       if (data.emptied) { setActive(null); await loadDocs(); }
-      else await openDoc(active.header.doc_no);
+      else {
+        const nextRemoved = [...removedLines, ...snapshot];
+        // The scans that belonged to this item are meaningless now — drop them so
+        // "ຍິງແລ້ວ / ຕ້ອງການ" doesn't keep counting units that just left the pick.
+        const nextScanned = new Set([...scanned].filter((s) => serialOwner.get(s) !== item));
+        setRemovedLines(nextRemoved);
+        setScanned(nextScanned);
+        await openDoc(active.header.doc_no, { scanned: nextScanned, removed: nextRemoved });
+      }
+    } catch (e) { showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ"); }
+    finally { setBusy(false); }
+  }
+
+  /** Undo a removeLine() from earlier this session — re-insert the row (+ its
+   *  serials) exactly as it was, then reload so it rejoins the confirm screen. */
+  async function restoreLine(l: DraftLine) {
+    if (!active) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/movements/issue/draft/${encodeURIComponent(active.header.doc_no)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restore_item: {
+            item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: Number.parseFloat(l.qty) || 0,
+            rack: l.rack, location: l.location, pallet: l.pallet, ref_doc_no: l.ref_doc_no, serials: l.serials,
+          },
+        }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "ບໍ່ສຳເລັດ");
+      showToast("ok", `ເພີ່ມ ${l.item_code} ກັບຄືນແລ້ວ`);
+      const nextRemoved = removedLines.filter((r) => r !== l);
+      setRemovedLines(nextRemoved);
+      await openDoc(active.header.doc_no, { scanned, removed: nextRemoved });
     } catch (e) { showToast("err", e instanceof Error ? e.message : "ບໍ່ສຳເລັດ"); }
     finally { setBusy(false); }
   }
@@ -624,7 +675,7 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
         return (
         <section className="space-y-4 pb-24">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <button type="button" onClick={() => { lsDel(LS_ACTIVE); setActive(null); }} className="inline-flex items-center gap-1 text-sm font-semibold text-zinc-500 hover:text-zinc-800">← ກັບ</button>
+            <button type="button" onClick={() => { lsDel(LS_ACTIVE); setActive(null); setRemovedLines([]); }} className="inline-flex items-center gap-1 text-sm font-semibold text-zinc-500 hover:text-zinc-800">← ກັບ</button>
             <div className="flex items-center gap-2">
               <a href={`/print/pick/${encodeURIComponent(active.header.doc_no)}?auto=1`} target="_blank" rel="noopener" className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800">🖨 ພິມໃບ pick</a>
               <button type="button" disabled={busy} onClick={() => cancelDraft(active.header.doc_no)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50 disabled:opacity-50 dark:bg-zinc-900 dark:text-rose-400 dark:ring-rose-900/50">ຍົກເລີກ pick</button>
@@ -852,6 +903,31 @@ export default function PendingConfirm({ warehouses }: { warehouses: WarehouseOp
                 );
               })}
           </div>
+
+          {/* items ລົບອອກໄປ ໃນລະຫວ່າງກຳລັງຢືນຢັນນີ້ — ກົດເພື່ອເພີ່ມກັບຄືນ */}
+          {removedLines.length > 0 && (
+            <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/60 p-3.5 dark:border-zinc-700 dark:bg-zinc-900/40">
+              <div className="mb-2 text-[11px] font-bold text-zinc-500 dark:text-zinc-400">🗑 ລາຍການທີ່ລົບໄປແລ້ວ ({removedLines.length}) — ກົດເພື່ອເພີ່ມກັບຄືນ</div>
+              <div className="space-y-1.5">
+                {removedLines.map((l, i) => (
+                  <div key={`${l.item_code}-${l.roworder}-${i}`} className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs ring-1 ring-zinc-200 dark:bg-zinc-950 dark:ring-zinc-800">
+                    <div className="min-w-0">
+                      <span className="font-mono font-bold text-zinc-500 dark:text-zinc-400">{l.item_code}</span>
+                      <span className="ml-2 truncate text-zinc-600 dark:text-zinc-300">{l.item_name}</span>
+                      <span className="ml-2 text-zinc-400">{l.qty} {l.unit_code} · {nodeLabel(l)}</span>
+                    </div>
+                    <button
+                      type="button" disabled={busy}
+                      onClick={() => restoreLine(l)}
+                      className="shrink-0 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100 disabled:opacity-50 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-900/50"
+                    >
+                      ↩ ເພີ່ມກັບຄືນ
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* audit trail of this confirm session — scans, rejects, location changes */}
           <ScanLogPanel doc={active.header.doc_no} />
