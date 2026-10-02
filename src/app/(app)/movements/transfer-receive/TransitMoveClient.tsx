@@ -49,6 +49,8 @@ type SavedTransitState = {
   locTo: string;
   putMode: "all" | "line";
   locByLine: Record<string, string>;
+  scanLoc: string;
+  pickedLoc: Record<string, string>;
 };
 function loadTransitState(mode: TransitMoveMode, doc: string): SavedTransitState | null {
   try {
@@ -86,7 +88,13 @@ export default function TransitMoveClient({
   const [reasons, setReasons] = useState<Record<string, string>>({}); // item_code → reason_code (short)
   const [locTo, setLocTo] = useState("");
   const [putMode, setPutMode] = useState<"all" | "line">("all");
-  const [locByLine, setLocByLine] = useState<Record<string, string>>({}); // item_code → location (line mode)
+  const [locByLine, setLocByLine] = useState<Record<string, string>>({}); // item_code → location (line mode, non-serial lines only)
+  // The location every NEXT scanned/picked serial gets tagged with — set it, scan
+  // a batch, change it, scan more: each unit keeps whatever was selected the moment
+  // IT was added, so one item's serials can land split across several bins in one
+  // receive instead of forcing them all to a single location.
+  const [scanLoc, setScanLoc] = useState("");
+  const [pickedLoc, setPickedLoc] = useState<Record<string, string>>({}); // `${item_code}::${serial id}` → location
   const [scan, setScan] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
@@ -194,10 +202,19 @@ export default function TransitMoveClient({
       setLocByLine(restoredLocByLine);
       setLocTo(saved.locTo || "");
       setPutMode(saved.putMode === "line" ? "line" : "all");
+      const restoredPickedLoc: Record<string, string> = {};
+      for (const [key, loc] of Object.entries(saved.pickedLoc ?? {})) {
+        const [item, id] = key.split("::");
+        if (validItems.has(item) && validSerialIds.has(id)) restoredPickedLoc[key] = loc;
+      }
+      setPickedLoc(restoredPickedLoc);
+      setScanLoc(saved.scanLoc || "");
     } else {
       setPicked({});
       setReasons({});
       setLocByLine({});
+      setPickedLoc({});
+      setScanLoc("");
     }
     setQty(q);
     lsSet(lsActiveKey(mode), doc);
@@ -226,10 +243,10 @@ export default function TransitMoveClient({
     const toSave: SavedTransitState = {
       qty,
       picked: Object.fromEntries(Object.entries(picked).map(([k, v]) => [k, [...v]])),
-      reasons, locTo, putMode, locByLine,
+      reasons, locTo, putMode, locByLine, scanLoc, pickedLoc,
     };
     lsSet(lsStateKey(mode, sel), JSON.stringify(toSave));
-  }, [sel, mode, qty, picked, reasons, locTo, putMode, locByLine]);
+  }, [sel, mode, qty, picked, reasons, locTo, putMode, locByLine, scanLoc, pickedLoc]);
 
   const serialsByItem = useMemo(() => {
     const m = new Map<string, SerialRow[]>();
@@ -252,6 +269,7 @@ export default function TransitMoveClient({
   const handleScan = useCallback((raw: string) => {
     const t = raw.trim();
     if (!t) return;
+    if (!scanLoc) { setMsg({ tone: "err", text: "ກະລຸນາເລືອກ location ກ່ອນຍິງ SN" }); return; }
     const hit = scanIndex.get(t.toUpperCase());
     if (!hit) { setMsg({ tone: "err", text: `serial ${raw} ບໍ່ຢູ່ໃນສາງລະຫວ່າງທາງຂອງໃບນີ້` }); setScan(""); return; }
     setPicked((p) => {
@@ -260,35 +278,61 @@ export default function TransitMoveClient({
       cur.add(hit.id);
       const next = { ...p, [hit.item_code]: cur };
       setQty((qq) => ({ ...qq, [hit.item_code]: cur.size }));
-      setMsg({ tone: "ok", text: `+ ${raw}` });
+      setPickedLoc((pl) => ({ ...pl, [`${hit.item_code}::${hit.id}`]: scanLoc }));
+      setMsg({ tone: "ok", text: `+ ${raw} · ${locByCode.get(scanLoc) || scanLoc}` });
       return next;
     });
     setScan("");
-  }, [scanIndex]);
+  }, [scanIndex, scanLoc, locByCode]);
 
   const toggleSerial = (item: string, id: string) => {
     setPicked((p) => {
       const cur = new Set(p[item] ?? []);
-      if (cur.has(id)) cur.delete(id); else cur.add(id);
+      const key = `${item}::${id}`;
+      if (cur.has(id)) {
+        cur.delete(id);
+        setPickedLoc((pl) => { const n = { ...pl }; delete n[key]; return n; });
+      } else {
+        if (!scanLoc) { setMsg({ tone: "err", text: "ກະລຸນາເລືອກ location ກ່ອນເລືອກ SN" }); return p; }
+        cur.add(id);
+        setPickedLoc((pl) => ({ ...pl, [key]: scanLoc }));
+      }
       setQty((qq) => ({ ...qq, [item]: cur.size }));
       return { ...p, [item]: cur };
     });
   };
 
-  const payloadLines = useMemo(() => lines.map((l) => {
-    const ser = [...(picked[l.item_code] ?? [])];
-    const q = l.serialized ? ser.length : (qty[l.item_code] ?? 0);
-    return { item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: q, serials: ser, location: putMode === "line" ? (locByLine[l.item_code] || null) : null };
-  }).filter((l) => l.qty > 0), [lines, picked, qty, putMode, locByLine]);
+  // Serialized items: one payload line PER LOCATION the operator actually scanned
+  // its units into (a single item can split across several bins in one receive).
+  // Non-serialized items: unchanged — one line, location from the putMode toggle.
+  const payloadLines = useMemo(() => {
+    const out: { item_code: string; item_name: string | null; unit_code: string | null; qty: number; serials: string[]; location: string | null }[] = [];
+    for (const l of lines) {
+      if (l.serialized) {
+        const ids = [...(picked[l.item_code] ?? [])];
+        if (ids.length === 0) continue;
+        const byLoc = new Map<string, string[]>();
+        for (const id of ids) {
+          const loc = pickedLoc[`${l.item_code}::${id}`] || "";
+          const arr = byLoc.get(loc);
+          if (arr) arr.push(id); else byLoc.set(loc, [id]);
+        }
+        for (const [loc, idsAtLoc] of byLoc) {
+          out.push({ item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: idsAtLoc.length, serials: idsAtLoc, location: loc || null });
+        }
+      } else {
+        const q = qty[l.item_code] ?? 0;
+        if (q > 0) out.push({ item_code: l.item_code, item_name: l.item_name, unit_code: l.unit_code, qty: q, serials: [], location: putMode === "line" ? (locByLine[l.item_code] || null) : null });
+      }
+    }
+    return out;
+  }, [lines, picked, pickedLoc, qty, putMode, locByLine]);
 
   const overSome = lines.some((l) => !l.serialized && (qty[l.item_code] ?? 0) > (Number.parseFloat(l.in_transit) || 0) + 1e-6);
-  // Every item actually being received/returned this time must have ITS location
-  // resolved — whichever order it was filled in (scan-then-location, or
-  // location-then-scan; both just set independent state). "all" mode covers
-  // every line with one shared locTo; "line" mode needs each line's own.
-  const missingLoc = putMode === "all"
-    ? payloadLines.length > 0 && !locTo
-    : payloadLines.some((l) => !l.location);
+  // Every payload line must resolve to a real location: a serialized line always
+  // carries its own (scanning requires scanLoc up front); a non-serial line either
+  // carries its own ("line" putMode) or falls back to the doc-level locTo ("all").
+  const missingLoc = payloadLines.some((l) => !l.location && !(putMode === "all" && locTo));
   const canSubmit = payloadLines.length > 0 && !overSome && !missingLoc && !submitting;
 
   const submit = async () => {
@@ -312,6 +356,7 @@ export default function TransitMoveClient({
       // Units just consumed — clear the stashed scan state before the refresh
       // reload gives us fresh (possibly zero) remaining lines.
       lsDel(lsStateKey(mode, sel));
+      setPickedLoc({});
       await loadList();
       await openDoc(sel); // refresh remaining; if 0 left it drops out of the list
     } catch (e) {
@@ -323,6 +368,8 @@ export default function TransitMoveClient({
   if (sel) {
     const fmtName = mode === "receive" ? header?.wh_from_name : header?.wh_to_name;
     const toName = mode === "receive" ? header?.wh_to_name : header?.wh_from_name;
+    const hasSerialLines = lines.some((l) => l.serialized);
+    const hasNonSerialLines = lines.some((l) => !l.serialized);
     const totalInT = lines.reduce((acc, l) => acc + (Number.parseFloat(l.in_transit) || 0), 0);
     const totalGot = lines.reduce((acc, l) => acc + (l.serialized ? (picked[l.item_code]?.size ?? 0) : (qty[l.item_code] ?? 0)), 0);
     const pct = totalInT > 0 ? Math.min(100, Math.round((totalGot / totalInT) * 100)) : 0;
@@ -347,31 +394,50 @@ export default function TransitMoveClient({
               <div className="mt-1.5 h-1.5 w-28 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} /></div>
             </div>
           </div>
-          <div className="space-y-2 px-5 py-3">
-            <div className="flex items-center gap-2">
-              <label className="text-[11px] font-bold text-slate-500">📍 ບ່ອນຈັດເກັບປາຍທາງ:</label>
-              <div className="flex rounded-lg bg-slate-100 p-0.5 text-[11px] font-semibold">
-                {([["all", "ທັງໝົດ"], ["line", "ທີ່ລະລາຍການ"]] as const).map(([m, label]) => (
-                  <button key={m} onClick={() => setPutMode(m)} className={`rounded px-3 py-1 transition cursor-pointer ${putMode === m ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500"}`}>{label}</button>
-                ))}
+          {hasNonSerialLines && (
+            <div className="space-y-2 px-5 py-3">
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] font-bold text-slate-500">📍 ບ່ອນຈັດເກັບປາຍທາງ (ລາຍການບໍ່ມີ SN):</label>
+                <div className="flex rounded-lg bg-slate-100 p-0.5 text-[11px] font-semibold">
+                  {([["all", "ທັງໝົດ"], ["line", "ທີ່ລະລາຍການ"]] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => setPutMode(m)} className={`rounded px-3 py-1 transition cursor-pointer ${putMode === m ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500"}`}>{label}</button>
+                  ))}
+                </div>
               </div>
+              {putMode === "all"
+                ? <PutawayPicker allowPallet={false} dest="location" onDest={() => {}}
+                    locValue={locTo} onLoc={setLocTo} locOptions={locOptions}
+                    same={sameByLoc} empty={emptyLocs} nameOf={nameOf} />
+                : <p className="text-[11px] text-slate-400">ເລືອກ location ແຍກໃນແຕ່ລະລາຍການດ້ານລຸ່ມ</p>}
             </div>
-            {putMode === "all"
-              ? <PutawayPicker allowPallet={false} dest="location" onDest={() => {}}
-                  locValue={locTo} onLoc={setLocTo} locOptions={locOptions}
-                  same={sameByLoc} empty={emptyLocs} nameOf={nameOf} />
-              : <p className="text-[11px] text-slate-400">ເລືອກ location ແຍກໃນແຕ່ລະລາຍການດ້ານລຸ່ມ</p>}
-          </div>
+          )}
         </div>
 
+        {/* location for SN scanning — chosen BEFORE scanning; every unit scanned
+            (or picked in the ISN modal) after this point is tagged with whatever
+            is selected here AT THAT MOMENT, so switching it mid-batch splits the
+            item across bins instead of forcing one location for all of it. */}
+        {hasSerialLines && (
+          <div className="space-y-2 rounded-2xl border border-sky-200 bg-sky-50/40 p-3.5">
+            <label className="mb-1 block text-[11px] font-bold text-sky-700">📍 ເລືອກ location ກ່ອນ — SN ທີ່ຍິງ/ເລືອກຕໍ່ໄປຈະບັນທຶກຕາມບ່ອນນີ້</label>
+            <PutawayPicker allowPallet={false} dest="location" onDest={() => {}}
+              locValue={scanLoc} onLoc={setScanLoc} locOptions={locOptions}
+              same={sameByLoc} empty={emptyLocs} nameOf={nameOf} />
+            {scanLoc
+              ? <div className="text-[11px] font-bold text-sky-700">→ ກຳລັງຍິງໃສ່ {nameOf(scanLoc)}</div>
+              : <div className="text-[11px] font-bold text-amber-600">⚠ ຍັງບໍ່ໄດ້ເລືອກ location — ຕ້ອງເລືອກກ່ອນຈຶ່ງຍິງ SN ໄດ້</div>}
+          </div>
+        )}
+
         {/* big scan */}
-        {lines.some((l) => l.serialized) && (
+        {hasSerialLines && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-3.5">
             <label className="mb-1 block text-[11px] font-bold text-emerald-700">🔫 ຍິງ / ປ້ອນ serial ທີ່ {t.verb} ຈິງ ແລ້ວ Enter</label>
             <input ref={scanRef} value={scan} onChange={(e) => setScan(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleScan(scan); } }}
-              autoFocus placeholder="scan SN / ISN …"
-              className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500/30" />
+              disabled={!scanLoc}
+              autoFocus placeholder={scanLoc ? "scan SN / ISN …" : "ເລືອກ location ກ່ອນ…"}
+              className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60" />
           </div>
         )}
 
@@ -427,15 +493,17 @@ export default function TransitMoveClient({
                   <div className="border-t border-slate-100 px-4 py-3">
                     <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200">
                       <table className="w-full table-fixed text-xs tabular-nums">
-                        <colgroup><col className="w-[46%]" /><col className="w-[46%]" /><col className="w-[8%]" /></colgroup>
-                        <thead><tr className="bg-slate-50 text-left text-[9px] font-semibold uppercase tracking-wide text-slate-400"><th className="px-3 py-1.5">SN (ໂຮງງານ)</th><th className="px-3 py-1.5">ISN (ບໍລິສັດ)</th><th className="px-3 py-1.5" /></tr></thead>
+                        <colgroup><col className="w-[32%]" /><col className="w-[32%]" /><col className="w-[28%]" /><col className="w-[8%]" /></colgroup>
+                        <thead><tr className="bg-slate-50 text-left text-[9px] font-semibold uppercase tracking-wide text-slate-400"><th className="px-3 py-1.5">SN (ໂຮງງານ)</th><th className="px-3 py-1.5">ISN (ບໍລິສັດ)</th><th className="px-3 py-1.5">📍 Location</th><th className="px-3 py-1.5" /></tr></thead>
                         <tbody className="divide-y divide-slate-100">
                           {[...pick].map((id) => {
                             const s = serialsByItem.get(l.item_code)?.find((x) => x.id === id);
+                            const loc = pickedLoc[`${l.item_code}::${id}`];
                             return (
                               <tr key={id}>
                                 <td className="truncate px-3 py-1.5 font-mono text-slate-800">{s?.sn ?? "—"}</td>
                                 <td className="truncate px-3 py-1.5 font-mono text-slate-800">{s?.isn ?? "—"}</td>
+                                <td className="truncate px-3 py-1.5 font-mono text-sky-700">{loc ? nameOf(loc) : "—"}</td>
                                 <td className="px-3 py-1.5 text-right"><button onClick={() => toggleSerial(l.item_code, id)} title="ຍົກເລີກ" className="text-slate-300 hover:text-rose-500 cursor-pointer">✕</button></td>
                               </tr>
                             );
@@ -524,6 +592,9 @@ export default function TransitMoveClient({
                     <span className="text-slate-500">ຄ້າງໃນສາງລະຫວ່າງທາງ: <span className="font-mono text-slate-800">{cap}</span></span>
                     <span className="rounded-full bg-emerald-600 px-3 py-1 font-extrabold text-white">{t.verb}: {pick.size} / {all.length}</span>
                   </div>
+                  <div className={`mt-2 text-[11px] font-bold ${scanLoc ? "text-sky-700" : "text-amber-600"}`}>
+                    {scanLoc ? `📍 ກຳລັງເລືອກໃສ່ ${nameOf(scanLoc)}` : "⚠ ຍັງບໍ່ໄດ້ເລືອກ location — ປິດແລ້ວເລືອກຢູ່ດ້ານເທິງກ່ອນ"}
+                  </div>
                 </div>
                 <div className="border-b border-slate-100 bg-white p-3.5">
                   <div className="mb-1.5 text-[11px] font-bold text-slate-500">ຍິງ / ພິມ SN ຫຼື ISN ແລ້ວ Enter</div>
@@ -542,11 +613,13 @@ export default function TransitMoveClient({
                       {pick.size === 0 ? <p className="py-6 text-center text-[11px] text-slate-400">ຍັງບໍ່ມີ — ຍິງ / ເລືອກ SN</p> :
                         [...pick].map((id) => {
                           const o = all.find((s) => s.id === id);
+                          const loc = pickedLoc[`${pickerFor}::${id}`];
                           return (
                             <div key={id} className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-slate-50">
                               <span className="min-w-0 truncate font-mono text-[11px] font-bold text-slate-800">
                                 {o?.sn ?? "—"}
                                 {o?.isn && <span className="ml-1.5 font-normal text-slate-400">ISN: {o.isn}</span>}
+                                {loc && <span className="ml-1.5 font-normal text-sky-600">📍{nameOf(loc)}</span>}
                               </span>
                               <button onClick={() => toggleSerial(pickerFor, id)} className="shrink-0 rounded px-1 text-rose-400 hover:bg-rose-50 hover:text-rose-600 cursor-pointer">✕</button>
                             </div>
