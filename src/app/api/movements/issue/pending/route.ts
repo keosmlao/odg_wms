@@ -68,6 +68,8 @@ export async function GET(request: Request) {
     doc_time: string | null;
     cust_code: string | null;
     cust_name: string | null;
+    sale_code: string | null;
+    sale_name: string | null;
     remark: string | null;
     line_count: number;
     remaining_qty: string;
@@ -123,6 +125,8 @@ export async function GET(request: Request) {
             h.doc_time,
             h.cust_code,
             cu.name_1 AS cust_name,
+            h.sale_code,
+            se.fullname_lo AS sale_name,
             h.remark,
             s.line_count,
             (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0))::numeric::text AS remaining_qty,
@@ -136,11 +140,16 @@ export async function GET(request: Request) {
      LEFT JOIN issued i ON i.doc_no = s.doc_no AND i.wh_code = s.wh_code
      LEFT JOIN pending pd ON pd.doc_no = s.doc_no AND pd.wh_code = s.wh_code
      LEFT JOIN public.ar_customer cu ON cu.code = h.cust_code
+     LEFT JOIN public.odg_employee se ON se.employee_code = h.sale_code
      WHERE COALESCE(h.is_cancel, 0) = 0
        -- ໃບຂໍໂອນ (124) ບໍ່ຕ້ອງລໍການອະນຸມັດອີກຕໍ່ໄປ — ລໍຖ້າ (0) ຫຼື ອະນຸມັດ (1) ຈ່າຍໄດ້ເລີຍ.
        -- ກັນໄວ້ສະເພາະໃບທີ່ຖືກ "ປະຕິເສດ" (2) ເພາະນັ້ນຄືການປະຕິເສດໂດຍເຈດຕະນາ.
        AND (h.trans_flag <> 124 OR COALESCE(h.status, 0) <> 2)
        AND (s.src_qty - COALESCE(i.wms_qty, 0) - COALESCE(pd.pend_qty, 0)) > 0.0001
+       -- "ປິດງານ" ແລ້ວ (wms_issue_close) — ເຊື່ອງອອກ ໂດຍບໍ່ແຕະຕ້ອງ ic_trans.
+       AND NOT EXISTS (
+         SELECT 1 FROM public.wms_issue_close c WHERE c.doc_no = s.doc_no AND c.wh_code = s.wh_code
+       )
      ORDER BY s.wh_code, h.doc_date DESC, s.doc_no DESC
      LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
     args,
